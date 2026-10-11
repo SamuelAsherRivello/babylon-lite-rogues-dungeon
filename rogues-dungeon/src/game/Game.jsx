@@ -119,24 +119,21 @@ const collapsedKeyboardGroups = Object.freeze([
   { label: "Abilities:", keys: ["1", "2", "3"] },
   { label: "More", keys: ["Z", "X", "C"] },
 ]);
-const movementDirections = Object.freeze({ W: "n", A: "w", S: "s", D: "e" });
-function activateKeyboardControl(key, dispatch) {
-  if (movementDirections[key]) return dispatch({ type: "move", direction: movementDirections[key] });
-  if (/^[1-3]$/.test(key)) return dispatch({ type: "ability", index: Number(key) - 1 });
-  console.info(`[keyboard-controls] ${key} pressed; action is temporary.`);
-  return undefined;
+function InputKey({ keyLabel, className = "" }) {
+  return <kbd className={`input-key${className ? ` ${className}` : ""}`} aria-label={`Keyboard key ${keyLabel}`}>{keyLabel}</kbd>;
 }
-function KeyboardKey({ keyLabel, onActivate }) {
-  return <button type="button" className="keyboard_tray_key" aria-label={`Press ${keyLabel}`} onClick={(event) => { event.stopPropagation(); onActivate(keyLabel); }}>{keyLabel}</button>;
-}
-export function StatusBar({ canOverride, orientation, setDeveloperAspect, dispatch = () => {}, mobilePanel = "controls", setMobilePanel = () => {} }) {
+export function StatusBar({ canOverride, orientation, setDeveloperAspect, mobilePanel = "controls", setMobilePanel = () => {} }) {
   const [expanded, setExpanded] = useState(false);
   return <footer className="statusbar">
-    <div className="desktop_status"><div className="status_legend"><div className="keyboard_collapsed_summary" aria-label="Move WASD | Quick: A E | Abilities: 123 | More ZXC">{collapsedKeyboardGroups.map(({ label, keys }, index) => <span className="keyboard_collapsed_group" key={label}><span className="status_shortcut"><span>{label}</span>{keys.map((key) => <kbd key={key}>{key}</kbd>)}</span>{index < collapsedKeyboardGroups.length - 1 && <span className="keyboard_summary_separator" aria-hidden="true">|</span>}</span>)}</div></div>{canOverride && <button className="dev_settings" onClick={() => setDeveloperAspect(orientation === "landscape" ? "portrait" : "landscape")}>Dev Settings &nbsp; Aspect: {orientation === "landscape" ? "Landscape" : "Portrait"}</button>}</div>
-    <div className={`keyboard_tray${expanded ? " keyboard_tray--expanded" : ""}`}>
-      <section className="keyboard_tray_panel" aria-label="Keyboard controls" aria-hidden={!expanded}><h2>KEYBOARD CONTROLS</h2><div className="keyboard_tray_rows">{keyboardControlRows.map(({ label, keys }) => <div className="keyboard_tray_row" key={label}><span className="keyboard_tray_label">{label}</span><div className="keyboard_tray_keys">{keys.map((key) => <KeyboardKey key={key} keyLabel={key} onActivate={(pressedKey) => activateKeyboardControl(pressedKey, dispatch)} />)}</div></div>)}</div></section>
-      <button type="button" className="keyboard_tray_tab" aria-label={expanded ? "Collapse keyboard controls" : "Expand keyboard controls"} aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}><span aria-hidden="true">⌄</span></button>
-    </div>
+    <div className="desktop_status"><div className={`keyboard_controls_region${expanded ? " keyboard_controls_region--expanded" : ""}`}>
+      <div className="keyboard_collapsed_controls" aria-hidden={expanded}><div className="keyboard_collapsed_summary" aria-label="Move WASD | Quick: A E | Abilities: 123 | More ZXC">{collapsedKeyboardGroups.map(({ label, keys }, index) => <span className="keyboard_collapsed_group" key={label}><span className="status_shortcut"><span>{label}</span>{keys.map((key) => <InputKey key={key} keyLabel={key} />)}</span>{index < collapsedKeyboardGroups.length - 1 && <span className="keyboard_summary_separator" aria-hidden="true">|</span>}</span>)}</div></div>
+      <div className={`keyboard_tray${expanded ? " keyboard_tray--expanded" : ""}`}>
+        <div className="keyboard_tray_surface">
+          <button type="button" className="keyboard_tray_tab" aria-label={expanded ? "Collapse keyboard controls" : "Expand keyboard controls"} aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}><span aria-hidden="true">⌃</span></button>
+          <section className="keyboard_tray_panel" aria-label="Keyboard controls" aria-hidden={!expanded}><h2>KEYBOARD CONTROLS</h2><div className="keyboard_tray_rows">{keyboardControlRows.map(({ label, keys }) => <div className="keyboard_tray_row" key={label}><span className="keyboard_tray_label">{label}</span><div className="keyboard_tray_keys">{keys.map((key) => <InputKey key={key} keyLabel={key} className="keyboard_tray_key" />)}</div></div>)}</div></section>
+        </div>
+      </div>
+    </div>{canOverride && <button className="dev_settings" onClick={() => setDeveloperAspect(orientation === "landscape" ? "portrait" : "landscape")}>Dev Settings &nbsp; Aspect: {orientation === "landscape" ? "Landscape" : "Portrait"}</button>}</div>
     <div className="mobile_status" role="group" aria-label="Bottom panel"><Tooltip content="Show movement and ability controls."><button type="button" aria-pressed={mobilePanel === "controls"} onClick={() => setMobilePanel("controls")}>Control</button></Tooltip><Tooltip content="Show stats, gear, quest, and log."><button type="button" aria-pressed={mobilePanel === "info"} onClick={() => setMobilePanel("info")}>Info</button></Tooltip></div>
   </footer>;
 }
@@ -290,7 +287,7 @@ export function Game() {
     <TitleBar campaign={campaign} preferences={preferences} setPreference={setPreference} onFullscreen={toggleFullscreen} onSettings={() => setSettings(true)} fullscreenActual={fullscreenActual} />
     {urlOptions.mapFix && <MapFixControls campaign={campaign} slot={slot} onImport={importRepairMap} error={mapFixError} />}
     <section className="desk_middle"><section className="game_view"><BabylonWorld campaign={campaign} zoom={preferences.zoom} camera={preferences.camera} mouseInteraction floatingFeedback={floatingFeedback} selectedCell={selectedGridSpot} selectedCellReachable={selectedCellReachable} onSelectedCellChange={setSelectedGridSpot} onZoom={stepZoom} /></section><div className="desktop_info"><SecondaryInfoPanel campaign={campaign} /><PrimaryInfoPanel campaign={campaign} dispatch={dispatch} preview={preview} gains={gains} drag={dragPresentation} /></div></section>
-    <StatusBar canOverride={canOverride} orientation={orientation} setDeveloperAspect={setDeveloperAspect} dispatch={dispatch} mobilePanel={mobilePanel} setMobilePanel={setMobilePanel} />
+    <StatusBar canOverride={canOverride} orientation={orientation} setDeveloperAspect={setDeveloperAspect} mobilePanel={mobilePanel} setMobilePanel={setMobilePanel} />
     <section className="mobile_bottom"><MobileControlPanel campaign={campaign} dispatch={dispatch} hidden={mobilePanel !== "controls"} /><div className="mobile_info" hidden={mobilePanel !== "info"}><SecondaryInfoPanel campaign={campaign} /><PrimaryInfoPanel campaign={campaign} dispatch={dispatch} preview={preview} gains={gains} drag={dragPresentation} /></div></section>
     <ItemDragPreview drag={dragPresentation} />
     {canOverride && orientation === "portrait" && <button className="dev_aspect_return" onClick={() => setDeveloperAspect("landscape")}>Dev: Return to Landscape</button>}

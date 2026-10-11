@@ -1,5 +1,22 @@
 # World Generation Debugging
 
+## Generation model
+
+The active campaign follows `world -> realm -> level -> pass`. This milestone
+uses one active 100-by-100 dungeon level: its authoritative terrain is
+`floor.cells`, where each cell carries `walkable` and a semantic terrain
+`role` such as `ground` or `wall`. The structured dungeon pass writes the
+seeded rooms and corridors into that context, while entities, start/exit
+positions, diagnostics, and generator metadata remain level data.
+
+Movement, pathfinding, collision, combat targeting, rendering, Wang autotiling,
+Tiled repair import/export, and saves consume semantic cells. A compatibility
+`floor.map` view remains only at legacy save/test boundaries; new saved maps do
+not use it as gameplay authority. The pass runner also supports scoped writes
+and protected cells so later organic and structured passes can be composed
+without overwriting reserved landmarks. Overworld terrain and stairs are
+planned for later milestones and are not part of the current dungeon pass.
+
 Map repair links use the following query parameters:
 
 ```text

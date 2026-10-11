@@ -1,7 +1,7 @@
-import { FLOOR_HEIGHT, FLOOR_WIDTH, generateFloor } from "../procedural-generation/procedural-generation-system.js";
+import { FLOOR_HEIGHT, FLOOR_WIDTH, GENERATOR_VERSION, generateFloor } from "../procedural-generation/procedural-generation-system.js";
+import { ensureSemanticCells, semanticCellsFromMap } from "../procedural-generation/level-grid.js";
 import { buildDungeonWangWalls } from "./wang-autotiling-system.js";
 
-export const GENERATOR_VERSION = "cryptbound-floor-v1";
 export const TILED_TILE_SIZE = 32;
 export const DUNGEON_TILESET_SOURCE = "../../assets/Tiled_Examples/Tilesets/Tileset_Dungeon.tsx";
 const DUNGEON_TILESET_GROUND_GID = 14;
@@ -12,17 +12,17 @@ function objectLayer(name, id, objects) { return { id, name, type: "objectgroup"
 function objectCell(object) { return { x: Math.floor(Number(object.x) / TILED_TILE_SIZE), y: Math.floor(Number(object.y) / TILED_TILE_SIZE) }; }
 
 export function serializeFloorToTiled({ campaign, generatorVersion = GENERATOR_VERSION } = {}) {
-  const floor = campaign?.floor;
-  if (!floor?.map?.length) throw new Error("Cannot export an empty dungeon floor.");
-  const width = Number(floor.width ?? floor.map[0].length); const height = Number(floor.height ?? floor.map.length);
-  const wallModel = buildDungeonWangWalls({ map: floor.map, tileSize: TILED_TILE_SIZE });
+  const floor = ensureSemanticCells(campaign?.floor);
+  if (!floor?.cells?.length) throw new Error("Cannot export an empty dungeon floor.");
+  const width = Number(floor.width ?? floor.cells[0].length); const height = Number(floor.height ?? floor.cells.length);
+  const wallModel = buildDungeonWangWalls({ cells: floor.cells, tileSize: TILED_TILE_SIZE });
   const wallByCell = new Map(wallModel.walls.map((cell) => [`${cell.x},${cell.y}`, cell.frame == null ? 0 : cell.frame + 1]));
   // Grounds is the gameplay mask, not a Wang-art preview. Keep it deliberately
   // boring: one verified walkable tile marks every floor cell and nothing else.
   // Wall decisions belong exclusively to Walls, so editing a ground cell in
   // Tiled cannot accidentally encode a wall shape.
-  const grounds = floor.map.flatMap((row) => row.map((cell) => cell === 0 ? DUNGEON_TILESET_GROUND_GID : 0));
-  const walls = floor.map.flatMap((row, y) => row.map((cell, x) => cell === 1 ? (wallByCell.get(`${x},${y}`) ?? 0) : 0));
+  const grounds = floor.cells.flatMap((row) => row.map((cell) => cell.walkable ? DUNGEON_TILESET_GROUND_GID : 0));
+  const walls = floor.cells.flatMap((row, y) => row.map((cell, x) => !cell.walkable ? (wallByCell.get(`${x},${y}`) ?? 0) : 0));
   const toObject = (entity, index) => ({ id: index + 1, name: entity.id ?? `${entity.kind}-${index}`, type: entity.kind, x: entity.x * TILED_TILE_SIZE, y: entity.y * TILED_TILE_SIZE, width: TILED_TILE_SIZE, height: TILED_TILE_SIZE, properties: propertiesArray({ ...entity, x: undefined, y: undefined, id: undefined, kind: undefined }) });
   const pickups = (floor.entities ?? []).filter((entity) => ["item", "potion", "chest", "discovery"].includes(entity.kind));
   const decorations = (floor.entities ?? []).filter((entity) => !pickups.includes(entity));
@@ -66,11 +66,13 @@ export function validateTiledRepairMap(map) {
 
 export function floorFromTiledRepairMap(map, fallbackFloor = null) {
   const checked = validateTiledRepairMap(map); if (!checked.valid) throw new Error(`Invalid repaired map: ${checked.errors.join("; ")}`);
-  const mapData = Array.from({ length: FLOOR_HEIGHT }, (_, y) => checked.grounds.data.slice(y * FLOOR_WIDTH, (y + 1) * FLOOR_WIDTH).map((cell, x) => Number(cell) > 0 ? 0 : Number(checked.walls.data[y * FLOOR_WIDTH + x]) > 0 ? 1 : (fallbackFloor?.map?.[y]?.[x] ?? 1)));
+  const fallbackCells = fallbackFloor ? ensureSemanticCells(fallbackFloor).cells : null;
+  const mapData = Array.from({ length: FLOOR_HEIGHT }, (_, y) => checked.grounds.data.slice(y * FLOOR_WIDTH, (y + 1) * FLOOR_WIDTH).map((cell, x) => Number(cell) > 0 ? 0 : Number(checked.walls.data[y * FLOOR_WIDTH + x]) > 0 ? 1 : (fallbackCells?.[y]?.[x]?.walkable ? 0 : 1)));
   const markers = checked.markers.objects; const player = objectCell(markers.find((object) => object.type === "player")); const exit = objectCell(markers.find((object) => object.type === "exit"));
   if (mapData[player.y]?.[player.x] !== 0 || mapData[exit.y]?.[exit.x] !== 0) throw new Error("player and exit markers must be on walkable cells");
   const toEntity = (object) => { const position = objectCell(object); const props = propertiesObject(object.properties); return { ...props, id: object.name || props.id, kind: object.type || props.kind, x: position.x, y: position.y }; };
   const entities = [...(checked.pickups.objects ?? []), ...(checked.decorations.objects ?? [])].filter((object) => !["player", "exit"].includes(object.type)).map(toEntity);
   if (!entities.some((entity) => entity.kind === "stairs")) entities.push({ id: "stairs", kind: "stairs", x: exit.x, y: exit.y });
-  return { ...(fallbackFloor ?? generateFloor(Number(checked.properties.level ?? 1), Number(checked.properties.seed ?? 0), Number(checked.properties.level ?? 1))), seed: Number(checked.properties.seed ?? fallbackFloor?.seed ?? 0), width: FLOOR_WIDTH, height: FLOOR_HEIGHT, map: mapData, start: player, entities, level: Number(checked.properties.level ?? fallbackFloor?.level ?? 1), tiledGrounds: checked.grounds.data.slice(), tiledWalls: checked.walls.data.slice() };
+  const floor = { ...(fallbackFloor ?? generateFloor(Number(checked.properties.level ?? 1), Number(checked.properties.seed ?? 0), Number(checked.properties.level ?? 1))), seed: Number(checked.properties.seed ?? fallbackFloor?.seed ?? 0), width: FLOOR_WIDTH, height: FLOOR_HEIGHT, cells: semanticCellsFromMap(mapData), start: player, entities, level: Number(checked.properties.level ?? fallbackFloor?.level ?? 1), generatorVersion: GENERATOR_VERSION, tiledGrounds: checked.grounds.data.slice(), tiledWalls: checked.walls.data.slice() };
+  return ensureSemanticCells(floor);
 }

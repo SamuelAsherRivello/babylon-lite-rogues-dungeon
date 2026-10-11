@@ -2,17 +2,20 @@ import { buildDungeonWangTerrain, buildDungeonWangWalls } from "../maps/wang-aut
 
 const wangTerrainCache = new WeakMap();
 
-function getWangTerrain(map, tileSize) {
-  let result = wangTerrainCache.get(map);
+function getWangTerrain(grid, tileSize) {
+  const legacyGrid = Array.isArray(grid) && (grid.length === 0 || typeof grid[0]?.[0] === "number");
+  let result = wangTerrainCache.get(grid);
   if (!result || result.tileSize !== tileSize) {
-    result = { tileSize, ...buildDungeonWangTerrain({ map, tileSize }), ...buildDungeonWangWalls({ map, tileSize }) };
-    wangTerrainCache.set(map, result);
+    result = { tileSize, ...buildDungeonWangTerrain(legacyGrid ? { map: grid, tileSize } : { cells: grid, tileSize }), ...buildDungeonWangWalls(legacyGrid ? { map: grid, tileSize } : { cells: grid, tileSize }) };
+    wangTerrainCache.set(grid, result);
   }
   return result;
 }
 
-function applyTiledFrames(model, map, groundTiles, wallTiles, tileSize) {
-  const width = map[0]?.length ?? 0;
+function applyTiledFrames(model, grid, groundTiles, wallTiles, tileSize) {
+  const width = Array.isArray(grid) ? grid[0]?.length ?? 0 : grid[0]?.length ?? 0;
+  const height = grid.length;
+  const legacyGrid = Array.isArray(grid) && (grid.length === 0 || typeof grid[0]?.[0] === "number");
   const withFrames = (entries, tiles) => entries.map((entry) => {
     const gid = Number(tiles?.[entry.y * width + entry.x] ?? 0);
     return gid > 0 ? { ...entry, frame: gid - 1, floorFrame: gid - 1 } : { ...entry, frame: null, floorFrame: null };
@@ -21,9 +24,10 @@ function applyTiledFrames(model, map, groundTiles, wallTiles, tileSize) {
     if (!Array.isArray(tiles)) return null;
     const metadata = new Map(model.walls.map((entry) => [`${entry.x},${entry.y}`, entry]));
     const entries = [];
-    for (let y = 0; y < map.length; y++) for (let x = 0; x < width; x++) {
+    for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
       const gid = Number(tiles[y * width + x] ?? 0);
-      if (gid <= 0 || (blocked && map[y]?.[x] !== 1) || (!blocked && map[y]?.[x] !== 0)) continue;
+      const walkable = legacyGrid ? grid[y]?.[x] === 0 : Boolean(grid[y]?.[x]?.walkable);
+      if (gid <= 0 || (blocked && walkable) || (!blocked && !walkable)) continue;
       const prior = metadata.get(`${x},${y}`) ?? { x, y, mask: 0, worldX: x * tileSize + tileSize / 2, worldY: y * tileSize + tileSize / 2 };
       entries.push({ ...prior, frame: gid - 1, floorFrame: gid - 1 });
     }
@@ -41,12 +45,13 @@ function applyTiledFrames(model, map, groundTiles, wallTiles, tileSize) {
 
 /** Build renderer-neutral geometry/placement for either world view. */
 export const WorldRender = Object.freeze({
-  Render({ map, entities = [], player, start = player, tileSize = 32, view = "game", detail = "full", groundTiles = null, wallTiles = null }) {
-    const computed = getWangTerrain(map, tileSize);
-    const { terrain, walls, diagnostics, wallDiagnostics } = groundTiles || wallTiles ? applyTiledFrames(computed, map, groundTiles, wallTiles, tileSize) : computed;
+  Render({ map = null, cells = null, entities = [], player, start = player, tileSize = 32, view = "game", detail = "full", groundTiles = null, wallTiles = null }) {
+    const grid = cells ?? map;
+    const computed = getWangTerrain(grid, tileSize);
+    const { terrain, walls, diagnostics, wallDiagnostics } = groundTiles || wallTiles ? applyTiledFrames(computed, grid, groundTiles, wallTiles, tileSize) : computed;
     const actors = entities.filter((entry) => entry.kind === "enemy").map((entry) => ({ id: entry.id, kind: entry.name === "Skeleton" ? "skeleton" : "rat", x: entry.x, y: entry.y, worldX: entry.x * tileSize + tileSize / 2, worldY: entry.y * tileSize + tileSize / 2 }));
     const objects = entities.filter((entry) => ["item", "potion", "chest", "stairs", "discovery"].includes(entry.kind)).map((entry) => ({ id: entry.id, kind: entry.kind, resource: entry.resource ?? null, x: entry.x, y: entry.y, worldX: entry.x * tileSize + tileSize / 2, worldY: entry.y * tileSize + tileSize / 2 }));
-    return { view, detail, tileSize, width: map[0]?.length ?? 0, height: map.length, terrain, grounds: terrain, walls, diagnostics, wallDiagnostics, actors, objects, markers: { player: { x: player.x, y: player.y }, exit: objects.find((entry) => entry.kind === "stairs") ?? null } };
+    return { view, detail, tileSize, width: grid[0]?.length ?? 0, height: grid.length, terrain, grounds: terrain, walls, diagnostics, wallDiagnostics, actors, objects, markers: { player: { x: player.x, y: player.y }, exit: objects.find((entry) => entry.kind === "stairs") ?? null } };
   },
 });
 

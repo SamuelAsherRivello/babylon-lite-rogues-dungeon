@@ -2,6 +2,7 @@ const DIRECTIONS = Object.freeze([
   [0, -1], [1, -1], [1, 0], [1, 1],
   [0, 1], [-1, 1], [-1, 0], [-1, -1],
 ]);
+import { isWalkable } from "../procedural-generation/level-grid.js";
 
 // Source: rogues-dungeon/documentation/dungeon-wang-mapping.md. The key is the
 // eight-bit mask in Tiled's N, NE, E, SE, S, SW, W, NW order.
@@ -34,6 +35,9 @@ const DUNGEON_WANG_WALL_BY_MASK = Object.freeze({
   // exposed at corridor bends and room joins where the broad fallback face
   // picked the wrong side of the wall.
   2: 48, 8: 0, 15: 8, 128: 53, 135: 8, 143: 8, 195: 6, 227: 6,
+  // Seed-914 repair: the long corridor joins use the authored corner and
+  // inset wall faces rather than the cardinal fallback faces.
+  225: 6, 226: 59, 230: 21, 232: 34, 236: 21, 238: 21,
 });
 
 function wallFrameForMask(mask) {
@@ -44,18 +48,22 @@ function wallFrameForMask(mask) {
   return 17;
 }
 
-export function walkableMask(map, x, y) {
-  return DIRECTIONS.reduce((mask, [dx, dy], index) => mask | (map[y + dy]?.[x + dx] === 0 ? 1 << index : 0), 0);
+function walkableAt(grid, x, y) { return Array.isArray(grid) ? grid[y]?.[x] === 0 : isWalkable(grid, x, y); }
+
+export function walkableMask(grid, x, y) {
+  return DIRECTIONS.reduce((mask, [dx, dy], index) => mask | (walkableAt(grid, x + dx, y + dy) ? 1 << index : 0), 0);
 }
 
 export function isWalkableBoundary(mask) { return mask !== 255; }
 
-export function buildDungeonWangTerrain({ map, tileSize = 32 }) {
+export function buildDungeonWangTerrain({ map, cells, tileSize = 32 }) {
+  const grid = cells ? { cells } : map;
+  const height = cells?.length ?? map?.length ?? 0; const width = cells?.[0]?.length ?? map?.[0]?.length ?? 0;
   const terrain = [];
   const diagnostics = [];
-  for (let y = 0; y < map.length; y++) for (let x = 0; x < (map[y]?.length ?? 0); x++) {
-    if (map[y][x] !== 0) continue;
-    const mask = walkableMask(map, x, y);
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    if (!walkableAt(grid, x, y)) continue;
+    const mask = walkableMask(grid, x, y);
     const authoredFrame = DUNGEON_WANG_TILE_BY_MASK[mask];
     // A walkable cell is still floor even when its edge mask has no authored
     // Wang sprite. Use the verified plain floor tile instead of exposing a red
@@ -67,11 +75,13 @@ export function buildDungeonWangTerrain({ map, tileSize = 32 }) {
   return { terrain, diagnostics };
 }
 
-export function buildDungeonWangWalls({ map, tileSize = 32 }) {
+export function buildDungeonWangWalls({ map, cells, tileSize = 32 }) {
+  const grid = cells ? { cells } : map;
+  const height = cells?.length ?? map?.length ?? 0; const width = cells?.[0]?.length ?? map?.[0]?.length ?? 0;
   const walls = []; const diagnostics = [];
-  for (let y = 0; y < map.length; y++) for (let x = 0; x < (map[y]?.length ?? 0); x++) {
-    if (map[y][x] === 0) continue;
-    const mask = walkableMask(map, x, y); if (!mask) continue;
+  for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
+    if (walkableAt(grid, x, y)) continue;
+    const mask = walkableMask(grid, x, y); if (!mask) continue;
     const frame = wallFrameForMask(mask);
     const entry = { x, y, mask, worldX: x * tileSize + tileSize / 2, worldY: y * tileSize + tileSize / 2, frame };
     if (frame == null) diagnostics.push({ ...entry });

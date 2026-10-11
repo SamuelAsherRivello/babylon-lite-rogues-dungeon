@@ -1,6 +1,9 @@
+import { createLevelContext, ensureSemanticCells, isWalkable, runLevelPasses } from "./level-grid.js";
+
 export const FLOOR_WIDTH = 100;
 export const FLOOR_HEIGHT = 100;
 export const FLOOR_CENTER = Object.freeze({ x: Math.floor(FLOOR_WIDTH / 2), y: Math.floor(FLOOR_HEIGHT / 2) });
+export const GENERATOR_VERSION = "rogues-dungeon-floor-v2";
 const ITEM_CAPACITY = 10;
 export const GAME_TUNING = Object.freeze({
   startingHealth: 30, startingStamina: 16, startingMana: 12, innateDefense: 1,
@@ -120,6 +123,7 @@ function enemyResources(enemy, level = 1) {
 }
 
 export function upgradeCampaignResources(campaign) {
+  ensureSemanticCells(campaign.floor);
   campaign.player.resources = playerResourcesFromCampaign(campaign);
   const level = campaign.floor.level ?? campaign.floor.depth ?? 1;
   for (const entity of campaign.floor.entities ?? []) if (entity.kind === "enemy") {
@@ -169,7 +173,13 @@ export function generateFloor(level, seed = seedNow(), difficulty = level, optio
     }
     if (random() < 0.35) entities.push({ id: `chest-${i}`, kind: "chest", x: Math.min(FLOOR_WIDTH - 2, x + 1), y, opened: false });
   }
-  return { seed, width: FLOOR_WIDTH, height: FLOOR_HEIGHT, map, start, entities, time: 0, level, generatorVersion: "cryptbound-floor-v1" };
+  const context = createLevelContext({ worldId: "One", realmId: `Underground ${level}`, levelId: level, seed, width: FLOOR_WIDTH, height: FLOOR_HEIGHT, entities, start, exit });
+  runLevelPasses(context, [{ id: "structured-dungeon", run: (generation) => {
+    for (let y = 0; y < FLOOR_HEIGHT; y++) for (let x = 0; x < FLOOR_WIDTH; x++) if (map[y][x] === 0) generation.writeCell(x, y, { walkable: true });
+    return {};
+  } }]);
+  const floor = { seed, width: FLOOR_WIDTH, height: FLOOR_HEIGHT, cells: context.cells, start, entities, time: 0, level, generatorVersion: GENERATOR_VERSION, generation: { ...context.generation, passes: context.passes } };
+  return ensureSemanticCells(floor);
 }
 
 export function effectiveAttributes(campaign, equipment = campaign.player.equipment) {
@@ -200,7 +210,7 @@ export function createCampaign(seed = seedNow(), difficulty = 1, level = 1) {
 }
 
 const blobFrames = Object.freeze([3, 2, 1, 0, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4]);
-export function wallFrameAt(floor, x, y) { const wall = (tx, ty) => floor.map[ty]?.[tx] === 1; const mask = Number(wall(x, y - 1)) | (Number(wall(x + 1, y)) << 1) | (Number(wall(x, y + 1)) << 2) | (Number(wall(x - 1, y)) << 3); return blobFrames[mask]; }
+export function wallFrameAt(floor, x, y) { const wall = (tx, ty) => !isWalkable(floor, tx, ty); const mask = Number(wall(x, y - 1)) | (Number(wall(x + 1, y)) << 1) | (Number(wall(x, y + 1)) << 2) | (Number(wall(x - 1, y)) << 3); return blobFrames[mask]; }
 
 function tick(state, events) { const previous = state.floor.time; state.floor.time++; emit(events, "time.advanced", { previous, current: state.floor.time }, state); enemyPhase(state, events); }
 function normalizeResources(state, events, cause, previousCaps) { const caps = effectiveAttributes(state); for (const key of ["health", "stamina", "mana"]) { const prior = state.player.resources[key].current; const oldMax = previousCaps[key]; const ratio = oldMax > 0 ? prior / oldMax : 0; const next = Math.max(0, Math.min(caps[key], ratio * caps[key])); state.player.resources[key] = { current: next, currentMax: caps[key] }; if (prior !== next) emit(events, "resource.changed", { resource: key, previous: prior, current: next, previousMax: oldMax, currentMax: caps[key], cause }, state); } state.player.resources = playerResourcesFromCampaign(state, state.player.resources); }
@@ -231,7 +241,7 @@ function enemyPhase(state, events) {
       changeResource(state, events, "health", player.resources.health.current - damage, "enemy-attack");
     } else {
       const tx = enemy.x + dx; const ty = enemy.y + dy;
-      if (state.floor.map[ty]?.[tx] === 0 && !entityAt(state.floor.entities.filter((entry) => entry !== enemy), tx, ty)) { enemy.x = tx; enemy.y = ty; }
+      if (isWalkable(state.floor, tx, ty) && !entityAt(state.floor.entities.filter((entry) => entry !== enemy), tx, ty)) { enemy.x = tx; enemy.y = ty; }
     }
   }
   if (state.player.resources.health.current <= 0) { const reset = freshRunAfterDeath(state); Object.assign(state, reset); emit(events, "player.died", { realm: "Underground 1" }, state); }
@@ -256,7 +266,7 @@ export function applyAction(campaign, action) {
   if (action.type === "toggle-sneak") { state.player.sneaking = !state.player.sneaking; emit(events, "player.sneak.changed", { active: state.player.sneaking }, state); return { state, events, accepted: true, ticks: 0 }; }
   if (action.type === "move") {
     const direction = directions[action.direction]; if (!direction) return reject("invalid-direction"); const [dx, dy] = direction; const x = state.player.x + dx; const y = state.player.y + dy; const entity = entityAt(state.floor.entities, x, y);
-    if (state.floor.map[y]?.[x] !== 0 && !entity) return reject("blocked");
+    if (!isWalkable(state.floor, x, y) && !entity) return reject("blocked");
     if (entity?.kind === "enemy") attack(state, events, entity); else {
       state.player.x = x; state.player.y = y; emit(events, "player.moved", { from: { x: campaign.player.x, y: campaign.player.y }, to: { x, y } }, state);
       if (entity?.kind === "stairs") { const level = (state.floor.level ?? state.floor.depth ?? 1) + 1; const difficulty = (state.progression.difficulty ?? state.floor.depth ?? 1) + 1; const time = state.floor.time; state.progression.difficulty = difficulty; state.floor = generateFloor(level, seedNow(), difficulty); state.floor.time = time; state.realm = `Underground ${level}`; state.player.x = state.floor.start.x; state.player.y = state.floor.start.y; emit(events, "realm.entered", { realm: state.realm, level }, state); }

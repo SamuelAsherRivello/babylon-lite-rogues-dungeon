@@ -10,6 +10,7 @@ import { pixelPerfectOptions } from "../../content/babylon/config.js";
 import { getInitializationMessage } from "../../content/babylon/initialization.js";
 import { findWorldTooltipPosition } from "../../content/world/tooltip-placement.js";
 import { resourceNames } from "../procedural-generation/procedural-generation-system.js";
+import { isWalkable } from "../procedural-generation/level-grid.js";
 
 const texturePaths = {
   tiles: `${import.meta.env.BASE_URL}assets/Tilesets/Tileset_Dungeon.png`,
@@ -87,7 +88,7 @@ export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "ce
   const getViewCenter = (rect, state = latestRef.current.campaign) => {
     const { camera: cameraNow, zoom: zoomNow } = latestRef.current;
     const tileCss = cellSizeAt(rect, zoomNow); const visibleWidth = rect.width / tileCss; const visibleHeight = rect.height / tileCss;
-    const mapWidth = state.floor.map[0]?.length ?? 0; const mapHeight = state.floor.map.length;
+    const mapWidth = state.floor.width ?? state.floor.cells?.[0]?.length ?? 0; const mapHeight = state.floor.height ?? state.floor.cells?.length ?? 0;
     const resetKey = [state.floor.seed, mapWidth, mapHeight, cameraNow, zoomNow, rect.width, rect.height, canvasRef.current?.width ?? 0, canvasRef.current?.height ?? 0, window.devicePixelRatio || 1].join(":");
     const previousCenter = cameraCenterRef.current?.key === resetKey ? cameraCenterRef.current : state.player;
     const center = getCameraCenter({ mode: cameraNow, player: state.player, previousCenter, visibleWidth, visibleHeight, mapWidth, mapHeight });
@@ -96,7 +97,7 @@ export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "ce
   };
   const targetKindAt = (x, y) => {
     const entity = campaign.floor.entities.find((entry) => entry.x === x && entry.y === y);
-    return entity?.kind === "enemy" ? "enemy" : entity && ["item", "potion", "chest", "stairs"].includes(entity.kind) ? "item" : campaign.floor.map[y]?.[x] === 0 ? "valid" : "invalid";
+    return entity?.kind === "enemy" ? "enemy" : entity && ["item", "potion", "chest", "stairs"].includes(entity.kind) ? "item" : isWalkable(campaign.floor, x, y) ? "valid" : "invalid";
   };
   const targetAtScreenPosition = (point, rect) => {
     const cellSize = cellSizeAt(rect);
@@ -149,7 +150,7 @@ export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "ce
         const debugLayer = createSprite2DLayer(debugAtlas, { pivot: [0.5, 0.5] });
         const actorLayers = Object.fromEntries(Object.entries(actorAtlases).map(([key, atlas]) => [key, createSprite2DLayer(atlas, { pivot: [0.5, 0.5] })]));
         const itemLayer = createSprite2DLayer(itemAtlas, { pivot: [0.5, 0.5] });
-        const model = WorldRender.Render({ map: campaign.floor.map, entities: campaign.floor.entities, player: campaign.player, start: campaign.floor.start, groundTiles: campaign.floor.tiledGrounds, wallTiles: campaign.floor.tiledWalls, view: minimap ? "minimap" : "game", detail: minimap ? "simplified" : "full" });
+        const model = WorldRender.Render({ cells: campaign.floor.cells, entities: campaign.floor.entities, player: campaign.player, start: campaign.floor.start, groundTiles: campaign.floor.tiledGrounds, wallTiles: campaign.floor.tiledWalls, view: minimap ? "minimap" : "game", detail: minimap ? "simplified" : "full" });
         const terrainHandles = model.grounds.map(({ worldX, worldY, frame }) => addSprite2D(terrainLayer, { positionPx: frame === null ? [-10000, -10000] : [worldX, worldY], sizePx: [32, 32], frame: frame ?? 0 }));
         const wallHandles = model.walls.map(({ worldX, worldY, frame }) => addSprite2D(wallLayer, { positionPx: frame === null ? [-10000, -10000] : [worldX, worldY], sizePx: [32, 32], frame: frame ?? 0 }));
         const debugHandles = [...model.diagnostics, ...model.wallDiagnostics].map(({ worldX, worldY }) => addSprite2D(debugLayer, { positionPx: [worldX, worldY], sizePx: [32, 32], frame: 0 }));
@@ -166,14 +167,14 @@ export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "ce
           const scale = typeof zoomNow === "number" ? zoomNow : 1;
           const renderWidth = canvas.width || canvas.clientWidth || host.clientWidth || 320;
           const renderHeight = canvas.height || canvas.clientHeight || host.clientHeight || 180;
-          const world = WorldRender.Render({ map: state.floor.map, entities: state.floor.entities, player: state.player, start: state.floor.start, groundTiles: state.floor.tiledGrounds, wallTiles: state.floor.tiledWalls, view: isMinimap ? "minimap" : "game", detail: isMinimap ? "simplified" : "full" });
+          const world = WorldRender.Render({ cells: state.floor.cells, entities: state.floor.entities, player: state.player, start: state.floor.start, groundTiles: state.floor.tiledGrounds, wallTiles: state.floor.tiledWalls, view: isMinimap ? "minimap" : "game", detail: isMinimap ? "simplified" : "full" });
           const mapWidth = world.width * 32;
           const mapHeight = world.height * 32;
           const mapScale = Math.min(renderWidth / mapWidth, renderHeight / mapHeight) * 0.92;
           const viewScale = isMinimap ? mapScale : scale * (window.devicePixelRatio || 1);
-          const rect = host.getBoundingClientRect(); const cameraCenter = isMinimap ? { x: world.width / 2, y: world.height / 2 } : getViewCenter(rect, state);
-          const centerX = isMinimap ? mapWidth / 2 : cameraCenter.x * 32 + 16;
-          const centerY = isMinimap ? mapHeight / 2 : cameraCenter.y * 32 + 16;
+          const rect = host.getBoundingClientRect(); const cameraCenter = isMinimap ? state.player : getViewCenter(rect, state);
+          const centerX = cameraCenter.x * 32 + 16;
+          const centerY = cameraCenter.y * 32 + 16;
           viewLayers.forEach((layer) => {
             layer.view.zoom = viewScale;
             centerSprite2DView(layer.view, centerX, centerY, renderWidth, renderHeight);

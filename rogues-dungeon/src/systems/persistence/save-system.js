@@ -1,5 +1,6 @@
-import { createCampaign, effectiveAttributes, FLOOR_HEIGHT, FLOOR_WIDTH, isResourcesModel, upgradeCampaignResources } from "../procedural-generation/procedural-generation-system.js";
+import { createCampaign, effectiveAttributes, FLOOR_HEIGHT, FLOOR_WIDTH, GENERATOR_VERSION, isResourcesModel, upgradeCampaignResources } from "../procedural-generation/procedural-generation-system.js";
 import { gameZoomPresets } from "../../content/world/zoom.js";
+import { createSemanticCells, ensureSemanticCells, semanticCellsFromMap } from "../procedural-generation/level-grid.js";
 
 const PREFIX = "rogues-dungeon.slot.";
 const BACKUP_PREFIX = "rogues-dungeon.slot.v1-backup.";
@@ -12,8 +13,8 @@ function normalizeAbilityBindings(value) {
   return Array.isArray(value?.player?.abilities) ? value.player.abilities.slice(0, 3) : [...DEFAULT_ABILITIES];
 }
 
-export function isValidCampaign(value) { return value?.version === 3 && value.progression?.attributes && value.floor?.map && value.player?.equipment && Array.isArray(value.player.inventory); }
-function isV2Campaign(value) { return value?.version === 2 && value.progression?.attributes && value.floor?.map && value.player?.equipment && Array.isArray(value.player.inventory); }
+export function isValidCampaign(value) { return value?.version === 3 && value.progression?.attributes && (value.floor?.cells || value.floor?.map) && value.player?.equipment && Array.isArray(value.player.inventory); }
+function isV2Campaign(value) { return value?.version === 2 && value.progression?.attributes && (value.floor?.cells || value.floor?.map) && value.player?.equipment && Array.isArray(value.player.inventory); }
 function validV1(value) { return value?.version === 1 && value.progression?.stats && value.floor?.map && value.player?.equipment; }
 function oldItem(item, id) {
   const group = /head|body|leg/i.test(item?.slot ?? "") ? "armor" : "weapons";
@@ -32,16 +33,19 @@ function legacyEquipmentItems(equipment = {}) {
   });
 }
 function expandUndersizedFloor(campaign) {
-  const source = campaign.floor.map;
+  ensureSemanticCells(campaign.floor);
+  const source = campaign.floor.cells;
   const sourceHeight = source.length;
   const sourceWidth = source[0]?.length ?? 0;
   if (sourceWidth >= FLOOR_WIDTH && sourceHeight >= FLOOR_HEIGHT) return false;
   const offsetX = Math.max(0, Math.floor((FLOOR_WIDTH - sourceWidth) / 2));
   const offsetY = Math.max(0, Math.floor((FLOOR_HEIGHT - sourceHeight) / 2));
-  const map = Array.from({ length: FLOOR_HEIGHT }, () => Array.from({ length: FLOOR_WIDTH }, () => 1));
-  for (let y = 0; y < sourceHeight; y++) for (let x = 0; x < sourceWidth; x++) map[y + offsetY][x + offsetX] = source[y][x];
+  const cells = createSemanticCells(FLOOR_WIDTH, FLOOR_HEIGHT);
+  for (let y = 0; y < sourceHeight; y++) for (let x = 0; x < sourceWidth; x++) cells[y + offsetY][x + offsetX] = structuredClone(source[y][x]);
   const shift = (position) => position && { ...position, x: position.x + offsetX, y: position.y + offsetY };
-  campaign.floor = { ...campaign.floor, width: FLOOR_WIDTH, height: FLOOR_HEIGHT, map, start: shift(campaign.floor.start), entities: (campaign.floor.entities ?? []).map(shift) };
+  const { map, ...floorWithoutLegacyMap } = campaign.floor;
+  campaign.floor = { ...floorWithoutLegacyMap, width: FLOOR_WIDTH, height: FLOOR_HEIGHT, cells, start: shift(campaign.floor.start), entities: (campaign.floor.entities ?? []).map(shift) };
+  ensureSemanticCells(campaign.floor);
   campaign.player = shift(campaign.player);
   return true;
 }
@@ -68,11 +72,14 @@ export function migrateCampaign(value) {
     const level = Number.isInteger(value.floor.level) ? value.floor.level : Number.isInteger(value.floor.depth) ? value.floor.depth : 1;
     const difficulty = Number.isInteger(value.progression.difficulty) ? value.progression.difficulty : level;
     const needsResourceMigration = !isResourcesModel(value.player.resources) || (value.floor.entities ?? []).some((entity) => entity.kind === "enemy" && !isResourcesModel(entity.resources));
-    const needsFloorMigration = value.floor.map.length < FLOOR_HEIGHT || (value.floor.map[0]?.length ?? 0) < FLOOR_WIDTH;
+    const needsSemanticMigration = !Array.isArray(value.floor.cells);
+    const sourceCells = value.floor.cells ?? semanticCellsFromMap(value.floor.map);
+    const needsFloorMigration = sourceCells.length < FLOOR_HEIGHT || (sourceCells[0]?.length ?? 0) < FLOOR_WIDTH;
     const needsBalanceMigration = value.version !== 3 || !Object.hasOwn(value.progression.attributes, "stealth") || !Array.isArray(value.progression.pendingUpgrades) || (value.floor.entities ?? []).some((entity) => entity.kind === "enemy" && (!Number.isFinite(entity.actionCooldown) || !Number.isFinite(entity.nextActionAt)));
     const needsAbilityMigration = !Array.isArray(value.player.abilities) || value.player.abilities.length !== 3;
-    if (value.floor.level === level && value.progression.difficulty === difficulty && !needsResourceMigration && !needsFloorMigration && !needsBalanceMigration && !needsAbilityMigration) return value;
+    if (value.floor.level === level && value.progression.difficulty === difficulty && !needsSemanticMigration && !needsResourceMigration && !needsFloorMigration && !needsBalanceMigration && !needsAbilityMigration) return upgradeCampaignResources(value);
     const next = { ...structuredClone(value), version: 3, floor: { ...structuredClone(value.floor), level }, progression: { ...structuredClone(value.progression), difficulty, pendingUpgrades: structuredClone(value.progression.pendingUpgrades ?? []) }, player: { ...structuredClone(value.player), abilities: normalizeAbilityBindings(value) }, realm: value.realm ?? `Underground ${level}` };
+    ensureSemanticCells(next.floor);
     expandUndersizedFloor(next);
     if (needsBalanceMigration) rebuildBalanceProfile(next, value.progression.attributes, value.player.resources);
     return upgradeCampaignResources(next);
@@ -82,6 +89,8 @@ export function migrateCampaign(value) {
   const difficulty = Number.isInteger(value.progression.difficulty) ? value.progression.difficulty : level;
   const next = createCampaign(value.floor.seed, difficulty, level);
   next.floor = structuredClone(value.floor);
+  ensureSemanticCells(next.floor);
+  next.floor.generatorVersion = GENERATOR_VERSION;
   next.floor.level = level;
   next.floor.time = Number.isFinite(value.floor.time) ? value.floor.time : Number.isFinite(value.time) ? value.time : 0;
   next.world = value.world ?? "One"; next.realm = value.realm ?? `Underground ${level}`;
@@ -107,6 +116,10 @@ export function readSlot(storage, slot) {
   if (!SLOT_IDS.includes(String(slot))) throw new Error("Unknown Saved Game.");
   const raw = storage.getItem(PREFIX + slot); if (!raw) return null;
   const original = JSON.parse(raw); const campaign = migrateCampaign(original);
+  if (original.version === 3 && campaign?.floor?.generatorVersion !== GENERATOR_VERSION) {
+    storage.removeItem(PREFIX + slot);
+    return null;
+  }
   if (campaign !== original) {
     // Write the rollback copy first, then replace the primary record. If either
     // storage operation fails, the original slot data remains recoverable.
@@ -118,6 +131,7 @@ export function readSlot(storage, slot) {
 export function writeSlot(storage, slot, campaign) {
   if (!SLOT_IDS.includes(String(slot))) throw new Error("Unknown Saved Game.");
   if (!isValidCampaign(campaign)) throw new Error("Cannot save an invalid campaign.");
+  ensureSemanticCells(campaign.floor);
   storage.setItem(PREFIX + slot, JSON.stringify({ ...campaign, player: { ...campaign.player, abilities: normalizeAbilityBindings(campaign) }, savedAt: Date.now() }));
 }
 export function deleteSlot(storage, slot) { if (!SLOT_IDS.includes(String(slot))) throw new Error("Unknown Saved Game."); storage.removeItem(PREFIX + slot); }

@@ -15,8 +15,22 @@ import { randomSeedFromSearch } from '../src/game/random-seed.js';
 import { parseGameUrlOptions } from '../src/game/url-options.js';
 import { DUNGEON_TILESET_SOURCE, floorFromTiledRepairMap, serializeFloorToTiled, validateTiledRepairMap } from '../src/systems/maps/tiled-map-system.js';
 import { DUNGEON_WANG_TILE_BY_MASK } from '../src/systems/maps/wang-autotiling-system.js';
+import { createLevelContext, runLevelPasses } from '../src/systems/procedural-generation/level-grid.js';
 
 class MemoryStorage { values = new Map(); get length() { return this.values.size; } key(index) { return [...this.values.keys()][index] ?? null; } getItem(key) { return this.values.get(key) ?? null; } setItem(key, value) { this.values.set(key, String(value)); } removeItem(key) { this.values.delete(key); } }
+
+test('level passes enforce scopes and protected semantic cells', () => {
+  const context = createLevelContext({ width: 4, height: 4 });
+  context.reserveCell(1, 1);
+  runLevelPasses(context, [{ id: 'scoped-test', scope: { x: 1, y: 1, width: 2, height: 2 }, run: (level) => {
+    assert.equal(level.writeCell(1, 1, { walkable: true }), false);
+    assert.equal(level.writeCell(0, 0, { walkable: true }), false);
+    assert.equal(level.writeCell(2, 2, { walkable: true }), true);
+    return {};
+  } }]);
+  assert.equal(context.cells[2][2].walkable, true);
+  assert.equal(context.passes[0].diagnostics, 2);
+});
 
 test('reads a validated randomSeed URL parameter for reproducible campaigns', () => {
   assert.equal(randomSeedFromSearch('?randomSeed=235234'), 235234);
@@ -67,6 +81,14 @@ test('preserves corrected seed-17 wall faces at corridor joins', () => {
   const map = serializeFloorToTiled({ campaign: createCampaign(17, 1, 1) });
   const walls = map.layers.find((layer) => layer.name === 'Walls');
   for (const [x, y, gid] of [[53, 41, 7], [67, 41, 9], [53, 42, 54], [81, 46, 49], [31, 60, 1]]) {
+    assert.equal(walls.data[y * 100 + x], gid, `wall face at ${x},${y}`);
+  }
+});
+
+test('generalizes the repaired seed-914 corridor wall faces', () => {
+  const map = serializeFloorToTiled({ campaign: createCampaign(914, 1, 1) });
+  const walls = map.layers.find((layer) => layer.name === 'Walls');
+  for (const [x, y, gid] of [[26, 9, 7], [26, 16, 35], [26, 17, 22], [26, 18, 22], [26, 19, 22], [26, 20, 22], [26, 21, 60]]) {
     assert.equal(walls.data[y * 100 + x], gid, `wall face at ${x},${y}`);
   }
 });
