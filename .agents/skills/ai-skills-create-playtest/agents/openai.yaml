@@ -1,0 +1,7 @@
+interface:
+  display_name: "Create Playtest"
+  short_description: "Create verified, step-by-step human playtests"
+  default_prompt: "Use $ai-skills-create-playtest to prepare a focused human playtest for this application."
+
+policy:
+  allow_implicit_invocation: true
