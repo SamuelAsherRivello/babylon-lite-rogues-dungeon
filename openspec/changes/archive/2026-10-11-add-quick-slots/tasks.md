@@ -17,9 +17,9 @@
 - [x] 3.1 Render the neutral Quick Slots panel beneath Abilities with rows 01 and 02, Q/E labels, empty plus markers, and positive `Name XN` quantities; verify source/UI tests cover neutral styling and absence of `X0`.
 - [x] 3.2 Extend shared drag sources, destinations, previews, and release handling for Inventory and Quick Slots while preserving existing Equipment and Ability restrictions; verify focused source tests cover accepted and rejected routes.
 - [x] 3.3 Bind non-repeating Q and E keyboard events to the corresponding Quick Slot actions and preserve settings/level-up/input guards; verify keyboard source tests cover dispatch and empty-slot no-op behavior.
-- [ ] 3.4 Run one focused muted Playwright check that creates a new game, confirms Health Potion x1 and Mana Potion x2, drags each potion into Quick Slots, verifies `Name XN`, combines a matching stack, returns a stack to Inventory, and consumes through Q/E.
+- [x] 3.4 Run one focused muted Playwright check that creates a new game, confirms Health Potion x1 and Mana Potion x2, drags each potion into Quick Slots, verifies `Name XN`, combines a matching stack, returns a stack to Inventory, and consumes through Q/E.
 
 ## 4. Integration verification
 
 - [x] 4.1 Run the full applicable Node test suite, TypeScript checks, and OpenSpec validation; verify existing ability, equipment, inventory, save, audio, and browser-source tests remain green.
-- [ ] 4.2 Run the applicable final browser suite with `?mute=1` and report any unavailable browser capability; verify saved Quick Slot state survives a reload in the focused campaign flow.
+- [x] 4.2 Run the applicable final browser suite with `?mute=1` and report any unavailable browser capability; verify saved Quick Slot state survives a reload in the focused campaign flow.
