@@ -107,7 +107,7 @@ body {
 .desktop_info { display:grid; grid-template-columns:1fr 1fr; min-width:0; min-height:0; }
 .desk_middle[data-secondary-open="false"] .desktop_info > .primary { grid-column:2; }
 .desk_middle[data-secondary-open="false"] .tab-control-placement--abilities,
-.desk_middle[data-secondary-open="false"] .tab-control-placement--minimap { left:calc(100% - .2rem); }
+.desk_middle[data-secondary-open="false"] .tab-control-placement--minimap { left:calc(100% - .55rem); }
 .desk_middle[data-primary-open="false"][data-secondary-open="true"] .tab-control-placement--abilities { left:calc(78% - .2rem); }
 .info_panel { padding:.75rem .35rem .35rem; display:flex; min-width:0; min-height:0; flex-direction:column; gap:.35rem; overflow:hidden; }
 .info_panel[hidden] { display:none !important; }
@@ -173,7 +173,7 @@ body {
 .keyboard_tray { z-index:0; }
 .keyboard_collapsed_controls { position:relative; z-index:1; }
 .keyboard_tray_panel { z-index:auto; border-color:transparent; background:transparent; }
-.keyboard_tray_panel::before { content:""; position:absolute; inset:0; z-index:0; border:1px solid #65583e; background:#17141b; box-shadow:0 -.25rem .8rem #0008; pointer-events:none; }
+.keyboard_tray_panel::before { content:""; position:absolute; inset:0; z-index:0; border:1px solid #65583e; border-bottom:0; background:#17141b; box-shadow:0 -.25rem .8rem #0008; pointer-events:none; }
 .keyboard_tray_rows { position:relative; z-index:2; order:1; gap:.1rem; }
 .keyboard_tray_row { min-height:0; }
 .keyboard_tray--expanded .keyboard_tray_panel::before { border-top:0; border-bottom:0; }
@@ -182,8 +182,8 @@ body {
 .controls-area--expanded .controls-area_surface { transform:translate(0,-100%); }
 .controls-area--expanded .keyboard_tray_panel { opacity:1; pointer-events:auto; }
 .controls-area--title-visible .keyboard_tray_title { opacity:1; }
-.controls-area .keyboard_tray_title { top:.85rem; left:calc(10px + 2.5rem); width:max-content; min-width:4rem; white-space:nowrap; transform:translate(-50%,-50%); }
-.tab-control { position:absolute; z-index:1; top:-.55rem; left:50%; width:4rem; height:.55rem; box-sizing:border-box; padding:0; border:0; outline:none; background:transparent; color:#fff; cursor:pointer; pointer-events:auto; transform:translate(-50%,-1px); }
+.controls-area .keyboard_tray_title { top:.85rem; left:calc(10px + 2rem); width:max-content; min-width:4rem; white-space:nowrap; text-align:center; transform:translate(-50%,-50%); }
+.tab-control { position:absolute; z-index:1; top:-.55rem; left:50%; width:4rem; height:.55rem; box-sizing:border-box; padding:0; border:0; outline:none; background:transparent; color:#fff; cursor:pointer; pointer-events:auto; transform:translate(-50%,2px); }
 .tab-control__shape { position:absolute; inset:0; width:100%; height:100%; overflow:visible; }
 .tab-control__fill { fill:var(--surface-color); }
 .tab-control__edge { fill:none; stroke:var(--border-color); stroke-width:1; vector-effect:non-scaling-stroke; }
