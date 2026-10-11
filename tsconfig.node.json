@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["node", "vite/client"]
+  },
+  "include": ["vite.config.ts", "playwright.config.ts", "rogues-dungeon/test"],
+  "exclude": ["rogues-dungeon/public", "rogues-dungeon/dist"]
+}

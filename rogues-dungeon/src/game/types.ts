@@ -1,0 +1,68 @@
+/** Serializable domain contracts. This module has no UI or renderer dependencies. */
+export interface Position { x: number; y: number }
+export interface Room extends Position { w: number; h: number }
+export type Direction = "n" | "s" | "w" | "e";
+export type ResourceName = "health" | "stamina" | "offense" | "defense" | "mana" | "xp";
+export type AttributeName = Exclude<ResourceName, "xp"> | "vitality" | "strength" | "luck" | "recovery" | "stealth";
+export type Attributes = Record<AttributeName, number>;
+export interface Resource { current: number; currentMax: number; level?: number }
+export type Resources = Record<ResourceName, Resource>;
+export type ResourceInput = Partial<Record<ResourceName, Partial<Resource> | number>>;
+export type EquipmentGroup = "weapons" | "armor";
+export interface Item { id: string; name: string; group: EquipmentGroup; modifiers: Partial<Attributes> }
+export type Equipment = Record<EquipmentGroup, (Item | null)[]>;
+export type AbilityId = "heal" | "wand";
+export interface TerrainCell { walkable: boolean; role: string; protected?: boolean }
+export interface Enemy extends Position {
+  id: string; kind: "enemy"; name: string; hp: number; maxHp: number; damage: number; xp: number;
+  resources: Resources; awareness: number; actionCooldown: number; nextActionAt: number;
+}
+export type Entity = Enemy
+  | (Position & { id: string; kind: "potion"; resource: "health" | "mana"; name?: string })
+  | (Position & { id: string; kind: "stairs" | "discovery"; name?: string })
+  | (Position & { id: string; kind: "chest"; opened?: boolean })
+  | (Position & { id: string; kind: "item"; item: Item });
+export interface Floor {
+  seed: number; width: number; height: number; cells: TerrainCell[][]; map?: number[][];
+  start: Position; entities: Entity[]; time: number; level: number; depth?: number; generatorVersion?: string;
+  generation?: { seed: number; generator: string | null; passes?: { id: string; diagnostics: number }[] };
+  tiledGrounds?: number[]; tiledWalls?: number[];
+}
+export interface Campaign {
+  version: number; world: string; realm: string; floor: Floor;
+  progression: { attributes: Attributes; level: number; xp: number; nextXp: number; totalKills: number; difficulty: number; pendingUpgrades: { level: number; options: AttributeName[] }[] };
+  player: Position & { resources: Resources; equipment: Equipment; inventory: Item[]; inventoryCapacity: number; abilities: (AbilityId | null)[]; sneaking: boolean };
+  counters: { keys: number; gold: number }; objective: string; log: LogEntry[]; savedAt?: number;
+}
+export interface Preferences { zoom: number; camera: "center" | "deadzone" | "screen"; fullscreenDesired: boolean; sfxVolume: number; musicVolume: number; muteAll: boolean }
+export interface StorageAccess { getItem(key: string): string | null; setItem(key: string, value: string): void; removeItem(key: string): void }
+export interface StorageCollection extends StorageAccess { length: number; key(index: number): string | null }
+export type Action =
+  | { type: "move"; direction: string }
+  | { type: "toggle-sneak" }
+  | { type: "choose-upgrade"; stat: AttributeName }
+  | { type: "ability"; index: number }
+  | { type: "assign-ability"; from: number; to: number }
+  | { type: "equip"; group: EquipmentGroup; index: number; itemId: string }
+  | { type: "unequip"; group: EquipmentGroup; index: number }
+  | { type: "reorder-equipment"; group: EquipmentGroup; index: number; other: number };
+export interface EventFacts {
+  reason?: string; previous?: number; current?: number; previousMax?: number; currentMax?: number;
+  resource?: ResourceName; position?: Position; targetPosition?: Position; damage?: number;
+  target?: string; targetId?: string; previousHealth?: number; currentHealth?: number;
+  amount?: number; cause?: string; level?: number; threshold?: number; options?: AttributeName[];
+  stat?: AttributeName; active?: boolean; from?: Position | number; to?: Position | number;
+  realm?: string; itemId?: string; name?: string; item?: string; lootTier?: number; xp?: number;
+  action?: string; source?: string | { group: EquipmentGroup; index: number };
+  destination?: string | { group: EquipmentGroup; index: number }; group?: EquipmentGroup; index?: number; other?: number;
+  id?: string; title?: string; manaCost?: number; targetType?: string; transactionId?: string; actionType?: string; ticks?: number;
+  error?: string; message?: string;
+}
+export interface GameEvent { type: string; facts: EventFacts; source?: string; gameTime: number; sequence: number; eventId?: string; transactionId?: string | null; outcome?: string }
+export interface ActionResult { state: Campaign; events: GameEvent[]; accepted: boolean; ticks: number; transactionId?: string; system?: boolean }
+export interface LogEntry { id?: string; text: string }
+export interface SelectedCell extends Position { pressed?: boolean; sprint?: boolean; left?: number; top?: number; size?: number; kind?: string }
+export interface Feedback extends Position { id?: string; kind: string; text: string; color: string; duration: number }
+export type DragSource = { kind: "inventory"; item: Item } | { kind: "slot"; item: Item; group: EquipmentGroup; index: number };
+export type DropDestination = { kind: "inventory" } | { kind: "slot"; group: EquipmentGroup; index: number };
+export interface Rect extends Position { width: number; height: number }

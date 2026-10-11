@@ -1,0 +1,194 @@
+[
+  {
+    "from": "rogues-dungeon\\src\\content\\babylon\\config.js",
+    "to": "rogues-dungeon\\src\\content\\babylon\\config.ts"
+  },
+  {
+    "from": "rogues-dungeon\\src\\content\\babylon\\initialization.js",
+    "to": "rogues-dungeon\\src\\content\\babylon\\initialization.ts"
+  },
+  {
+    "from": "rogues-dungeon\\src\\content\\babylon\\showcase-overlay.js",
+    "to": "rogues-dungeon\\src\\content\\babylon\\showcase-overlay.ts"
+  },
+  {
+    "from": "rogues-dungeon\\src\\content\\Content.jsx",
+    "to": "rogues-dungeon\\src\\content\\Content.tsx"
+  },
+  {
+    "from": "rogues-dungeon\\src\\content\\world\\start-wall-autotile.js",
+    "to": "rogues-dungeon\\src\\content\\world\\start-wall-autotile.ts"
+  },
+  {
+    "from": "rogues-dungeon\\src\\content\\world\\tooltip-placement.js",
+    "to": "rogues-dungeon\\src\\content\\world\\tooltip-placement.ts"
+  },
+  {
+    "from": "rogues-dungeon\\src\\content\\world\\zoom.js",
+    "to": "rogues-dungeon\\src\\content\\world\\zoom.ts"
+  },
+  {
+    "from": "rogues-dungeon\\src\\game\\a-star.js",
+    "to": "rogues-dungeon\\src\\game\\a-star.ts"
+  },
+  {
+    "from": "rogues-dungeon\\src\\game\\floating-feedback.js",
+    "to": "rogues-dungeon\\src\\game\\floating-feedback.ts"
+  },
+  {
+    "from": "rogues-dungeon\\src\\game\\Game.jsx",
+    "to": "rogues-dungeon\\src\\game\\Game.tsx"
+  },
+  {
+    "from": "rogues-dungeon\\src\\game\\inventory-drag.js",
+    "to": "rogues-dungeon\\src\\game\\inventory-drag.ts"
+  },
+  {
+    "from": "rogues-dungeon\\src\\game\\keyboard-input.js",
+    "to": "rogues-dungeon\\src\\game\\keyboard-input.ts"
+  },
+  {
+    "from": "rogues-dungeon\\src\\game\\log-policy.js",
+    "to": "rogues-dungeon\\src\\game\\log-policy.ts"
+  },
+  {
+    "from": "rogues-dungeon\\src\\game\\mouse-selection.js",
+    "to": "rogues-dungeon\\src\\game\\mouse-selection.ts"
+  },
+  {
+    "from": "rogues-dungeon\\src\\game\\random-seed.js",
+    "to": "rogues-dungeon\\src\\game\\random-seed.ts"
+  },
+  {
+    "from": "rogues-dungeon\\src\\game\\url-options.js",
+    "to": "rogues-dungeon\\src\\game\\url-options.ts"
+  },
+  {
+    "from": "rogues-dungeon\\src\\game\\zip.js",
+    "to": "rogues-dungeon\\src\\game\\zip.ts"
+  },
+  {
+    "from": "rogues-dungeon\\src\\main.jsx",
+    "to": "rogues-dungeon\\src\\main.tsx"
+  },
+  {
+    "from": "rogues-dungeon\\src\\systems\\audio\\audio-system.js",
+    "to": "rogues-dungeon\\src\\systems\\audio\\audio-system.ts"
+  },
+  {
+    "from": "rogues-dungeon\\src\\systems\\maps\\tiled-map-system.js",
+    "to": "rogues-dungeon\\src\\systems\\maps\\tiled-map-system.ts"
+  },
+  {
+    "from": "rogues-dungeon\\src\\systems\\maps\\wang-autotiling-system.js",
+    "to": "rogues-dungeon\\src\\systems\\maps\\wang-autotiling-system.ts"
+  },
+  {
+    "from": "rogues-dungeon\\src\\systems\\persistence\\save-system.js",
+    "to": "rogues-dungeon\\src\\systems\\persistence\\save-system.ts"
+  },
+  {
+    "from": "rogues-dungeon\\src\\systems\\procedural-generation\\level-grid.js",
+    "to": "rogues-dungeon\\src\\systems\\procedural-generation\\level-grid.ts"
+  },
+  {
+    "from": "rogues-dungeon\\src\\systems\\procedural-generation\\procedural-generation-system.js",
+    "to": "rogues-dungeon\\src\\systems\\procedural-generation\\procedural-generation-system.ts"
+  },
+  {
+    "from": "rogues-dungeon\\src\\systems\\rendering\\babylon-render-system.jsx",
+    "to": "rogues-dungeon\\src\\systems\\rendering\\babylon-render-system.tsx"
+  },
+  {
+    "from": "rogues-dungeon\\src\\systems\\rendering\\world-render-system.js",
+    "to": "rogues-dungeon\\src\\systems\\rendering\\world-render-system.ts"
+  },
+  {
+    "from": "rogues-dungeon\\src\\ui\\App.jsx",
+    "to": "rogues-dungeon\\src\\ui\\App.tsx"
+  },
+  {
+    "from": "rogues-dungeon\\src\\ui\\BrowserSurface.jsx",
+    "to": "rogues-dungeon\\src\\ui\\BrowserSurface.tsx"
+  },
+  {
+    "from": "rogues-dungeon\\src\\ui\\Dialog.jsx",
+    "to": "rogues-dungeon\\src\\ui\\Dialog.tsx"
+  },
+  {
+    "from": "rogues-dungeon\\src\\ui\\layout-context.js",
+    "to": "rogues-dungeon\\src\\ui\\layout-context.ts"
+  },
+  {
+    "from": "rogues-dungeon\\src\\ui\\layout.js",
+    "to": "rogues-dungeon\\src\\ui\\layout.ts"
+  },
+  {
+    "from": "rogues-dungeon\\src\\ui\\ScrollArea.jsx",
+    "to": "rogues-dungeon\\src\\ui\\ScrollArea.tsx"
+  },
+  {
+    "from": "rogues-dungeon\\src\\ui\\Template.jsx",
+    "to": "rogues-dungeon\\src\\ui\\Template.tsx"
+  },
+  {
+    "from": "rogues-dungeon\\src\\ui\\tooltip-position.js",
+    "to": "rogues-dungeon\\src\\ui\\tooltip-position.ts"
+  },
+  {
+    "from": "rogues-dungeon\\src\\ui\\Tooltip.jsx",
+    "to": "rogues-dungeon\\src\\ui\\Tooltip.tsx"
+  },
+  {
+    "from": "rogues-dungeon\\src\\ui\\ViewportInfoContext.jsx",
+    "to": "rogues-dungeon\\src\\ui\\ViewportInfoContext.tsx"
+  },
+  {
+    "from": "rogues-dungeon\\test\\audio.test.mjs",
+    "to": "rogues-dungeon\\test\\audio.test.ts"
+  },
+  {
+    "from": "rogues-dungeon\\test\\browser\\auto-scroll.spec.mjs",
+    "to": "rogues-dungeon\\test\\browser\\auto-scroll.spec.ts"
+  },
+  {
+    "from": "rogues-dungeon\\test\\browser\\entry.spec.mjs",
+    "to": "rogues-dungeon\\test\\browser\\entry.spec.ts"
+  },
+  {
+    "from": "rogues-dungeon\\test\\browser\\fixtures\\scroll-area.jsx",
+    "to": "rogues-dungeon\\test\\browser\\fixtures\\scroll-area.tsx"
+  },
+  {
+    "from": "rogues-dungeon\\test\\browser\\layout-review.spec.mjs",
+    "to": "rogues-dungeon\\test\\browser\\layout-review.spec.ts"
+  },
+  {
+    "from": "rogues-dungeon\\test\\browser\\presentation.spec.mjs",
+    "to": "rogues-dungeon\\test\\browser\\presentation.spec.ts"
+  },
+  {
+    "from": "rogues-dungeon\\test\\content.test.mjs",
+    "to": "rogues-dungeon\\test\\content.test.ts"
+  },
+  {
+    "from": "rogues-dungeon\\test\\game.test.mjs",
+    "to": "rogues-dungeon\\test\\game.test.ts"
+  },
+  {
+    "from": "rogues-dungeon\\test\\page.test.mjs",
+    "to": "rogues-dungeon\\test\\page.test.ts"
+  },
+  {
+    "from": "rogues-dungeon\\test\\tooltip.test.mjs",
+    "to": "rogues-dungeon\\test\\tooltip.test.ts"
+  },
+  {
+    "from": "vite.config.js",
+    "to": "vite.config.ts"
+  },
+  {
+    "from": "playwright.config.mjs",
+    "to": "playwright.config.ts"
+  }
+]

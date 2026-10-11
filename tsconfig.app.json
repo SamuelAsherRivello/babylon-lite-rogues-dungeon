@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": ["vite/client"]
+  },
+  "include": ["rogues-dungeon/src", "rogues-dungeon/test/browser/fixtures"],
+  "exclude": ["rogues-dungeon/public", "rogues-dungeon/dist"]
+}

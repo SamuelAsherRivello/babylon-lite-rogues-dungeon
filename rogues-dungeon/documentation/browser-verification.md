@@ -5,10 +5,11 @@ rendering-policy, and data-model rules stay in the fast Node test suite.
 
 ## Setup
 
-Install project dependencies, then download the supported local Chromium build:
+Use Node.js 24 and run commands from the repository root. Install project
+dependencies, then download the supported local Chromium build:
 
 ```powershell
-npm install
+npm ci
 npx playwright install chromium
 ```
 
@@ -16,6 +17,14 @@ The browser runner starts Vite locally at the repository's GitHub Pages base
 path. It targets Chromium only. It captures traces, screenshots, and video
 only when a browser check fails; generated diagnostics are intentionally
 ignored by Git.
+
+`playwright.config.ts` discovers the `.spec.ts` files in
+`rogues-dungeon/test/browser/`. The auto-scroll check dynamically loads
+`/babylon-lite-rogues-dungeon/test/browser/fixtures/scroll-area.tsx` through Vite.
+This React test fixture is executable TypeScript; public Tiled `.tsx` XML assets
+are excluded from compilation. Run `npm run typecheck` to check both the browser
+application and the tests/configuration; `npm test` runs the five Node suites
+using `node --import tsx --test --test-isolation=none`.
 
 ## Commands
 

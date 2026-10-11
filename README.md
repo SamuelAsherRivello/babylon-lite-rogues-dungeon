@@ -32,9 +32,16 @@ Use assets formatted for Tiled. I'll provide folders to copy from and use for th
 
 ## Getting Started
 
-1. Install Node.js and run `npm install` from the repository root.
+1. Install Node.js 24 (the CI-supported version) and run `npm ci` from the repository root.
 2. Use the `ai-skills-project-run-start` skill to start the local server. It selects an available port and returns the silent test URL (`?mute=1`).
-3. Run `npm run build` to create the production site in `rogues-dungeon/dist/`.
+3. Run `npm run typecheck` for strict application and tooling checks, and `npm test` for the TypeScript Node tests.
+4. Run `npm run build` to type-check and create the production site in `rogues-dungeon/dist/`.
+
+The project uses TypeScript throughout its executable source, tests, and configuration.
+Vite loads `rogues-dungeon/src/main.tsx` through `rogues-dungeon/index.html` and
+`vite.config.ts`. Node tests run through `tsx` without emitting JavaScript.
+See [browser verification](rogues-dungeon/documentation/browser-verification.md)
+for the muted Playwright smoke and full-suite commands.
 
 ## URL Arguments
 
@@ -55,7 +62,8 @@ Every accepted move advances Time by one and gives enemies one action. Blocked m
 
 ## Project Details
 
-- `rogues-dungeon/src/game/` contains dungeon generation, turn rules, progression, and local save-slot logic.
+- `rogues-dungeon/src/game/` contains shared domain contracts in `types.ts`, pure game helpers, and the React game composition in `Game.tsx`.
+- `rogues-dungeon/src/systems/` contains procedural generation, turn rules, persistence, maps, audio, and rendering integration.
 - `rogues-dungeon/src/content/` and `rogues-dungeon/src/ui/` contain the game surface and viewport UI.
 - `rogues-dungeon/public/assets/` contains supplied Tiled-compatible pixel art and sample maps.
 - `openspec/changes/rename-to-rogues-dungeon/` contains the active rename proposal, design, and task list.
