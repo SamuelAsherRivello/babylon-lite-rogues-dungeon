@@ -11,3 +11,7 @@ Add stable event types to `EVENT_TYPES` in `src/game/dungeon.js`. Emit structure
 `src/game/log-policy.js` owns the allowlist, readable formatting, deduplication by event ID, and 200-entry retention limit. Movement, time, rejections, and insufficient-Mana actions remain observable events but do not produce entries. To change Log coverage, update or add a formatter after confirming the source event has the needed facts. Hidden or scrolled-out Log UI continues receiving projected entries through the session subscriber.
 
 Autosave runs from the finalized commit callback after subscribers update the committed state. A write failure publishes `campaign.save.failed` as a system event; that event can update Log and UI, but it does not dispatch gameplay or trigger another save attempt.
+
+## Auto scroll
+
+`src/ui/ScrollArea.jsx` provides an opt-in `autoScroll` prop for scrollable areas. The Log currently uses it: it opens at the bottom and follows new entries and layout changes. Scrolling away from the bottom pauses following; returning to the bottom resumes it. Other scroll areas retain their normal behavior. Log entries use `0.43rem` text (about 5.16 pt at the default browser font size).

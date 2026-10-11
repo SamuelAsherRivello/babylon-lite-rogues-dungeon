@@ -30,10 +30,18 @@ test("@smoke expands the keyboard tray and logs temporary controls", async ({ pa
   await expect(page.locator(".keyboard_tray_panel")).toHaveAttribute("aria-hidden", "true");
   await expect(page.locator(".keyboard_tray_panel")).toHaveCSS("opacity", "0");
   await expect(page.locator(".keyboard_collapsed_summary")).toContainText("Move");
+  const regionBox = await page.locator(".keyboard_controls_region").boundingBox();
+  const collapsedTabBox = await page.getByRole("button", { name: "Expand keyboard controls" }).boundingBox();
+  expect(Math.abs((collapsedTabBox.x + collapsedTabBox.width / 2) - (regionBox.x + regionBox.width / 2))).toBeLessThan(2);
+  expect(Math.abs((collapsedTabBox.y + collapsedTabBox.height) - regionBox.y)).toBeLessThan(2);
+  const collapsedKeyBox = await page.locator(".keyboard_collapsed_controls .input-key").first().boundingBox();
   await page.getByRole("button", { name: "Expand keyboard controls" }).click();
   await expect(page.getByRole("heading", { name: "KEYBOARD CONTROLS" })).toBeVisible();
   await expect(page.locator(".input-key")).toHaveCount(24);
   await expect(page.locator(".keyboard_tray_key")).toHaveCount(12);
+  const expandedKeyBox = await page.locator(".keyboard_tray_key").first().boundingBox();
+  expect(Math.abs(expandedKeyBox.width - collapsedKeyBox.width)).toBeLessThan(1);
+  expect(Math.abs(expandedKeyBox.height - collapsedKeyBox.height)).toBeLessThan(1);
   await expect(page.locator(".keyboard_tray_row").nth(0)).toContainText("Abilities:");
   await expect(page.locator(".keyboard_tray_row").nth(1)).toContainText("Quick:");
   await expect(page.locator(".keyboard_tray_row").nth(2)).toContainText("Move:");
