@@ -15,10 +15,10 @@ import { getInitializationMessage } from "../../content/babylon/initialization.t
 import { findWorldTooltipPosition } from "../../content/world/tooltip-placement.ts";
 import { resourceNames } from "../procedural-generation/procedural-generation-system.ts";
 import { isWalkable } from "../procedural-generation/level-grid.ts";
+import { createHeroWarriorAnimationEntity, heroWarriorIdleAnimationForHeading } from "./hero-warrior-catalog.ts";
 
 const texturePaths = {
   tiles: `${import.meta.env.BASE_URL}assets/Tilesets/Tileset_Dungeon.png`,
-  hero: `${import.meta.env.BASE_URL}assets/Characters/Hero_Warrior/Frames/Idle/Down/00.png`,
   rat: `${import.meta.env.BASE_URL}assets/Enemies/Rat/Frames/Idle/00.png`,
   skeleton: `${import.meta.env.BASE_URL}assets/Enemies/Skeleton warrior/Frames/Idle/Down/00.png`,
   items: `${import.meta.env.BASE_URL}assets/Tilesets/Items_Static.png`,
@@ -128,16 +128,25 @@ export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "ce
 
   useEffect(() => {
     const host = hostRef.current!; const canvas = canvasRef.current!;
-    let cancelled = false; let engine: EngineContext | null = null; let surface: SurfaceContext | null = null; let renderer: SpriteRenderer | null = null; let atlases: SpriteAtlas[] = []; let textures: Record<string, Texture2D> = {}; let acquiredTexturePaths: string[] = []; let observers: { disconnect(): void }[] = []; let debugTexture: DynamicTexture2D | null = null;
+    let cancelled = false; let engine: EngineContext | null = null; let surface: SurfaceContext | null = null; let renderer: SpriteRenderer | null = null; let atlases: SpriteAtlas[] = []; let textures: Record<string, Texture2D> = {}; let acquiredTexturePaths: string[] = []; let observers: { disconnect(): void }[] = []; let debugTexture: DynamicTexture2D | null = null; let animationFrameId = 0; let heroAnimation: ReturnType<typeof createHeroWarriorAnimationEntity> | null = null;
     const setup = async () => {
       try {
         if (!navigator.gpu) throw new Error("WebGPU is not available in this browser.");
         const acquired = await acquireSharedSurface(canvas); engine = acquired.engine; surface = acquired.surface;
         if (cancelled) { releaseSharedSurface(surface); surface = null; return; }
+        heroAnimation = createHeroWarriorAnimationEntity(import.meta.env.BASE_URL);
+        const activeHeroAnimation = heroAnimation;
+        const heroFrameSources = new Map(activeHeroAnimation.listAnimations().flatMap((animation) => animation.frames.map((frame) => [frame.path, frame] as const)));
         for (const [key, path] of Object.entries(texturePaths)) {
           const texture = await acquireSharedTexture(engine, path); acquiredTexturePaths.push(path);
           if (cancelled) { acquiredTexturePaths.forEach(releaseSharedTexture); acquiredTexturePaths = []; releaseSharedSurface(surface); surface = null; return; }
           textures[key] = texture;
+        }
+        const heroTextures = new Map<string, Texture2D>();
+        for (const path of heroFrameSources.keys()) {
+          const texture = await acquireSharedTexture(engine, path); acquiredTexturePaths.push(path);
+          if (cancelled) { acquiredTexturePaths.forEach(releaseSharedTexture); acquiredTexturePaths = []; releaseSharedSurface(surface); surface = null; return; }
+          heroTextures.set(path, texture);
         }
         const tileAtlas = createGridSpriteAtlas(textures.tiles, { cellWidthPx: 32, cellHeightPx: 32, columns: 12, rows: 9, pivot: [0.5, 0.5] });
         const debugCanvas = document.createElement("canvas"); debugCanvas.width = 32; debugCanvas.height = 32;
@@ -146,9 +155,17 @@ export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "ce
         updateDynamicTexture(engine, debugTexture, debugCanvas, { invertY: false });
         const debugAtlas = createGridSpriteAtlas(debugTexture, { cellWidthPx: 32, cellHeightPx: 32, columns: 1, rows: 1, pivot: [0.5, 0.5] });
         const actorAtlases: Record<string, SpriteAtlas> = {};
-        for (const key of ["hero", "rat", "skeleton"]) actorAtlases[key] = createGridSpriteAtlas(textures[key], { cellWidthPx: 32, cellHeightPx: 32, columns: 1, rows: 1, pivot: [0.5, 0.5] });
+        for (const key of ["rat", "skeleton"]) actorAtlases[key] = createGridSpriteAtlas(textures[key], { cellWidthPx: 32, cellHeightPx: 32, columns: 1, rows: 1, pivot: [0.5, 0.5] });
         const itemAtlas = createGridSpriteAtlas(textures.items, { cellWidthPx: 32, cellHeightPx: 32, columns: 3, rows: 3, pivot: [0.5, 0.5] });
-        atlases = [tileAtlas, debugAtlas, ...Object.values(actorAtlases), itemAtlas];
+        activeHeroAnimation.start();
+        const heroVisuals = [...heroFrameSources.values()].map((frame) => {
+          const texture = heroTextures.get(frame.path)!;
+          const atlas = createGridSpriteAtlas(texture, { cellWidthPx: frame.widthPx, cellHeightPx: frame.heightPx, columns: 1, rows: 1, pivot: [0.5, 1] });
+          const layer = createSprite2DLayer(atlas, { pivot: [0.5, 1] });
+          const handle = addSprite2D(layer, { positionPx: [-10000, -10000], sizePx: [frame.widthPx, frame.heightPx], frame: 0 });
+          atlases.push(atlas);
+          return { frame, layer, handle };
+        });
         const terrainLayer = createSprite2DLayer(tileAtlas, { pivot: [0.5, 0.5] });
         const wallLayer = createSprite2DLayer(tileAtlas, { pivot: [0.5, 0.5] });
         const debugLayer = createSprite2DLayer(debugAtlas, { pivot: [0.5, 0.5] });
@@ -158,11 +175,10 @@ export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "ce
         const terrainHandles = model.grounds.map(({ worldX, worldY, frame }) => addSprite2D(terrainLayer, { positionPx: frame === null ? [-10000, -10000] : [worldX, worldY], sizePx: [32, 32], frame: frame ?? 0 }));
         const wallHandles = model.walls.map(({ worldX, worldY, frame }) => addSprite2D(wallLayer, { positionPx: frame === null ? [-10000, -10000] : [worldX, worldY], sizePx: [32, 32], frame: frame ?? 0 }));
         const debugHandles = [...model.diagnostics, ...model.wallDiagnostics].map(({ worldX, worldY }) => addSprite2D(debugLayer, { positionPx: [worldX, worldY], sizePx: [32, 32], frame: 0 }));
-        const hero = addSprite2D(actorLayers.hero, { positionPx: [16,16], sizePx: [32,32], frame: 0 });
         const actors: Record<string, Sprite2DHandle[]> = { rat: [], skeleton: [] };
         for (const key of Object.keys(actors)) for (let i = 0; i < 40; i++) actors[key].push(addSprite2D(actorLayers[key], { positionPx: [-10000,-10000], sizePx: [32,32], frame: 0 }));
         const items = Array.from({ length: 40 }, (_, i) => addSprite2D(itemLayer, { positionPx: [-10000,-10000], sizePx: [32,32], frame: i % 9 }));
-        const viewLayers = [terrainLayer, wallLayer, debugLayer, itemLayer, actorLayers.rat, actorLayers.skeleton, actorLayers.hero];
+        const viewLayers = [terrainLayer, wallLayer, debugLayer, itemLayer, actorLayers.rat, actorLayers.skeleton, ...heroVisuals.map(({ layer }) => layer)];
         renderer = createSpriteRenderer(surface, { layers: viewLayers, clear: true, clearValue: clear });
         registerSpriteRenderer(renderer);
         const draw = () => {
@@ -192,15 +208,29 @@ export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "ce
           wallHandles.slice(world.walls.length).forEach((sprite) => updateSprite2D(sprite, { positionPx: [-10000, -10000] }));
           [...world.diagnostics, ...world.wallDiagnostics].forEach((cell, index) => updateSprite2D(debugHandles[index], { positionPx: [cell.worldX, cell.worldY], frame: 0 }));
           debugHandles.slice(world.diagnostics.length + world.wallDiagnostics.length).forEach((sprite) => updateSprite2D(sprite, { positionPx: [-10000, -10000] }));
-          updateSprite2D(hero, { positionPx: [state.player.x * 32 + 16, state.player.y * 32 + 16] });
+          heroVisuals.forEach(({ handle }) => updateSprite2D(handle, { positionPx: [-10000, -10000] }));
+          const playerHeading = state.player.heading ?? "e";
+          const desiredIdleAnimation = heroWarriorIdleAnimationForHeading(playerHeading);
+          if (activeHeroAnimation.getState().animation !== desiredIdleAnimation) activeHeroAnimation.selectAnimation(desiredIdleAnimation);
+          const activeHeroFrame = heroVisuals.find(({ frame }) => frame.path === activeHeroAnimation.getState().frame.path);
+          if (activeHeroFrame) updateSprite2D(activeHeroFrame.handle, { positionPx: [state.player.x * 32 + 16, state.player.y * 32 + 32], flipX: playerHeading === "w" });
           const byKind: Record<string, typeof world.actors> = { rat: world.actors.filter((actor) => actor.kind === "rat"), skeleton: world.actors.filter((actor) => actor.kind === "skeleton") };
-          for (const key of Object.keys(actors)) actors[key].forEach((sprite, i) => { const actor = byKind[key][i]; updateSprite2D(sprite, { positionPx: actor ? [actor.worldX, actor.worldY] : [-10000,-10000] }); });
+          for (const key of Object.keys(actors)) actors[key].forEach((sprite, i) => { const actor = byKind[key][i]; updateSprite2D(sprite, { positionPx: actor ? [actor.worldX, actor.worldY] : [-10000,-10000], flipX: actor?.heading === "w" }); });
           items.forEach((sprite, i) => { const entity = world.objects[i]; const frame = entity?.kind === "item" ? 2 : entity?.kind === "chest" ? 0 : entity?.kind === "stairs" ? 1 : entity?.kind === "key" ? 5 : entity?.kind === "gold" ? 3 : entity?.kind === "potion" ? (entity.resource === "health" ? 6 : 7) : 8; updateSprite2D(sprite, { frame, positionPx: entity ? [entity.worldX, entity.worldY] : [-10000,-10000] }); });
         };
         sceneRef.current = { draw };
         resizeSurface(surface); draw();
         if (acquired.isPrimary && sharedEngineRecord && !sharedEngineRecord.started) { await startEngine(engine); sharedEngineRecord.started = true; }
         if (cancelled) return;
+        let lastAnimationTime = performance.now();
+        const animate = (time: number) => {
+          if (cancelled) return;
+          activeHeroAnimation.update(Math.max(0, time - lastAnimationTime));
+          lastAnimationTime = time;
+          draw();
+          animationFrameId = requestAnimationFrame(animate);
+        };
+        animationFrameId = requestAnimationFrame(animate);
         const observer = new ResizeObserver(() => { resizeSurface(surface!); draw(); }); observer.observe(host); observers.push(observer);
         window.addEventListener("resize", draw); observers.push({ disconnect: () => window.removeEventListener("resize", draw) });
         setMessage("");
@@ -209,6 +239,7 @@ export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "ce
         if (renderer) { disposeSpriteRenderer(renderer); renderer = null; }
         atlases.forEach((atlas) => disposeSpriteAtlas(atlas)); atlases = [];
         if (debugTexture) { releaseTexture(debugTexture); debugTexture = null; }
+        heroAnimation?.dispose(); heroAnimation = null;
         acquiredTexturePaths.forEach(releaseSharedTexture); acquiredTexturePaths = []; textures = {};
         if (surface) { releaseSharedSurface(surface); surface = null; } engine = null;
         if (!cancelled) setMessage(getInitializationMessage(Boolean(navigator.gpu), error));
@@ -216,8 +247,8 @@ export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "ce
     };
     queueMicrotask(() => { if (!cancelled) void setup(); });
     return () => {
-      cancelled = true; observers.forEach((observer) => observer.disconnect()); sceneRef.current = null;
-      if (renderer) disposeSpriteRenderer(renderer); atlases.forEach((atlas) => disposeSpriteAtlas(atlas)); if (debugTexture) releaseTexture(debugTexture); acquiredTexturePaths.forEach(releaseSharedTexture); if (surface) releaseSharedSurface(surface);
+      cancelled = true; cancelAnimationFrame(animationFrameId); observers.forEach((observer) => observer.disconnect()); sceneRef.current = null;
+      if (renderer) disposeSpriteRenderer(renderer); atlases.forEach((atlas) => disposeSpriteAtlas(atlas)); if (debugTexture) releaseTexture(debugTexture); heroAnimation?.dispose(); heroAnimation = null; acquiredTexturePaths.forEach(releaseSharedTexture); if (surface) releaseSharedSurface(surface);
     };
   }, []);
   useEffect(() => {

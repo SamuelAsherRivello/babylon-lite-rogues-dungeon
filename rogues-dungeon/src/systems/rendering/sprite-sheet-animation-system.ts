@@ -35,6 +35,7 @@ export type SpriteAnimationSummary = Readonly<{
 
 export type SpriteAnimationState = Readonly<{
   animation: string;
+  speed: number;
   frameIndex: number;
   frame: SpriteFrame;
   playing: boolean;
@@ -48,6 +49,8 @@ export type SpriteSheetAnimationEntity = Readonly<{
   start(): void;
   stop(): void;
   update(deltaMs: number): void;
+  getSpeed(): number;
+  setSpeed(speed: number): void;
   getState(): SpriteAnimationState;
   dispose(): void;
 }>;
@@ -60,6 +63,11 @@ function positiveInteger(value: number, label: string) {
 function validateLoopCount(loopCount: number) {
   if (!Number.isInteger(loopCount) || loopCount < -1) throw new RangeError("loopCount must be -1 or a non-negative integer");
   return loopCount;
+}
+
+function validateSpeed(speed: number) {
+  if (!Number.isFinite(speed) || speed <= 0) throw new RangeError("animation speed must be a positive number");
+  return speed;
 }
 
 function validateFrame(frame: SpriteFrame, index: number) {
@@ -92,7 +100,7 @@ function normalizeAnimation(definition: SpriteAnimationDefinition): SpriteAnimat
   return Object.freeze({ name: definition.name, frameCount: frames.length, frameDurationMs: definition.frameDurationMs, loopCount: definition.loopCount, frames });
 }
 
-export function createSpriteSheetAnimationEntity(definitions: readonly SpriteAnimationDefinition[], initialAnimation = definitions[0]?.name): SpriteSheetAnimationEntity {
+export function createSpriteSheetAnimationEntity(definitions: readonly SpriteAnimationDefinition[], initialAnimation = definitions[0]?.name, options: Readonly<{ speed?: number }> = {}): SpriteSheetAnimationEntity {
   if (!Array.isArray(definitions) || definitions.length === 0) throw new Error("at least one animation is required");
   const animations = new Map<string, SpriteAnimationSummary>();
   for (const definition of definitions) {
@@ -108,6 +116,7 @@ export function createSpriteSheetAnimationEntity(definitions: readonly SpriteAni
   let playing = false;
   let completed = false;
   let disposed = false;
+  let speed = validateSpeed(options.speed ?? 1);
 
   function assertActive() { if (disposed) throw new Error("animation entity is disposed"); }
   function selectAnimation(name: string, restart = true) {
@@ -123,7 +132,7 @@ export function createSpriteSheetAnimationEntity(definitions: readonly SpriteAni
     assertActive();
     if (!playing) return;
     if (!Number.isFinite(deltaMs) || deltaMs < 0) throw new RangeError("deltaMs must be non-negative");
-    elapsedMs += deltaMs;
+    elapsedMs += deltaMs * speed;
     while (elapsedMs >= current.frameDurationMs && playing) {
       elapsedMs -= current.frameDurationMs;
       if (frameIndex < current.frameCount - 1) { frameIndex++; continue; }
@@ -132,13 +141,15 @@ export function createSpriteSheetAnimationEntity(definitions: readonly SpriteAni
       frameIndex = 0;
     }
   }
+  function getSpeed() { assertActive(); return speed; }
+  function setSpeed(nextSpeed: number) { assertActive(); speed = validateSpeed(nextSpeed); }
   function getState(): SpriteAnimationState {
     assertActive();
-    return Object.freeze({ animation: current.name, frameIndex, frame: current.frames[frameIndex], playing, completed, loopsCompleted });
+    return Object.freeze({ animation: current.name, speed, frameIndex, frame: current.frames[frameIndex], playing, completed, loopsCompleted });
   }
   function dispose() { disposed = true; playing = false; }
   return Object.freeze({
     listAnimations: () => Object.freeze([...animations.values()]),
-    selectAnimation, start, stop, update, getState, dispose,
+    selectAnimation, start, stop, update, getSpeed, setSpeed, getState, dispose,
   });
 }

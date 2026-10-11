@@ -11,6 +11,19 @@ test("@smoke opens the muted saved-game entry screen", async ({ page }) => {
   await expect(page.getByRole("button", { name: /Saved Game [1-3]/ })).toHaveCount(3);
 });
 
+test("@smoke clears local storage from the main menu", async ({ page }) => {
+  await page.goto("/babylon-lite-rogues-dungeon/?mute=1");
+  await page.evaluate(() => {
+    localStorage.setItem("rogues-dungeon.slot.1", "saved-game");
+    localStorage.setItem("rogues-dungeon.preferences.v1", "preferences");
+  });
+  await page.reload();
+  page.once("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "Clear Local Storage" }).click();
+  await expect(page.getByRole("heading", { name: "3 Saved Games" })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => ({ slot: localStorage.getItem("rogues-dungeon.slot.1"), preferences: localStorage.getItem("rogues-dungeon.preferences.v1") }))).toEqual({ slot: null, preferences: null });
+});
+
 test("@smoke opens the named manual tile scenario and exports its editable map", async ({ page }) => {
   await page.goto("/babylon-lite-rogues-dungeon/?world=1&level=1&slot=1&seed=13579&mute=1&debug-fix-map-autotiled=1&scenario=corridor-joins");
   await expect(page.getByRole("button", { name: "Open Editable Copy" })).toBeVisible();

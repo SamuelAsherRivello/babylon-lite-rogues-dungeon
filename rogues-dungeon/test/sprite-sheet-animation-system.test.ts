@@ -18,11 +18,20 @@ test("starts, stops, and advances an infinite animation", () => {
   const entity = createSpriteSheetAnimationEntity(definitions);
   assert.equal(entity.getState().playing, false);
   entity.start(); entity.update(100);
-  assert.deepEqual(entity.getState(), { animation: "Idle", frameIndex: 1, frame: frame("idle-1"), playing: true, completed: false, loopsCompleted: 0 });
+  assert.deepEqual(entity.getState(), { animation: "Idle", speed: 1, frameIndex: 1, frame: frame("idle-1"), playing: true, completed: false, loopsCompleted: 0 });
   entity.stop(); entity.update(100);
   assert.equal(entity.getState().frameIndex, 1);
   entity.dispose();
   assert.throws(() => entity.getState(), /disposed/);
+});
+
+test("applies entity animation speed to frame timing and exposes speed controls", () => {
+  const entity = createSpriteSheetAnimationEntity([{ name: "slow", source: { kind: "frames", frames: [frame("slow-0"), frame("slow-1")] }, frameDurationMs: 100, loopCount: -1 }], "slow", { speed: 0.5 });
+  entity.start(); entity.update(100);
+  assert.equal(entity.getState().frameIndex, 0);
+  assert.equal(entity.getState().speed, 0.5);
+  entity.setSpeed(1); entity.update(100);
+  assert.equal(entity.getState().frameIndex, 1);
 });
 
 test("plays loopCount zero once and positive counts as additional repeats", () => {

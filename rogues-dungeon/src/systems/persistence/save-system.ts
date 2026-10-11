@@ -8,7 +8,7 @@ interface LegacyCampaign extends Omit<Campaign, "player" | "progression"> {
 }
 // Preserve the existing shallow save guards; normalization owns legacy fields.
 function candidate(value: unknown): Partial<Campaign> | null { return typeof value === "object" && value !== null ? value as Partial<Campaign> : null; }
-import { createCampaign, createResourcesModel, effectiveAttributes, FLOOR_HEIGHT, FLOOR_WIDTH, GENERATOR_VERSION, isResourcesModel, normalizeQuickSlots, upgradeCampaignResources } from "../procedural-generation/procedural-generation-system.ts";
+import { createCampaign, createResourcesModel, effectiveAttributes, FLOOR_HEIGHT, FLOOR_WIDTH, GENERATOR_VERSION, isResourcesModel, normalizeQuickSlots, normalizeStackableLocations, upgradeCampaignResources } from "../procedural-generation/procedural-generation-system.ts";
 import { gameZoomPresets } from "../../content/world/zoom.ts";
 import { createSemanticCells, ensureSemanticCells, semanticCellsFromMap } from "../procedural-generation/level-grid.ts";
 
@@ -143,6 +143,7 @@ export function writeSlot(storage: StorageAccess, slot: string | number, campaig
   if (!isValidCampaign(campaign)) throw new Error("Cannot save an invalid campaign.");
   ensureSemanticCells(campaign.floor);
   normalizeQuickSlots(campaign);
+  normalizeStackableLocations(campaign);
   storage.setItem(PREFIX + slot, JSON.stringify({ ...campaign, player: { ...campaign.player, abilities: normalizeAbilityBindings(campaign), quickSlots: campaign.player.quickSlots }, savedAt: Date.now() }));
 }
 export function deleteSlot(storage: StorageAccess, slot: string | number) { if (!SLOT_IDS.includes(String(slot))) throw new Error("Unknown Saved Game."); storage.removeItem(PREFIX + slot); }

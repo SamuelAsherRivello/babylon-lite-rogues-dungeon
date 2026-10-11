@@ -2,6 +2,8 @@
 export interface Position { x: number; y: number }
 export interface Room extends Position { w: number; h: number }
 export type Direction = "n" | "s" | "w" | "e";
+/** The last cardinal direction in which a character successfully moved. */
+export type CharacterHeading = Direction;
 export type ResourceName = "health" | "stamina" | "offense" | "defense" | "mana" | "xp";
 export type AttributeName = Exclude<ResourceName, "xp"> | "vitality" | "strength" | "luck" | "recovery" | "stealth";
 export type Attributes = Record<AttributeName, number>;
@@ -10,14 +12,14 @@ export type Resources = Record<ResourceName, Resource>;
 export type ResourceInput = Partial<Record<ResourceName, Partial<Resource> | number>>;
 export type EquipmentGroup = "weapons" | "armor";
 export type ConsumableResource = "health" | "mana";
-export interface Item { id: string; name: string; group: EquipmentGroup; modifiers: Partial<Attributes>; category?: "equipment" | "consumable"; consumableResource?: ConsumableResource }
+export interface Item { id: string; name: string; group: EquipmentGroup; modifiers: Partial<Attributes>; category?: "equipment" | "consumable"; consumableResource?: ConsumableResource; isStackable?: boolean; quantity?: number }
 export interface QuickSlot { item: Item; quantity: number }
 export type Equipment = Record<EquipmentGroup, (Item | null)[]>;
 export type AbilityId = "heal" | "wand";
 export interface TerrainCell { walkable: boolean; role: string; protected?: boolean }
 export interface Enemy extends Position {
   id: string; kind: "enemy"; name: string; hp: number; maxHp: number; damage: number; xp: number;
-  resources: Resources; awareness: number; actionCooldown: number; nextActionAt: number;
+  resources: Resources; awareness: number; actionCooldown: number; nextActionAt: number; heading?: CharacterHeading;
 }
 export type Entity = Enemy
   | (Position & { id: string; kind: "potion"; resource: "health" | "mana"; name?: string })
@@ -35,7 +37,7 @@ export interface Floor {
 export interface Campaign {
   version: number; world: string; realm: string; floor: Floor;
   progression: { attributes: Attributes; level: number; xp: number; nextXp: number; totalKills: number; difficulty: number; pendingUpgrades: { level: number; options: AttributeName[] }[] };
-  player: Position & { resources: Resources; equipment: Equipment; inventory: Item[]; inventoryCapacity: number; abilities: (AbilityId | null)[]; quickSlots?: [QuickSlot | null, QuickSlot | null]; sneaking: boolean };
+  player: Position & { resources: Resources; equipment: Equipment; inventory: Item[]; inventoryCapacity: number; abilities: (AbilityId | null)[]; quickSlots?: [QuickSlot | null, QuickSlot | null]; sneaking: boolean; heading?: CharacterHeading };
   starterConsumablesSeeded?: boolean;
   counters: { keys: number; gold: number }; objective: string; log: LogEntry[]; savedAt?: number;
 }

@@ -25,36 +25,45 @@ export const GAME_TUNING = Object.freeze({
 const ATTACK_STAMINA_COST = GAME_TUNING.attackStaminaCost;
 
 export const directions = Object.freeze<Record<Direction, [number, number]>>({ n: [0, -1], s: [0, 1], w: [-1, 0], e: [1, 0] });
+export function headingFromMovement(dx: number, dy: number, fallback: Direction = "e"): Direction {
+  if (dx < 0) return "w";
+  if (dx > 0) return "e";
+  if (dy < 0) return "n";
+  if (dy > 0) return "s";
+  return fallback;
+}
 export const resourceNames: readonly ResourceName[] = Object.freeze(["health", "stamina", "offense", "defense", "mana", "xp"]);
 export const EVENT_TYPES = Object.freeze(["action.committed", "action.rejected", "time.advanced", "player.moved", "player.sneak.changed", "combat.hit", "enemy.defeated", "resource.changed", "item.collected", "item.collection.rejected", "potion.consumed", "quick-slot.changed", "quick-slot.use.rejected", "chest.opened", "equipment.changed", "ability.used", "ability.assignment.changed", "xp.gained", "xp.level.changed", "progression.upgrade.offered", "progression.upgrade.chosen", "realm.entered", "player.died", "campaign.save.succeeded", "campaign.save.failed"]);
 export const progressionStatNames: readonly AttributeName[] = Object.freeze(["vitality", "strength", "luck", "recovery", "stealth"]);
 export const attributeLabels = Object.freeze({ health: "Health", stamina: "Stamina", offense: "Offense", defense: "Defense", mana: "Mana", vitality: "Vitality", strength: "Strength", luck: "Luck", recovery: "Recovery", stealth: "Stealth" });
 export const statLabels = attributeLabels;
 export const abilityCatalog = Object.freeze({
-  heal: Object.freeze({ id: "heal", title: "Heal", icon: "✦", manaCost: 5, kind: "heal", amount: 8, target: "self" }),
-  wand: Object.freeze({ id: "wand", title: "Wand", icon: "✹", manaCost: 4, kind: "wand", damage: 7, target: "nearest-enemy", range: 8 }),
+  heal: Object.freeze({ id: "heal", title: "Heal", icon: "✦", manaCost: 5, kind: "heal", amount: 8, target: "self", isStackable: false }),
+  wand: Object.freeze({ id: "wand", title: "Wand", icon: "✹", manaCost: 4, kind: "wand", damage: 7, target: "nearest-enemy", range: 8, isStackable: false }),
 });
 export const itemCatalog: readonly Omit<Item, "id">[] = Object.freeze([
-  { name: "Chest Plate 02", group: "armor", modifiers: { defense: 4 } },
-  { name: "Iron Sword 01", group: "weapons", modifiers: { offense: 8 } },
-  { name: "Oak Shield 03", group: "weapons", modifiers: { defense: 3 } },
-  { name: "Wooden Stick", group: "weapons", modifiers: { offense: 8 } },
+  { name: "Chest Plate 02", group: "armor", modifiers: { defense: 4 }, isStackable: false },
+  { name: "Iron Sword 01", group: "weapons", modifiers: { offense: 8 }, isStackable: false },
+  { name: "Oak Shield 03", group: "weapons", modifiers: { defense: 3 }, isStackable: false },
+  { name: "Wooden Stick", group: "weapons", modifiers: { offense: 8 }, isStackable: false },
 ]);
 export const consumableCatalog = Object.freeze({
   health: Object.freeze({ name: "Health Potion", resource: "health" as const }),
   mana: Object.freeze({ name: "Mana Potion", resource: "mana" as const }),
 });
 export function isQuickSlottableItem(item: Item | null | undefined): item is Item & { category: "consumable"; consumableResource: ConsumableResource } {
-  return item?.category === "consumable" && (item.consumableResource === "health" || item.consumableResource === "mana");
+  return item?.isStackable === true && item.category === "consumable" && (item.consumableResource === "health" || item.consumableResource === "mana");
 }
-function consumableInstance(resource: ConsumableResource, id: string): Item { return { id, name: consumableCatalog[resource].name, group: "weapons", modifiers: {}, category: "consumable", consumableResource: resource }; }
+function consumableInstance(resource: ConsumableResource, id: string, quantity = 1): Item { return { id, name: consumableCatalog[resource].name, group: "weapons", modifiers: {}, category: "consumable", consumableResource: resource, isStackable: true, quantity }; }
 
 function ensureStarterConsumables(campaign: Campaign) {
   if (campaign.starterConsumablesSeeded) return campaign;
   const inventory = campaign.player.inventory;
-  if (!inventory.some((item) => item.category === "consumable" && item.consumableResource === "health")) inventory.push(consumableInstance("health", "starter-health-potion"));
-  let manaPotions = inventory.filter((item) => item.category === "consumable" && item.consumableResource === "mana").length;
-  while (manaPotions < 2 && inventory.length < campaign.player.inventoryCapacity) { inventory.push(consumableInstance("mana", `starter-mana-potion-${manaPotions + 1}`)); manaPotions++; }
+  const quickSlots = Array.isArray(campaign.player.quickSlots) ? campaign.player.quickSlots : [];
+  const hasHealth = inventory.some((item) => item.category === "consumable" && item.consumableResource === "health") || quickSlots.some((slot) => slot?.item.category === "consumable" && slot.item.consumableResource === "health");
+  if (!hasHealth) inventory.push(consumableInstance("health", "starter-health-potion"));
+  const manaPotions = inventory.filter((item) => item.category === "consumable" && item.consumableResource === "mana").reduce((total, item) => total + (item.quantity ?? 1), 0) + quickSlots.filter((slot) => slot?.item.category === "consumable" && slot.item.consumableResource === "mana").reduce((total, slot) => total + (slot?.quantity ?? 0), 0);
+  if (manaPotions < 2 && inventory.length < campaign.player.inventoryCapacity) inventory.push(consumableInstance("mana", "starter-mana-potion", 2 - manaPotions));
   campaign.starterConsumablesSeeded = true;
   return campaign;
 }
@@ -73,9 +82,34 @@ export function normalizeQuickSlots(campaign: Campaign) {
   const input = Array.isArray(campaign.player.quickSlots) ? campaign.player.quickSlots : [];
   campaign.player.quickSlots = [0, 1].map((index) => {
     const value = input[index];
-    if (!value || !isQuickSlottableItem(value.item) || !Number.isInteger(value.quantity) || value.quantity < 1) return null;
-    return { item: structuredClone(value.item), quantity: value.quantity } as QuickSlot;
+    const item = value?.item ? normalizeItem(value.item) : null;
+    if (!value || !item || !isQuickSlottableItem(item) || !Number.isInteger(value.quantity) || value.quantity < 1) return null;
+    return { item: structuredClone(item), quantity: value.quantity } as QuickSlot;
   }) as [QuickSlot | null, QuickSlot | null];
+  return campaign;
+}
+function normalizeItem(item: Item): Item {
+  const stackable = item.category === "consumable" && (item.consumableResource === "health" || item.consumableResource === "mana");
+  return { ...item, isStackable: stackable, ...(stackable ? { quantity: Math.max(1, Math.floor(item.quantity ?? 1)) } : {}) };
+}
+function normalizeEquipmentItem(item: Item): Item { const { quantity: _quantity, ...equipment } = item; return { ...equipment, isStackable: false }; }
+export function normalizeStackableLocations(campaign: Campaign) {
+  const slots = campaign.player.quickSlots!;
+  const inventory: Item[] = [];
+  for (const rawItem of campaign.player.inventory ?? []) {
+    const item = normalizeItem(rawItem);
+    if (!isQuickSlottableItem(item)) { inventory.push(item); continue; }
+    const quickIndex = slots.findIndex((slot) => slot?.item.consumableResource === item.consumableResource);
+    if (quickIndex >= 0) { slots[quickIndex]!.quantity += item.quantity ?? 1; continue; }
+    const existing = inventory.find((entry) => isQuickSlottableItem(entry) && entry.consumableResource === item.consumableResource);
+    if (existing) existing.quantity = (existing.quantity ?? 1) + (item.quantity ?? 1);
+    else inventory.push(item);
+  }
+  campaign.player.inventory = orderedInventory(inventory);
+  campaign.player.equipment = {
+    weapons: campaign.player.equipment.weapons.map((item) => item ? normalizeEquipmentItem(item) : null),
+    armor: campaign.player.equipment.armor.map((item) => item ? normalizeEquipmentItem(item) : null),
+  };
   return campaign;
 }
 function entityAt(entities: Entity[], x: number, y: number) { return entities.find((entity) => entity.x === x && entity.y === y); }
@@ -192,6 +226,8 @@ export function upgradeCampaignResources(campaign: Campaign) {
   ensureSemanticCells(campaign.floor);
   ensureStarterConsumables(campaign);
   normalizeQuickSlots(campaign);
+  normalizeStackableLocations(campaign);
+  campaign.player.heading = campaign.player.heading ?? "e";
   campaign.player.resources = playerResourcesFromCampaign(campaign);
   const level = campaign.floor.level ?? campaign.floor.depth ?? 1;
   for (const entity of campaign.floor.entities ?? []) if (entity.kind === "enemy") {
@@ -204,6 +240,7 @@ export function upgradeCampaignResources(campaign: Campaign) {
     entity.awareness = Number(entity.awareness ?? GAME_TUNING.enemyAwareness);
     entity.actionCooldown = Math.max(1, Number(entity.actionCooldown ?? GAME_TUNING.enemyActionCooldown));
     entity.nextActionAt = Math.max(0, Number(entity.nextActionAt ?? campaign.floor.time + entity.actionCooldown));
+    entity.heading = entity.heading ?? "e";
   }
   campaign.progression.pendingUpgrades = Array.isArray(campaign.progression.pendingUpgrades) ? campaign.progression.pendingUpgrades.filter((entry) => Array.isArray(entry?.options) && entry.options.length === 3) : [];
   return campaign;
@@ -266,7 +303,7 @@ export function generateFloor(level: number, seed = seedNow(), difficulty = leve
         const skeleton = difficulty > 1 && random() < 0.4;
         const health = skeleton ? 20 + (difficulty - 2) * 4 : 12 + (difficulty - 1) * 3;
         const damage = skeleton ? 6 + (difficulty - 2) * 2 : 3 + (difficulty - 1) * 2;
-        const enemy: Omit<Enemy, "resources"> = { id: `enemy-${i}`, kind: "enemy", x: enemyCell.x, y: enemyCell.y, hp: health, maxHp: health, damage, awareness: GAME_TUNING.enemyAwareness, actionCooldown: GAME_TUNING.enemyActionCooldown, nextActionAt: GAME_TUNING.enemyActionCooldown, name: skeleton ? "Skeleton" : "Rat", xp: GAME_TUNING.xpPerKillBase + difficulty };
+        const enemy: Omit<Enemy, "resources"> = { id: `enemy-${i}`, kind: "enemy", x: enemyCell.x, y: enemyCell.y, hp: health, maxHp: health, damage, awareness: GAME_TUNING.enemyAwareness, actionCooldown: GAME_TUNING.enemyActionCooldown, nextActionAt: GAME_TUNING.enemyActionCooldown, name: skeleton ? "Skeleton" : "Rat", xp: GAME_TUNING.xpPerKillBase + difficulty, heading: "e" };
         add({ ...enemy, resources: enemyResources(enemy, level) });
       }
       if (random() < 0.35) {
@@ -315,7 +352,7 @@ export function resourceState(campaign: Campaign) {
 
 export function createCampaign(seed = seedNow(), difficulty = 1, level = 1): Campaign {
   const floor = generateFloor(level, seed, difficulty); const attributes = { health: GAME_TUNING.startingHealth, stamina: GAME_TUNING.startingStamina, offense: 0, defense: GAME_TUNING.innateDefense, mana: GAME_TUNING.startingMana, vitality: 0, strength: 0, luck: 0, recovery: 0, stealth: 0 };
-  const campaign: Campaign = { version: 3, world: "One", realm: `Underground ${floor.level}`, floor, progression: { attributes, level: 1, xp: 0, nextXp: GAME_TUNING.xpThreshold, totalKills: 0, difficulty, pendingUpgrades: [] }, player: { x: floor.start.x, y: floor.start.y, resources: createResourcesModel(), equipment: { weapons: [itemInstance(itemCatalog[3], "starter-stick"), null], armor: [null, null] }, inventory: [consumableInstance("health", "starter-health-potion"), consumableInstance("mana", "starter-mana-potion-1"), consumableInstance("mana", "starter-mana-potion-2")], inventoryCapacity: ITEM_CAPACITY, abilities: ["heal", "wand", null], quickSlots: [null, null], sneaking: false }, starterConsumablesSeeded: true, counters: { keys: 1, gold: 55 }, objective: "Find the exit", log: [] };
+  const campaign: Campaign = { version: 3, world: "One", realm: `Underground ${floor.level}`, floor, progression: { attributes, level: 1, xp: 0, nextXp: GAME_TUNING.xpThreshold, totalKills: 0, difficulty, pendingUpgrades: [] }, player: { x: floor.start.x, y: floor.start.y, heading: "e", resources: createResourcesModel(), equipment: { weapons: [itemInstance(itemCatalog[3], "starter-stick"), null], armor: [null, null] }, inventory: [consumableInstance("health", "starter-health-potion"), consumableInstance("mana", "starter-mana-potion", 2)], inventoryCapacity: ITEM_CAPACITY, abilities: ["heal", "wand", null], quickSlots: [null, null], sneaking: false }, starterConsumablesSeeded: true, counters: { keys: 1, gold: 55 }, objective: "Find the exit", log: [] };
   campaign.player.resources = playerResourcesFromCampaign(campaign, { health: GAME_TUNING.startingHealth, stamina: GAME_TUNING.startingStamina, mana: GAME_TUNING.startingMana });
   return campaign;
 }
@@ -352,7 +389,7 @@ function enemyPhase(state: Campaign, events: GameEvent[]) {
       changeResource(state, events, "health", player.resources.health.current - damage, "enemy-attack");
     } else {
       const tx = enemy.x + dx; const ty = enemy.y + dy;
-      if (isWalkable(state.floor, tx, ty) && !entityAt(state.floor.entities.filter((entry) => entry !== enemy), tx, ty)) { enemy.x = tx; enemy.y = ty; }
+      if (isWalkable(state.floor, tx, ty) && !entityAt(state.floor.entities.filter((entry) => entry !== enemy), tx, ty)) { enemy.heading = headingFromMovement(dx, dy, enemy.heading ?? "e"); enemy.x = tx; enemy.y = ty; }
     }
   }
   if (state.player.resources.health.current <= 0) { const reset = freshRunAfterDeath(state); Object.assign(state, reset); emit(events, "player.died", { realm: "Underground 1" }, state); }
@@ -379,10 +416,11 @@ export function applyAction(campaign: Campaign, action: Action): ActionResult {
     const direction = directions[action.direction as Direction]; if (!direction) return reject("invalid-direction"); const [dx, dy] = direction; const x = state.player.x + dx; const y = state.player.y + dy; const entity = entityAt(state.floor.entities, x, y);
     if (!isWalkable(state.floor, x, y) && !entity) return reject("blocked");
     if (entity?.kind === "enemy") attack(state, events, entity); else {
+      state.player.heading = action.direction as Direction;
       state.player.x = x; state.player.y = y; emit(events, "player.moved", { from: { x: campaign.player.x, y: campaign.player.y }, to: { x, y } }, state);
       if (entity?.kind === "stairs") { const level = (state.floor.level ?? state.floor.depth ?? 1) + 1; const difficulty = (state.progression.difficulty ?? state.floor.depth ?? 1) + 1; const time = state.floor.time; state.progression.difficulty = difficulty; state.floor = generateFloor(level, seedNow(), difficulty); state.floor.time = time; state.realm = `Underground ${level}`; state.player.x = state.floor.start.x; state.player.y = state.floor.start.y; emit(events, "realm.entered", { realm: state.realm, level }, state); }
-      else if (entity?.kind === "potion") { const cap = effectiveAttributes(state)[entity.resource]; if (state.player.resources[entity.resource].current < cap) { const previous = state.player.resources[entity.resource].current; const restored = entity.resource === "health" ? GAME_TUNING.healthPotionRestore : GAME_TUNING.manaPotionRestore; changeResource(state, events, entity.resource, previous + restored, "potion"); const current = state.player.resources[entity.resource].current; state.floor.entities = state.floor.entities.filter((entry) => entry.id !== entity.id); emit(events, "potion.consumed", { itemId: entity.id, item: entity.name ?? `${entity.resource} potion`, resource: entity.resource, previous, current }, state); } }
-      else if (entity?.kind === "item") { if (state.player.inventory.length < state.player.inventoryCapacity) { state.player.inventory = orderedInventory([...state.player.inventory, entity.item]); state.floor.entities = state.floor.entities.filter((entry) => entry.id !== entity.id); emit(events, "item.collected", { itemId: entity.item.id, name: entity.item.name, destination: "inventory" }, state); } else emit(events, "item.collection.rejected", { itemId: entity.item.id, name: entity.item.name, reason: "inventory-full" }, state); }
+      else if (entity?.kind === "potion") { const item = consumableInstance(entity.resource, entity.id); const quickIndex = state.player.quickSlots!.findIndex((slot) => slot?.item.consumableResource === entity.resource); const inventoryItem = state.player.inventory.find((entry) => isQuickSlottableItem(entry) && entry.consumableResource === entity.resource); if (quickIndex >= 0) { state.player.quickSlots![quickIndex]!.quantity += 1; state.floor.entities = state.floor.entities.filter((entry) => entry.id !== entity.id); emit(events, "item.collected", { itemId: item.id, item: item.name, name: item.name, resource: entity.resource, destination: { quickSlot: quickIndex }, quickSlot: quickIndex, quantity: state.player.quickSlots![quickIndex]!.quantity }, state); } else if (inventoryItem) { inventoryItem.quantity = (inventoryItem.quantity ?? 1) + 1; state.floor.entities = state.floor.entities.filter((entry) => entry.id !== entity.id); emit(events, "item.collected", { itemId: item.id, item: item.name, name: item.name, resource: entity.resource, destination: "inventory", quantity: inventoryItem.quantity }, state); } else if (state.player.inventory.length < state.player.inventoryCapacity) { state.player.inventory = orderedInventory([...state.player.inventory, item]); state.floor.entities = state.floor.entities.filter((entry) => entry.id !== entity.id); emit(events, "item.collected", { itemId: item.id, item: item.name, name: item.name, resource: entity.resource, destination: "inventory", quantity: 1 }, state); } else emit(events, "item.collection.rejected", { itemId: entity.id, name: entity.name ?? `${entity.resource} potion`, resource: entity.resource, reason: "inventory-full" }, state); }
+      else if (entity?.kind === "item") { const item = normalizeItem(entity.item); const quickIndex = isQuickSlottableItem(item) ? state.player.quickSlots!.findIndex((slot) => slot?.item.consumableResource === item.consumableResource) : -1; const inventoryItem = isQuickSlottableItem(item) ? state.player.inventory.find((entry) => isQuickSlottableItem(entry) && entry.consumableResource === item.consumableResource) : null; if (quickIndex >= 0) { state.player.quickSlots![quickIndex]!.quantity += item.quantity ?? 1; state.floor.entities = state.floor.entities.filter((entry) => entry.id !== entity.id); emit(events, "item.collected", { itemId: item.id, name: item.name, destination: { quickSlot: quickIndex }, quickSlot: quickIndex, quantity: state.player.quickSlots![quickIndex]!.quantity }, state); } else if (inventoryItem) { inventoryItem.quantity = (inventoryItem.quantity ?? 1) + (item.quantity ?? 1); state.floor.entities = state.floor.entities.filter((entry) => entry.id !== entity.id); emit(events, "item.collected", { itemId: item.id, name: item.name, destination: "inventory", quantity: inventoryItem.quantity }, state); } else if (state.player.inventory.length < state.player.inventoryCapacity) { state.player.inventory = orderedInventory([...state.player.inventory, item]); state.floor.entities = state.floor.entities.filter((entry) => entry.id !== entity.id); emit(events, "item.collected", { itemId: item.id, name: item.name, destination: "inventory", quantity: item.quantity ?? 1 }, state); } else emit(events, "item.collection.rejected", { itemId: item.id, name: item.name, reason: "inventory-full" }, state); }
       else if (entity?.kind === "key" || entity?.kind === "gold") {
         const amount = entity.amount ?? 1;
         if (entity.kind === "key") state.counters.keys += amount; else state.counters.gold += amount;
@@ -403,8 +441,11 @@ export function applyAction(campaign: Campaign, action: Action): ActionResult {
     if (!item || !isQuickSlottableItem(item)) return reject("incompatible-quick-slot-item");
     const existing = slots[index];
     if (existing && existing.item.consumableResource !== item.consumableResource) return reject("different-quick-slot-item");
+    const otherIndex = slots.findIndex((slot, slotIndex) => slotIndex !== index && slot?.item.consumableResource === item.consumableResource);
+    if (otherIndex >= 0) return reject("already-quick-slotted");
+    const quantity = item.quantity ?? 1;
     state.player.inventory.splice(itemIndex, 1);
-    slots[index] = existing ? { item: existing.item, quantity: existing.quantity + 1 } : { item, quantity: 1 };
+    slots[index] = existing ? { item: existing.item, quantity: existing.quantity + quantity } : { item, quantity };
     emit(events, "quick-slot.changed", { action: existing ? "combined" : "assigned", itemId: item.id, item: item.name, source: "inventory", destination: { quickSlot: index }, quickSlot: index, quantity: slots[index]!.quantity }, state);
     tick(state, events); return { state, events, accepted: true, ticks: 1 };
   }
@@ -422,9 +463,11 @@ export function applyAction(campaign: Campaign, action: Action): ActionResult {
   if (action.type === "return-quick-slot") {
     const { index } = action; const slots = state.player.quickSlots!; const slot = slots[index];
     if (!Number.isInteger(index) || index < 0 || index > 1 || !slot) return reject("empty-quick-slot");
-    if (state.player.inventory.length + slot.quantity > state.player.inventoryCapacity) return reject("inventory-full");
-    const returned = Array.from({ length: slot.quantity }, (_, copy) => ({ ...structuredClone(slot.item), id: copy === 0 ? slot.item.id : `${slot.item.id}-returned-${state.floor.time}-${copy}` }));
-    state.player.inventory = orderedInventory([...state.player.inventory, ...returned]); slots[index] = null;
+    const existing = state.player.inventory.find((item) => isQuickSlottableItem(item) && item.consumableResource === slot.item.consumableResource);
+    if (!existing && state.player.inventory.length >= state.player.inventoryCapacity) return reject("inventory-full");
+    if (existing) existing.quantity = (existing.quantity ?? 1) + slot.quantity;
+    else state.player.inventory = orderedInventory([...state.player.inventory, { ...structuredClone(slot.item), quantity: slot.quantity }]);
+    slots[index] = null;
     emit(events, "quick-slot.changed", { action: "returned", itemId: slot.item.id, item: slot.item.name, source: { quickSlot: index }, destination: "inventory", quickSlot: index, quantity: slot.quantity }, state);
     tick(state, events); return { state, events, accepted: true, ticks: 1 };
   }
