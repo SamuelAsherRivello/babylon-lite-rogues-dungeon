@@ -40,7 +40,7 @@ export function serializeFloorToTiled({ campaign, generatorVersion = GENERATOR_V
   return {
     type: "map", version: "1.10", tiledversion: "1.10.2", orientation: "orthogonal", renderorder: "right-down",
     width, height, tilewidth: TILED_TILE_SIZE, tileheight: TILED_TILE_SIZE, infinite: false,
-    properties: propertiesArray({ world: campaign.world === "One" ? 1 : campaign.world, level: floor.level ?? 1, seed: floor.seed, generatorVersion, coordinateConvention: "tile-origin" }),
+    properties: propertiesArray({ world: campaign.world === "One" ? 1 : campaign.world, level: floor.level ?? 1, seed: floor.seed, scenario: floor.scenario, generatorVersion, coordinateConvention: "tile-origin" }),
     tilesets: [{ firstgid: 1, source: DUNGEON_TILESET_SOURCE }],
     layers: [
       { id: 1, name: "Grounds", type: "tilelayer", visible: true, opacity: 1, width, height, data: grounds },
@@ -81,6 +81,13 @@ export function floorFromTiledRepairMap(map: unknown, fallbackFloor: Floor | nul
   const toEntity = (object: TiledObject): Entity => { const position = objectCell(object); const props = propertiesObject(object.properties); return { ...props, id: object.name || props.id, kind: object.type || props.kind, x: position.x, y: position.y } as Entity; };
   const entities = [...(checked.pickups!.objects ?? []), ...(checked.decorations!.objects ?? [])].filter((object) => !["player", "exit"].includes(object.type)).map(toEntity);
   if (!entities.some((entity) => entity.kind === "stairs")) entities.push({ id: "stairs", kind: "stairs", x: exit.x, y: exit.y });
-  const floor = { ...(fallbackFloor ?? generateFloor(Number(checked.properties.level ?? 1), Number(checked.properties.seed ?? 0), Number(checked.properties.level ?? 1))), seed: Number(checked.properties.seed ?? fallbackFloor?.seed ?? 0), width: FLOOR_WIDTH, height: FLOOR_HEIGHT, cells: semanticCellsFromMap(mapData), start: player, entities, level: Number(checked.properties.level ?? fallbackFloor?.level ?? 1), generatorVersion: GENERATOR_VERSION, tiledGrounds: checked.grounds!.data.slice(), tiledWalls: checked.walls!.data.slice() };
+  const floor = { ...(fallbackFloor ?? generateFloor(Number(checked.properties.level ?? 1), Number(checked.properties.seed ?? 0), Number(checked.properties.level ?? 1))), seed: Number(checked.properties.seed ?? fallbackFloor?.seed ?? 0), width: FLOOR_WIDTH, height: FLOOR_HEIGHT, cells: semanticCellsFromMap(mapData), start: player, entities, level: Number(checked.properties.level ?? fallbackFloor?.level ?? 1), scenario: typeof checked.properties.scenario === "string" ? checked.properties.scenario : fallbackFloor?.scenario, generatorVersion: GENERATOR_VERSION, tiledGrounds: checked.grounds!.data.slice(), tiledWalls: checked.walls!.data.slice() };
   return ensureSemanticCells(floor);
+}
+
+export function compareTiledRepairLayers(generated: TiledMap, repaired: TiledMap) {
+  const layer = (map: TiledMap, name: string) => map.layers.find((entry): entry is TileLayer => entry.type === "tilelayer" && entry.name === name)?.data ?? [];
+  const differences: { layer: "Grounds" | "Walls"; index: number; generated: number; repaired: number }[] = [];
+  for (const name of ["Grounds", "Walls"] as const) { const expected = layer(generated, name); const actual = layer(repaired, name); for (let index = 0; index < Math.max(expected.length, actual.length); index++) if (Number(expected[index] ?? 0) !== Number(actual[index] ?? 0)) differences.push({ layer: name, index, generated: Number(expected[index] ?? 0), repaired: Number(actual[index] ?? 0) }); }
+  return differences;
 }

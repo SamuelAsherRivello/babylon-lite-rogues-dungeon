@@ -8,11 +8,11 @@
 
 ## 2. HUD presentation and animation
 
-- [x] 2.1 Style the expanded panel, aligned keycap columns, labels, single large top tab, and collapsed summary using the existing HUD palette and typography; verify no obsolete key-state legend or SHIFT key remains.
+- [x] 2.1 Style the expanded panel, centered `Input` heading, unlabeled key rows, single large top tab, and collapsed summary using the existing HUD palette and typography; verify no obsolete key-state legend or SHIFT key remains.
 - [x] 2.2 Add the 250ms position transition and synchronized panel opacity cross-fade, including an immediate reduced-motion variant; verify computed styles expose the requested duration and both state classes reach the correct positions.
 - [x] 2.3 Verify the tray remains inside the viewport and attached to the status bar across windowed and fullscreen layouts with focused layout assertions.
 
 ## 3. Browser verification
 
-- [x] 3.1 Add one focused Playwright browser check for collapsed/expanded rendering, tab toggling, exact labels, non-interactive keycaps, and the 0.25-second transition; verify it passes with the repository's browser smoke command.
+- [x] 3.1 Add one focused Playwright browser check for collapsed/expanded rendering, tab toggling, the `Input` heading, hover descriptions, non-interactive keycaps, and the 0.25-second transition; verify it passes with the repository's browser smoke command.
 - [x] 3.2 Run the applicable unit/source-shape suite and production build after integration; verify existing unrelated failures are reported separately from keyboard-tray regressions.

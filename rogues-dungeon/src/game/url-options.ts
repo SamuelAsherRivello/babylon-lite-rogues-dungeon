@@ -26,6 +26,7 @@ export function parseGameUrlOptions(search = "") {
     seed: unsignedParam(params, "seed", unsignedParam(params, "randomSeed")),
     mute: params.get("mute") === "1",
     mapFix: params.get(MAP_FIX_FLAG) === "1",
+    scenario: params.get("scenario") || null,
     map: params.get("map") || null,
   });
 }

@@ -19,7 +19,8 @@ export function App({ content = null, gutters = {} }: { content?: ReactNode; gut
   const platform = classifyPlatform({ userAgentDataMobile: navigator.userAgentData?.mobile, userAgent: navigator.userAgent });
   const canOverride = platform === "pc" && import.meta.env.DEV;
   const [developerAspect, setDeveloperAspect] = useState<Orientation | null>(null);
+  const [showPivotPoints, setShowPivotPoints] = useState(false);
   const layout = layoutForPlatform(platform, canOverride ? developerAspect : null);
-  const context = useMemo(() => ({ platform, orientation: layout.orientation, canOverride, setDeveloperAspect }), [platform, layout.orientation, canOverride]);
+  const context = useMemo(() => ({ platform, orientation: layout.orientation, canOverride, showPivotPoints: canOverride && showPivotPoints, setShowPivotPoints, setDeveloperAspect }), [platform, layout.orientation, canOverride, showPivotPoints]);
   return <LayoutContext.Provider value={context}><BrowserSurface layout={layout} gutters={gutters}>{content}</BrowserSurface></LayoutContext.Provider>;
 }

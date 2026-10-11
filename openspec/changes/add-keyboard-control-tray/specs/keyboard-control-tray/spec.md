@@ -15,14 +15,16 @@ The HUD SHALL show the existing compact bottom status bar plus a centered fold-o
 - **THEN** the bottom status bar shows `Move WASD | Quick: A E | Abilities: 123 | More ZXC` and no expanded panel is visible
 
 ### Requirement: Show the expanded twelve-key tray
-The HUD SHALL expand the tray into a panel titled `KEYBOARD CONTROLS` with four rows: `Abilities: 1 2 3`, `Quick: Q W E`, `Move: A S D`, and `More: Z X C`.
+The HUD SHALL expand the tray into a content-sized compact panel with four unlabeled rows: `1 2 3`, `Q W E`, `A S D`, and `Z X C`, with a normal-sized `Controls` heading centered in the status-bar area directly beneath the key grid.
 
 #### Scenario: Open keyboard tray
 - **WHEN** the player activates the fold-out tab
 - **THEN** the panel appears above the status bar with all twelve keycaps aligned into consistent columns
 
 ### Requirement: Show non-interactive input keys
-Each collapsed and expanded key SHALL be rendered by the shared `InputKey` component as a non-interactive visual keycap. Mouse input on keycaps SHALL NOT perform gameplay actions. Defined physical mappings are `W` move up, `A` move left, `S` move down, `D` move right, and `1–3` abilities; temporary physical `Q`, `E`, `Z`, `X`, and `C` controls SHALL log their key press until their actions are defined.
+Each collapsed and expanded key SHALL be rendered by the shared `InputKey` component as a non-interactive visual keycap. Hovering a key SHALL replace the centered `Controls` text with its action description, including `Use ability 1` for `1`, `Move Up` for `W`, and `Use Quickslot 1` for `Q`; leaving the key SHALL restore `Controls` and SHALL NOT create a floating tooltip. Mouse input on keycaps SHALL NOT perform gameplay actions. Defined physical mappings are `W` move up, `A` move left, `S` move down, `D` move right, and `1–3` abilities; temporary physical `Q`, `E`, `Z`, `X`, and `C` controls SHALL log their key press until their actions are defined.
+
+The shared keycaps SHALL support display mode for the status bar and feedback mode for the expanded controls tab. Feedback-mode keycaps SHALL visibly highlight while their physical key is held. All keycaps SHALL use category tinting at approximately 40% opacity for Move, Quick, Abilities, and More.
 
 #### Scenario: Click a visual keycap
 - **WHEN** the player clicks the `D` keycap

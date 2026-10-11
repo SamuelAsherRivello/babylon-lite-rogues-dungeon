@@ -6,6 +6,13 @@ Provide a complete, testable Hero Warrior animation capability for the player so
 
 ## ADDED Requirements
 
+### Requirement: Use the reusable animation system
+The Hero Warrior catalog SHALL register its sprite-sheet and individual-frame sources through the reusable animation system rather than defining a Hero-only playback contract.
+
+#### Scenario: Hero catalog is registered
+- **WHEN** the Hero Warrior assets are initialized
+- **THEN** their animation names and frame sequences are available through the generic entity listing and playback controls
+
 ### Requirement: Preserve the supplied animation inventory
 The character capability SHALL expose `Attack`, `Death`, `Idle`, and `Run` as distinct animations, preserving every usable supplied frame and directional variant.
 

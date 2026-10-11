@@ -42,12 +42,26 @@ const DUNGEON_WANG_WALL_BY_MASK: Readonly<Record<number, number>> = Object.freez
   225: 6, 226: 59, 230: 21, 232: 34, 236: 21, 238: 21,
 });
 
+const CARDINAL_BITS = Object.freeze([1, 4, 16, 64]);
+const DIAGONAL_BITS = Object.freeze([2, 8, 32, 128]);
+
+function maskDistance(actual: number, candidate: number) {
+  let score = 0;
+  for (const bit of CARDINAL_BITS) if ((actual & bit) !== (candidate & bit)) score += 8;
+  for (const bit of DIAGONAL_BITS) if ((actual & bit) !== (candidate & bit)) score += 1;
+  return score;
+}
+
+function nearestFrame(mask: number, table: Readonly<Record<number, number>>) {
+  return Object.entries(table).map(([candidate, frame]) => ({ candidate: Number(candidate), frame, score: maskDistance(mask, Number(candidate)) })).sort((a, b) => a.score - b.score || a.candidate - b.candidate)[0]?.frame ?? null;
+}
+
+function floorFrameForMask(mask: number) {
+  return DUNGEON_WANG_TILE_BY_MASK[mask] ?? nearestFrame(mask, DUNGEON_WANG_TILE_BY_MASK);
+}
+
 function wallFrameForMask(mask: number) {
-  if (DUNGEON_WANG_WALL_BY_MASK[mask] != null) return DUNGEON_WANG_WALL_BY_MASK[mask];
-  if (mask & 16) return 1;
-  if (mask & 1) return 49;
-  if (mask & 4) return 12;
-  return 17;
+  return DUNGEON_WANG_WALL_BY_MASK[mask] ?? nearestFrame(mask, DUNGEON_WANG_WALL_BY_MASK);
 }
 
 function walkableAt(grid: number[][] | Grid | undefined, x: number, y: number) { return Array.isArray(grid) ? grid[y]?.[x] === 0 : isWalkable(grid, x, y); }
@@ -66,10 +80,7 @@ export function buildDungeonWangTerrain({ map, cells, tileSize = 32 }: { map?: n
   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
     if (!walkableAt(grid, x, y)) continue;
     const mask = walkableMask(grid, x, y);
-    const authoredFrame = DUNGEON_WANG_TILE_BY_MASK[mask];
-    // A walkable cell is still floor even when its edge mask has no authored
-    // Wang sprite. Use the verified plain floor tile instead of exposing a red
-    // diagnostic square in the playable view.
+    const authoredFrame = floorFrameForMask(mask);
     const frame = authoredFrame ?? DUNGEON_WANG_INTERIOR_TILE;
     const entry = { x, y, mask, worldX: x * tileSize + tileSize / 2, worldY: y * tileSize + tileSize / 2, frame, floorFrame: frame, wallFrame: null, wall: false };
     terrain.push(entry);

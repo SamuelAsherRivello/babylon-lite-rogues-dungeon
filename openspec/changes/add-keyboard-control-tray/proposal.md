@@ -14,11 +14,12 @@ compact when closed while making all twelve controls visible when opened.
 - Keep the collapsed state visually equivalent to the current status-bar
   layout plus a larger centered tab; the collapsed text is exactly:
   `Move WASD | Quick: A E | Abilities: 123 | More ZXC`.
-- Add an expanded state titled `KEYBOARD CONTROLS` with four aligned rows:
-  `Abilities: 1 2 3`, `Quick: Q W E`, `Move: A S D`, and `More: Z X C`.
+- Add an expanded state with a centered `Input` heading and four aligned,
+  unlabeled rows: `1 2 3`, `Q W E`, `A S D`, and `Z X C`.
 - Render all twelve controls as individual, non-interactive keycaps in
-  consistent columns. Only physical keyboard input performs actions; the tab
-  alone controls expansion and collapse.
+  consistent columns, with a hover description for each action. Only physical
+  keyboard input performs actions; the tab alone controls expansion and
+  collapse.
 - Move the complete extended layout, including its attached top tab, over 0.25
   seconds and fade the collapsed status-bar controls from visible to hidden.
 - Preserve the existing game palette, typography, status-bar placement, and

@@ -40,7 +40,7 @@ test('removes fitted gutters while the browser surface is fullscreen', async () 
   assert.doesNotMatch(surface, /size\.height > size\.width/);
 });
 test('uses a command desk and removes template corner units', async () => {
-  const [game, app, css] = await Promise.all(['src/game/Game.tsx', 'src/ui/App.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
+  const [game, controlsArea, app, css] = await Promise.all(['src/game/Game.tsx', 'src/ui/ControlsArea.tsx', 'src/ui/App.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
   assert.match(game, /PrimaryInfoPanel/); assert.match(game, /SecondaryInfoPanel/); assert.match(game, /3 Saved Games/); assert.match(game, /Dev Settings/);
   assert.match(game, /className="titlebar_left"/); assert.match(game, /className="titlebar_right"/); assert.match(game, /className="titlebar_identity"/); assert.match(game, /className="titlebar_progress"/); assert.match(game, /World: \{campaign\.world === "One" \? 1 : campaign\.world\}/);
   assert.match(game, /aria-label="Time">⏱️<\/span>/); assert.match(game, /aria-label="Gold">🪙<\/span><span className="titlebar_counter_value">\{campaign\.counters\.gold\}/); assert.match(game, /aria-label="Keys">🔑<\/span><span className="titlebar_counter_value">\{String\(campaign\.counters\.keys\)/);
@@ -51,7 +51,7 @@ test('uses a command desk and removes template corner units', async () => {
   assert.match(game, /Clear Local Storage/); assert.match(game, /clearRoguesDungeonStorage\(localStorage\)/); assert.match(game, /window\.location\.reload\(\)/);
   assert.match(css, /\.titlebar \.titlebar_select_utility \{ width:9\.5em; flex:0 0 9\.5em/); assert.match(css, /\.titlebar \.titlebar_select_utility select \{ width:7\.4em/);
   assert.match(game, /const selectPreference = \(event: SyntheticEvent<HTMLElement>, preference: Partial<Preferences>\) => \{ setPreference\(preference\); event\.currentTarget\.blur\(\); \}/);
-  assert.match(game, /keyboardControlRows/); assert.match(game, /collapsedKeyboardGroups/); assert.match(game, /aria-label="Keyboard controls"/); assert.match(game, /console\.info\(`\[keyboard-controls\]/); assert.doesNotMatch(game, /Sprint:/); assert.doesNotMatch(game, /Sneak:/); assert.doesNotMatch(game, /\[1, 2, 3, 4\]/); assert.match(game, /<InputKey key=\{key\}/); assert.match(css, /\.keyboard_tray_surface \{[^}]*transition:transform 250ms ease/); assert.match(css, /\.keyboard_tray_keys \{[^}]*grid-template-columns:repeat\(3,2\.25rem\)/);
+  assert.match(game, /keyboardControlRows/); assert.match(game, /collapsedKeyboardGroups/); assert.match(controlsArea, /aria-label="Keyboard controls"/); assert.match(game, /console\.info\(`\[keyboard-controls\]/); assert.doesNotMatch(game, /Sprint:/); assert.doesNotMatch(game, /Sneak:/); assert.doesNotMatch(game, /\[1, 2, 3, 4\]/); assert.match(game, /<InputKey key=\{key\}/); assert.match(css, /\.controls-area_surface \{[^}]*transition:transform 250ms ease/); assert.match(css, /\.keyboard_tray_keys \{[^}]*grid-template-columns:repeat\(3,2\.25rem\)/);
   assert.match(game, /<option value="deadzone">Deadzone<\/option>/);
   assert.doesNotMatch(app, /AppCorner/); assert.match(css, /mobile_controls/);
   assert.match(css, /grid-template-rows:4% 92% 4%/); assert.match(css, /grid-template-rows:4% 46% 4% 46%/);
@@ -111,7 +111,8 @@ test('makes equipment rows draggable and droppable everywhere', async () => {
 });
 test('uses SlotItem for vertically aligned abilities and equipment', async () => {
   const [game, css] = await Promise.all(['src/game/Game.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
-  assert.match(game, /<SlotItem type="ability" number=\{index\}/);
+  assert.match(game, /<SlotItem type="ability" slotType="ability" number=\{index\}/);
+  assert.match(game, /slotType="ability"/); assert.match(game, /slotType="quickslot"/); assert.match(game, /slotType="equipment" slotSubtype=\{group\}/);
   assert.match(game, /accentColor="#c0aaff"/);
   assert.match(game, /Card title="Equipment"/);
   assert.match(game, /<EquipmentItem key=\{index\}/);
@@ -129,14 +130,27 @@ test('limits ability presentation and mobile controls to three positions', async
 });
 test('centers plus markers for empty equipment and ability slots', async () => {
   const [game, css] = await Promise.all(['src/game/Game.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
-  assert.match(game, /aria-label=\{type === "ability" \? "Empty ability slot" : "Empty equipment slot"\}>\+<\/span>/);
+  assert.match(game, /aria-label=\{type === "ability" \? "Empty ability slot" : type === "quick" \? "Empty quick slot" : type === "inventory" \? "Empty inventory slot" : "Empty equipment slot"\}>\+<\/span>/);
   assert.match(css, /\.slot_item \{ position:relative;/);
   assert.match(css, /\.slot_item \.empty_slot\{position:absolute;left:50%;transform:translateX\(-50%\);display:grid;place-items:center/);
+});
+test('keeps panel tabs at the parent content depth beneath UI tooltips', async () => {
+  const css = await readFile(new URL('../src/ui/style.css', import.meta.url), 'utf8');
+  assert.match(css, /\.tab-control-placement \{ position:absolute; z-index:0;[^}]*pointer-events:none; \}/);
+  assert.match(css, /\.ui_tooltip \{ position:absolute; z-index:10000;/);
 });
 test('matches inventory row spacing to the abilities list', async () => {
   const css = await readFile(new URL('../src/ui/style.css', import.meta.url), 'utf8');
   assert.match(css, /\.view_list,\.slot_group \{ display:grid; gap:\.18rem; \}/);
   assert.match(css, /\.inventory_scroll \{ display:grid; align-content:start; gap:\.18rem; \}/);
+});
+test('fills unused inventory capacity with empty plus slots', async () => {
+  const game = await readFile(new URL('../src/game/Game.tsx', import.meta.url), 'utf8');
+  assert.match(game, /const emptySlots = Math\.max\(0, campaign\.player\.inventoryCapacity - campaign\.player\.inventory\.length\)/);
+  assert.match(game, /Array\.from\(\{ length: emptySlots \}/);
+  assert.match(game, /data-drop-inventory-slot/);
+  assert.match(game, /drag\?\.destination\?\.kind === "inventory" && drag\.destination\.index === index/);
+  assert.doesNotMatch(game, /data-drop-inventory>/);
 });
 test('uses the shared card inset for log, equipment, and inventory scrollbars', async () => {
   const css = await readFile(new URL('../src/ui/style.css', import.meta.url), 'utf8');
@@ -147,11 +161,16 @@ test('uses the shared card inset for log, equipment, and inventory scrollbars', 
 test('renders transient item drag feedback without intercepting drops', async () => {
   const [game, css] = await Promise.all(['src/game/Game.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
   assert.match(game, /describeInventoryDrop/); assert.match(game, /setDragPresentation\(\{ source: current\.source/);
-  assert.match(game, /function ItemDragPreview/); assert.match(game, /<SlotItem type=\{drag\.source\.kind === "slot" \? "equipment" : "inventory"\}/); assert.match(game, /<SlotItem type="ability" number=\{drag\.source\.index\}/); assert.match(game, /drag_departure/); assert.match(game, /drag_landing/);
+  assert.match(game, /function ItemDragPreview/); assert.match(game, /drag\.source\.kind === "slot" \? "equipment" : drag\.source\.kind === "quick-slot" \? "quick" : "inventory"/); assert.match(game, /<SlotItem type="ability" number=\{drag\.source\.index\}/); assert.match(game, /drag_departure/); assert.match(game, /drag_landing/);
   assert.match(game, /Math\.hypot\(event\.clientX - current\.startX, event\.clientY - current\.startY\) < 6/);
   assert.match(game, /cancelPointerDrag = useCallback\(\(\) => \{ pointerDragRef\.current = null; setPreview\(null\); setDragPresentation\(null\); \}/);
   assert.match(game, /window\.addEventListener\("pointercancel", pointerCancel\)/);
   assert.match(css, /\.item_drag_preview\{[^}]*pointer-events:none/); assert.match(css, /\.item_drag_preview\{[^}]*width:min\(11rem/); assert.match(css, /\.drag_departure/); assert.match(css, /\.drag_landing/);
+});
+test('dims keyboard inputs while their ability or quick slot is being dragged', async () => {
+  const [game, css] = await Promise.all(['src/game/Game.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
+  assert.match(game, /drag\?\.source\.kind === "ability"/); assert.match(game, /drag\?\.source\.kind === "quick-slot"/); assert.match(game, /<StatusBar[^>]*drag=\{dragPresentation\}/);
+  assert.match(css, /\.input-key--unavailable \{ --input-key-color:var\(--slot-disabled-color\)/);
 });
 
 test('renders the Stealth stat and level-up chooser from game-rule state', async () => {

@@ -38,7 +38,8 @@ and keyboard-control-tray spec for the user-facing contract.
 2. **Use an explicit shortcut model for both render modes.** A small ordered
    data structure will define the four expanded rows and their key labels. The
    collapsed summary can use its own exact presentation data, while a shared
-   `InputKey` component renders every keycap without pointer activation.
+   `InputKey` component renders every keycap without pointer activation and
+   provides its hover description.
 
 3. **Keep action input on the physical keyboard.** Movement and ability keys
    continue through the existing keyboard handlers. The not-yet-defined quick
@@ -52,8 +53,9 @@ and keyboard-control-tray spec for the user-facing contract.
    users should receive an immediate equivalent state.
 
 5. **Verify browser-visible behavior with one focused Playwright check.** The
-  check will assert both render states, tab toggling, exact labels, non-clickable
-  keycaps, and the transition duration/style. Broader browser coverage is
+  check will assert both render states, tab toggling, the centered `Input`
+  heading, hover descriptions, non-clickable keycaps, and the transition
+  duration/style. Broader browser coverage is
    reserved for finalization.
 
 ## Risks / Trade-offs

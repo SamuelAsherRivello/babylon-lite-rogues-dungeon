@@ -66,6 +66,12 @@ testing. Human players may enable sound in the normal experience.
 
 ## React code and styles
 
+### Browser access for AI agents
+
+AI agents can access and test the local browser experience through Microsoft
+Edge. Use the Playwright CLI with the Edge browser explicitly for browser
+verification.
+
 - Do not leave dead code or dead styles. Remove unused React components,
   imports, variables, CSS selectors, and custom properties when they are no
   longer used.
@@ -78,6 +84,22 @@ testing. Human players may enable sound in the normal experience.
   during fullscreen. Gutters are not visible in fullscreen, so custom gutter UI
   may be added only as secondary UI. Keep all primary UI in React and within
   the viewport.
+
+### Tab control attachment alignment
+
+Use the shared tab control attachment geometry as a visual reference for future
+UI work:
+
+- The vertical tab attached to the status bar uses the tab's centered bottom
+  edge as its pivot. That edge meets the status bar's top border.
+- Tabs attached horizontally to the Abilities or Minimap cards rotate `-90deg`
+  and place the pivot on the card's visible left border. Account for the
+  `.35rem` inset from the information panel padding when aligning the pivot.
+- Preserve the one-color status-bar treatment: `var(--border-color)` for the
+  visible top/side outline and `var(--surface-color)` for the tab fill.
+
+Treat the status-bar tab and the Abilities tab as the canonical vertical and
+horizontal alignment examples when adding or repositioning tab controls.
 
 ## HTML template corner roles
 

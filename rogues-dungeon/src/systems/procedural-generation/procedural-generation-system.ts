@@ -1,4 +1,4 @@
-import type { Action, ActionResult, Attributes, AttributeName, Campaign, Direction, Enemy, Entity, Equipment, EquipmentGroup, EventFacts, Floor, GameEvent, Item, Position, Resource, ResourceInput, ResourceName, Resources, Room } from "../../game/types.ts";
+import type { Action, ActionResult, Attributes, AttributeName, Campaign, ConsumableResource, Direction, Enemy, Entity, Equipment, EquipmentGroup, EventFacts, Floor, GameEvent, Item, Position, QuickSlot, Resource, ResourceInput, ResourceName, Resources, Room } from "../../game/types.ts";
 import { createLevelContext, ensureSemanticCells, isWalkable, runLevelPasses } from "./level-grid.ts";
 
 export const FLOOR_WIDTH = 100;
@@ -19,7 +19,7 @@ const ATTACK_STAMINA_COST = GAME_TUNING.attackStaminaCost;
 
 export const directions = Object.freeze<Record<Direction, [number, number]>>({ n: [0, -1], s: [0, 1], w: [-1, 0], e: [1, 0] });
 export const resourceNames: readonly ResourceName[] = Object.freeze(["health", "stamina", "offense", "defense", "mana", "xp"]);
-export const EVENT_TYPES = Object.freeze(["action.committed", "action.rejected", "time.advanced", "player.moved", "player.sneak.changed", "combat.hit", "enemy.defeated", "resource.changed", "item.collected", "item.collection.rejected", "potion.consumed", "chest.opened", "equipment.changed", "ability.used", "ability.assignment.changed", "xp.gained", "xp.level.changed", "progression.upgrade.offered", "progression.upgrade.chosen", "realm.entered", "player.died", "campaign.save.succeeded", "campaign.save.failed"]);
+export const EVENT_TYPES = Object.freeze(["action.committed", "action.rejected", "time.advanced", "player.moved", "player.sneak.changed", "combat.hit", "enemy.defeated", "resource.changed", "item.collected", "item.collection.rejected", "potion.consumed", "quick-slot.changed", "quick-slot.use.rejected", "chest.opened", "equipment.changed", "ability.used", "ability.assignment.changed", "xp.gained", "xp.level.changed", "progression.upgrade.offered", "progression.upgrade.chosen", "realm.entered", "player.died", "campaign.save.succeeded", "campaign.save.failed"]);
 export const progressionStatNames: readonly AttributeName[] = Object.freeze(["vitality", "strength", "luck", "recovery", "stealth"]);
 export const attributeLabels = Object.freeze({ health: "Health", stamina: "Stamina", offense: "Offense", defense: "Defense", mana: "Mana", vitality: "Vitality", strength: "Strength", luck: "Luck", recovery: "Recovery", stealth: "Stealth" });
 export const statLabels = attributeLabels;
@@ -33,11 +33,38 @@ export const itemCatalog: readonly Omit<Item, "id">[] = Object.freeze([
   { name: "Oak Shield 03", group: "weapons", modifiers: { defense: 3 } },
   { name: "Wooden Stick", group: "weapons", modifiers: { offense: 8 } },
 ]);
+export const consumableCatalog = Object.freeze({
+  health: Object.freeze({ name: "Health Potion", resource: "health" as const }),
+  mana: Object.freeze({ name: "Mana Potion", resource: "mana" as const }),
+});
+export function isQuickSlottableItem(item: Item | null | undefined): item is Item & { category: "consumable"; consumableResource: ConsumableResource } {
+  return item?.category === "consumable" && (item.consumableResource === "health" || item.consumableResource === "mana");
+}
+function consumableInstance(resource: ConsumableResource, id: string): Item { return { id, name: consumableCatalog[resource].name, group: "weapons", modifiers: {}, category: "consumable", consumableResource: resource }; }
+
+function ensureStarterConsumables(campaign: Campaign) {
+  if (campaign.starterConsumablesSeeded) return campaign;
+  const inventory = campaign.player.inventory;
+  if (!inventory.some((item) => item.category === "consumable" && item.consumableResource === "health")) inventory.push(consumableInstance("health", "starter-health-potion"));
+  let manaPotions = inventory.filter((item) => item.category === "consumable" && item.consumableResource === "mana").length;
+  while (manaPotions < 2 && inventory.length < campaign.player.inventoryCapacity) { inventory.push(consumableInstance("mana", `starter-mana-potion-${manaPotions + 1}`)); manaPotions++; }
+  campaign.starterConsumablesSeeded = true;
+  return campaign;
+}
 
 function rng(seed: number) { let value = seed >>> 0; return () => { value = (value * 1664525 + 1013904223) >>> 0; return value / 4294967296; }; }
 function seedNow() { return Math.floor(Math.random() * 0xffffffff) >>> 0; }
 function blankMap(width = FLOOR_WIDTH, height = FLOOR_HEIGHT) { return Array.from({ length: height }, () => Array.from({ length: width }, () => 1)); }
 function itemInstance(item: Omit<Item, "id">, id: string): Item { return { id, ...item, modifiers: { ...item.modifiers } }; }
+export function normalizeQuickSlots(campaign: Campaign) {
+  const input = Array.isArray(campaign.player.quickSlots) ? campaign.player.quickSlots : [];
+  campaign.player.quickSlots = [0, 1].map((index) => {
+    const value = input[index];
+    if (!value || !isQuickSlottableItem(value.item) || !Number.isInteger(value.quantity) || value.quantity < 1) return null;
+    return { item: structuredClone(value.item), quantity: value.quantity } as QuickSlot;
+  }) as [QuickSlot | null, QuickSlot | null];
+  return campaign;
+}
 function entityAt(entities: Entity[], x: number, y: number) { return entities.find((entity) => entity.x === x && entity.y === y); }
 function emit(events: GameEvent[], type: string, facts: EventFacts, state: Campaign, source = type.split(".")[0]) { events.push({ type, facts, source, gameTime: state.floor.time, sequence: events.length + 1 }); }
 function carveRoom(map: number[][], room: Room) { for (let y = room.y; y < room.y + room.h; y++) for (let x = room.x; x < room.x + room.w; x++) map[y][x] = 0; }
@@ -125,6 +152,8 @@ function enemyResources(enemy: Pick<Enemy, "hp" | "maxHp" | "damage" | "xp"> & {
 
 export function upgradeCampaignResources(campaign: Campaign) {
   ensureSemanticCells(campaign.floor);
+  ensureStarterConsumables(campaign);
+  normalizeQuickSlots(campaign);
   campaign.player.resources = playerResourcesFromCampaign(campaign);
   const level = campaign.floor.level ?? campaign.floor.depth ?? 1;
   for (const entity of campaign.floor.entities ?? []) if (entity.kind === "enemy") {
@@ -204,7 +233,7 @@ export function resourceState(campaign: Campaign) {
 
 export function createCampaign(seed = seedNow(), difficulty = 1, level = 1): Campaign {
   const floor = generateFloor(level, seed, difficulty); const attributes = { health: GAME_TUNING.startingHealth, stamina: GAME_TUNING.startingStamina, offense: 0, defense: GAME_TUNING.innateDefense, mana: GAME_TUNING.startingMana, vitality: 0, strength: 0, luck: 0, recovery: 0, stealth: 0 };
-  const campaign: Campaign = { version: 3, world: "One", realm: `Underground ${floor.level}`, floor, progression: { attributes, level: 1, xp: 0, nextXp: GAME_TUNING.xpThreshold, totalKills: 0, difficulty, pendingUpgrades: [] }, player: { x: floor.start.x, y: floor.start.y, resources: createResourcesModel(), equipment: { weapons: [itemInstance(itemCatalog[3], "starter-stick"), null], armor: [null, null] }, inventory: [], inventoryCapacity: ITEM_CAPACITY, abilities: ["heal", "wand", null], sneaking: false }, counters: { keys: 1, gold: 55 }, objective: "Find the exit", log: [] };
+  const campaign: Campaign = { version: 3, world: "One", realm: `Underground ${floor.level}`, floor, progression: { attributes, level: 1, xp: 0, nextXp: GAME_TUNING.xpThreshold, totalKills: 0, difficulty, pendingUpgrades: [] }, player: { x: floor.start.x, y: floor.start.y, resources: createResourcesModel(), equipment: { weapons: [itemInstance(itemCatalog[3], "starter-stick"), null], armor: [null, null] }, inventory: [consumableInstance("health", "starter-health-potion"), consumableInstance("mana", "starter-mana-potion-1"), consumableInstance("mana", "starter-mana-potion-2")], inventoryCapacity: ITEM_CAPACITY, abilities: ["heal", "wand", null], quickSlots: [null, null], sneaking: false }, starterConsumablesSeeded: true, counters: { keys: 1, gold: 55 }, objective: "Find the exit", log: [] };
   campaign.player.resources = playerResourcesFromCampaign(campaign, { health: GAME_TUNING.startingHealth, stamina: GAME_TUNING.startingStamina, mana: GAME_TUNING.startingMana });
   return campaign;
 }
@@ -251,7 +280,7 @@ function orderedInventory(inventory: Item[]) { return [...inventory].sort((a, b)
 function attack(state: Campaign, events: GameEvent[], enemy: Enemy) { const offense = Math.max(1, integerDamage(resourceState(state).offense.current)); const health = enemy.resources.health; const before = health.current; health.current = Math.max(0, health.current - offense); enemy.hp = health.current; emit(events, "combat.hit", { target: enemy.name, targetId: enemy.id, targetPosition: { x: enemy.x, y: enemy.y }, damage: offense, previousHealth: before, currentHealth: health.current }, state); changeResource(state, events, "stamina", state.player.resources.stamina.current - ATTACK_STAMINA_COST, "attack"); gainXp(state, events, GAME_TUNING.xpPerAttack, "attack"); if (health.current <= 0) { state.floor.entities = state.floor.entities.filter((entry) => entry.id !== enemy.id); state.progression.totalKills++; gainXp(state, events, enemy.resources.xp.current, "kill"); emit(events, "enemy.defeated", { name: enemy.name, xp: enemy.resources.xp.current }, state); } }
 
 export function applyAction(campaign: Campaign, action: Action): ActionResult {
-  const state = upgradeCampaignResources(structuredClone(campaign)); const events: GameEvent[] = []; const reject = (reason: string): ActionResult => ({ state: campaign, events: [{ type: "action.rejected", facts: { reason }, gameTime: campaign.floor.time, sequence: 1 }], accepted: false, ticks: 0 });
+  const state = upgradeCampaignResources(structuredClone(campaign)); const events: GameEvent[] = []; const reject = (reason: string, facts: EventFacts = {}, type = "action.rejected"): ActionResult => ({ state: campaign, events: [{ type, facts: { reason, ...facts }, gameTime: campaign.floor.time, sequence: 1 }], accepted: false, ticks: 0 });
   const pendingUpgrade = state.progression.pendingUpgrades?.[0];
   if (pendingUpgrade && action.type !== "choose-upgrade") return reject("level-up-pending");
   if (action.type === "choose-upgrade") {
@@ -279,8 +308,51 @@ export function applyAction(campaign: Campaign, action: Action): ActionResult {
   }
   if (action.type === "ability") { if (!Number.isInteger(action.index) || action.index < 0 || action.index >= 3) return reject("invalid-ability-slot"); const abilityId = state.player.abilities[action.index]; const ability = abilityId ? abilityCatalog[abilityId] : null; if (!ability) return reject("empty-ability"); if (state.player.resources.mana.current < ability.manaCost) return reject("insufficient-mana"); const enemy = ability.kind === "wand" ? [...state.floor.entities.filter((entry): entry is Enemy => entry.kind === "enemy" && Math.abs(entry.x - state.player.x) + Math.abs(entry.y - state.player.y) <= ability.range)].sort((a, b) => Math.abs(a.x - state.player.x) + Math.abs(a.y - state.player.y) - Math.abs(b.x - state.player.x) - Math.abs(b.y - state.player.y) || a.id.localeCompare(b.id))[0] : null; if (ability.kind === "wand" && !enemy) return reject("no-valid-target"); changeResource(state, events, "mana", state.player.resources.mana.current - ability.manaCost, "ability"); if (ability.kind === "heal") changeResource(state, events, "health", state.player.resources.health.current + ability.amount, "heal"); else { const target = enemy!; const health = target.resources.health; const damage = integerDamage(ability.damage); const previousHealth = health.current; health.current = Math.max(0, health.current - damage); target.hp = health.current; emit(events, "combat.hit", { target: target.name, targetId: target.id, targetPosition: { x: target.x, y: target.y }, damage, previousHealth, currentHealth: health.current, source: ability.id }, state); if (health.current <= 0) { state.floor.entities = state.floor.entities.filter((entry) => entry.id !== target.id); gainXp(state, events, target.resources.xp.current, "kill"); emit(events, "enemy.defeated", { name: target.name, xp: target.resources.xp.current }, state); } } emit(events, "ability.used", { id: ability.id, title: ability.title, manaCost: ability.manaCost, target: ability.target }, state); tick(state, events); return { state, events, accepted: true, ticks: 1 }; }
   if (action.type === "assign-ability") { const { from, to } = action; if (![from, to].every((index) => Number.isInteger(index) && index >= 0 && index < 3) || from === to) return reject("invalid-ability-slot"); [state.player.abilities[from], state.player.abilities[to]] = [state.player.abilities[to], state.player.abilities[from]]; emit(events, "ability.assignment.changed", { from, to }, state); tick(state, events); return { state, events, accepted: true, ticks: 1 }; }
+  if (action.type === "assign-quick-slot") {
+    const { index } = action; const slots = state.player.quickSlots!;
+    if (!Number.isInteger(index) || index < 0 || index > 1) return reject("invalid-quick-slot");
+    const itemIndex = state.player.inventory.findIndex((item) => item.id === action.itemId); const item = state.player.inventory[itemIndex];
+    if (!item || !isQuickSlottableItem(item)) return reject("incompatible-quick-slot-item");
+    const existing = slots[index];
+    if (existing && existing.item.consumableResource !== item.consumableResource) return reject("different-quick-slot-item");
+    state.player.inventory.splice(itemIndex, 1);
+    slots[index] = existing ? { item: existing.item, quantity: existing.quantity + 1 } : { item, quantity: 1 };
+    emit(events, "quick-slot.changed", { action: existing ? "combined" : "assigned", itemId: item.id, item: item.name, source: "inventory", destination: { quickSlot: index }, quickSlot: index, quantity: slots[index]!.quantity }, state);
+    tick(state, events); return { state, events, accepted: true, ticks: 1 };
+  }
+  if (action.type === "move-quick-slot") {
+    const { from, to } = action; const slots = state.player.quickSlots!;
+    if (![from, to].every((index) => Number.isInteger(index) && index >= 0 && index < 2) || from === to) return reject("invalid-quick-slot");
+    const source = slots[from]; const target = slots[to];
+    if (!source) return reject("empty-quick-slot");
+    if (target && target.item.consumableResource !== source.item.consumableResource) return reject("different-quick-slot-item");
+    slots[to] = target ? { item: target.item, quantity: target.quantity + source.quantity } : source;
+    slots[from] = null;
+    emit(events, "quick-slot.changed", { action: target ? "combined" : "moved", itemId: source.item.id, item: source.item.name, source: { quickSlot: from }, destination: { quickSlot: to }, quickSlot: to, quantity: slots[to]!.quantity }, state);
+    tick(state, events); return { state, events, accepted: true, ticks: 1 };
+  }
+  if (action.type === "return-quick-slot") {
+    const { index } = action; const slots = state.player.quickSlots!; const slot = slots[index];
+    if (!Number.isInteger(index) || index < 0 || index > 1 || !slot) return reject("empty-quick-slot");
+    if (state.player.inventory.length + slot.quantity > state.player.inventoryCapacity) return reject("inventory-full");
+    const returned = Array.from({ length: slot.quantity }, (_, copy) => ({ ...structuredClone(slot.item), id: copy === 0 ? slot.item.id : `${slot.item.id}-returned-${state.floor.time}-${copy}` }));
+    state.player.inventory = orderedInventory([...state.player.inventory, ...returned]); slots[index] = null;
+    emit(events, "quick-slot.changed", { action: "returned", itemId: slot.item.id, item: slot.item.name, source: { quickSlot: index }, destination: "inventory", quickSlot: index, quantity: slot.quantity }, state);
+    tick(state, events); return { state, events, accepted: true, ticks: 1 };
+  }
+  if (action.type === "use-quick-slot") {
+    const { index } = action; const slot = state.player.quickSlots![index];
+    if (!Number.isInteger(index) || index < 0 || index > 1 || !slot) return { state: campaign, events: [], accepted: false, ticks: 0 };
+    const resource = slot.item.consumableResource!; const maximum = effectiveAttributes(state)[resource]; const current = state.player.resources[resource].current;
+    if (current >= maximum) return reject("resource-full", { itemId: slot.item.id, item: slot.item.name, resource, current, currentMax: maximum, quickSlot: index }, "quick-slot.use.rejected");
+    const previous = current; const restored = resource === "health" ? GAME_TUNING.healthPotionRestore : GAME_TUNING.manaPotionRestore;
+    changeResource(state, events, resource, current + restored, "quick-slot");
+    slot.quantity -= 1; if (slot.quantity <= 0) state.player.quickSlots![index] = null;
+    emit(events, "potion.consumed", { itemId: slot.item.id, item: slot.item.name, resource, previous, current: state.player.resources[resource].current, quickSlot: index, quantity: Math.max(0, slot.quantity) }, state);
+    tick(state, events); return { state, events, accepted: true, ticks: 1 };
+  }
   if (action.type === "equip" || action.type === "unequip" || action.type === "reorder-equipment") { const { group, index } = action; if (!state.player.equipment[group] || !Number.isInteger(index) || index < 0 || index > 1) return reject("invalid-slot"); const previousCaps = effectiveAttributes(state);
-    if (action.type === "equip") { const itemIndex = state.player.inventory.findIndex((item) => item.id === action.itemId); const item = state.player.inventory[itemIndex]; if (!item || item.group !== group || state.player.equipment[group][index]) return reject("invalid-equipment-drop"); state.player.inventory.splice(itemIndex, 1); state.player.equipment[group][index] = item; emit(events, "equipment.changed", { action: "enabled", itemId: item.id, item: item.name, source: "inventory", destination: { group, index }, group, index }, state); }
+    if (action.type === "equip") { const itemIndex = state.player.inventory.findIndex((item) => item.id === action.itemId); const item = state.player.inventory[itemIndex]; if (!item || item.category === "consumable" || item.group !== group || state.player.equipment[group][index]) return reject("invalid-equipment-drop"); state.player.inventory.splice(itemIndex, 1); state.player.equipment[group][index] = item; emit(events, "equipment.changed", { action: "enabled", itemId: item.id, item: item.name, source: "inventory", destination: { group, index }, group, index }, state); }
     else if (action.type === "unequip") { const item = state.player.equipment[group][index]; if (!item || state.player.inventory.length >= state.player.inventoryCapacity) return reject("cannot-unequip"); state.player.equipment[group][index] = null; state.player.inventory = orderedInventory([...state.player.inventory, item]); emit(events, "equipment.changed", { action: "returned to inventory", itemId: item.id, item: item.name, source: { group, index }, destination: "inventory", group, index }, state); }
     else { const other = action.other; if (!Number.isInteger(other) || other < 0 || other > 1 || other === index) return reject("invalid-equipment-slot"); [state.player.equipment[group][index], state.player.equipment[group][other]] = [state.player.equipment[group][other], state.player.equipment[group][index]]; emit(events, "equipment.changed", { action: "reordered", group, index, other, source: { group, index }, destination: { group, index: other } }, state); }
     normalizeResources(state, events, "equipment", previousCaps); tick(state, events); return { state, events, accepted: true, ticks: 1 };

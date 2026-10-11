@@ -11,6 +11,16 @@ test("@smoke opens the muted saved-game entry screen", async ({ page }) => {
   await expect(page.getByRole("button", { name: /Saved Game [1-3]/ })).toHaveCount(3);
 });
 
+test("@smoke opens the named manual tile scenario and exports its editable map", async ({ page }) => {
+  await page.goto("/babylon-lite-rogues-dungeon/?world=1&level=1&slot=1&seed=13579&mute=1&debug-fix-map-autotiled=1&scenario=corridor-joins");
+  await expect(page.getByRole("button", { name: "Open Editable Copy" })).toBeVisible();
+  await page.keyboard.press("ArrowRight");
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("rogues-dungeon.slot.1")!).floor.scenario)).toBe("corridor-joins");
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Open Editable Copy" }).click();
+  expect((await download).suggestedFilename()).toMatch(/rogues-dungeon-world-One-level-1-seed-13579\.zip/);
+});
+
 test("@smoke Tab never changes focus in the menu, game, or settings", async ({ page }) => {
   await page.goto("/babylon-lite-rogues-dungeon/?mute=1");
   const assertTabDoesNothing = async () => {
@@ -49,23 +59,25 @@ test("@smoke expands the keyboard tray and logs temporary controls", async ({ pa
   page.on("console", (message) => { if (message.text().includes("[keyboard-controls] Q pressed")) temporaryPresses.push(message.text()); });
   await page.goto("/babylon-lite-rogues-dungeon/?mute=1");
   await page.getByRole("button", { name: /Saved Game 1/ }).click();
-  await expect(page.locator(".keyboard_tray")).toBeVisible();
+  await expect(page.locator(".controls-area")).toBeVisible();
   await expect(page.locator(".keyboard_tray_panel")).toHaveAttribute("aria-hidden", "true");
   await expect(page.locator(".keyboard_tray_panel")).toHaveCSS("opacity", "0");
   await expect(page.locator(".keyboard_collapsed_summary")).toContainText("Move");
   const regionBox = (await page.locator(".keyboard_controls_region").boundingBox())!;
-  const collapsedTab = page.locator(".keyboard_tray_tab");
+  const collapsedTab = page.locator(".tab-control");
   const collapsedTabBox = (await collapsedTab.boundingBox())!;
   expect(Math.abs((collapsedTabBox.x + collapsedTabBox.width / 2) - (regionBox.x + regionBox.width / 2))).toBeLessThan(2);
-  expect(Math.abs((collapsedTabBox.y + collapsedTabBox.height) - (regionBox.y + regionBox.height))).toBeLessThan(2);
+  expect(Math.abs((collapsedTabBox.y + collapsedTabBox.height) - regionBox.y)).toBeLessThan(2);
   expect(collapsedTabBox.width).toBeLessThan(70);
   const collapsedKeyBox = (await page.locator(".keyboard_collapsed_controls .input-key").first().boundingBox())!;
   await collapsedTab.click();
   await page.waitForTimeout(300);
   await expect(page.locator(".keyboard_tray_panel")).toHaveAttribute("aria-hidden", "false");
-  const expandedTab = page.locator(".keyboard_tray_tab");
+  const expandedTab = page.locator(".tab-control");
   const expandedTabBox = (await expandedTab.boundingBox())!;
-  expect(expandedTabBox.height).toBeLessThan(collapsedTabBox.height - 10);
+  const expandedPanelBox = (await page.locator(".keyboard_tray_panel").boundingBox())!;
+  expect(Math.abs(expandedTabBox.height - collapsedTabBox.height)).toBeLessThan(1);
+  expect(Math.abs((expandedTabBox.y + expandedTabBox.height) - expandedPanelBox.y)).toBeLessThan(2);
   await expect(page.locator(".input-key")).toHaveCount(24);
   await expect(page.locator(".keyboard_tray_key")).toHaveCount(12);
   await expect(page.locator(".keyboard_collapsed_controls .input-key").first()).toHaveAttribute("data-input-mode", "display");
@@ -92,7 +104,7 @@ test("@smoke expands the keyboard tray and logs temporary controls", async ({ pa
   await expect(page.locator(".keyboard_tray_title")).toHaveText("Use Quickslot 1");
   await page.locator(".keyboard_tray_key", { hasText: "W" }).hover({ force: true });
   await expect(page.locator(".keyboard_tray_title")).toHaveText("Move Up");
-  await expect(page.locator(".keyboard_tray_surface")).toHaveCSS("transition-duration", "0.25s");
+  await expect(page.locator(".controls-area_surface")).toHaveCSS("transition-duration", "0.25s");
   await expect(page.locator(".keyboard_tray_panel")).toHaveCSS("transition-duration", "0.25s");
   await page.locator(".keyboard_tray_key", { hasText: "Q" }).click({ force: true });
   expect(temporaryPresses).toHaveLength(0);
@@ -104,6 +116,10 @@ test("@smoke expands the keyboard tray and logs temporary controls", async ({ pa
   await collapsedTab.click();
   await expect(page.locator(".keyboard_tray_panel")).toHaveAttribute("aria-hidden", "false");
   await page.locator(".keyboard_tray_title").click();
+  await expect(page.locator(".keyboard_tray_panel")).toHaveAttribute("aria-hidden", "true");
+  await page.locator(".keyboard_collapsed_controls .input-key").filter({ hasText: "Z" }).click({ force: true });
+  await expect(page.locator(".keyboard_tray_panel")).toHaveAttribute("aria-hidden", "false");
+  await page.locator(".keyboard_tray_key").filter({ hasText: "Z" }).click({ force: true });
   await expect(page.locator(".keyboard_tray_panel")).toHaveAttribute("aria-hidden", "true");
   await page.keyboard.press("z");
   await expect(page.locator(".keyboard_tray_panel")).toHaveAttribute("aria-hidden", "false");
@@ -127,7 +143,7 @@ test("@smoke exposes only ability positions 1–3 and ignores key 4", async ({ p
   await page.getByRole("button", { name: /Saved Game 1/ }).click();
   const abilityRows = page.locator(".desktop_info .primary .slot_item--ability");
   await expect(abilityRows).toHaveCount(3);
-  await expect(abilityRows).toHaveText([/\[01\]/, /\[02\]/, /\[03\]/]);
+  await expect(abilityRows).toHaveText([/\[1\]/, /\[2\]/, /\[3\]/]);
   await expect(page.locator(".desktop_info .primary")).not.toContainText("[04]");
   const before = await page.evaluate(() => JSON.parse(localStorage.getItem("rogues-dungeon.slot.1")!).floor.time);
   await page.keyboard.press("4");
