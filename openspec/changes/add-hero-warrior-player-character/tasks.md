@@ -2,10 +2,10 @@
 
 ## 1. Generic animation-system contract
 
-- [ ] 1.1 Add the reusable animation entity contract for animation registration, listing, selection, start/stop state, current frame, completion, and disposal; verify the expected module exports are present.
-- [ ] 1.2 Normalize both grid-based sprite-sheet descriptors and ordered individual image-frame lists into one validated frame sequence; verify tests reject missing sources, empty lists, inconsistent metadata, and unknown animation names.
-- [ ] 1.3 Implement frame timing and `loopCount` semantics where `-1` loops forever, `0` plays once, and positive values add that many repeats; verify focused tests cover completion, explicit stop, and frame progression.
-- [ ] 1.4 Document the generic system's entity ownership and controls for character and non-character image animations; verify the documentation matches the exported behavior.
+- [x] 1.1 Add the reusable animation entity contract for animation registration, listing, selection, start/stop state, current frame, completion, and disposal; verify the expected module exports are present.
+- [x] 1.2 Normalize both grid-based sprite-sheet descriptors and ordered individual image-frame lists into one validated frame sequence; verify tests reject missing sources, empty lists, inconsistent metadata, and unknown animation names.
+- [x] 1.3 Implement frame timing and `loopCount` semantics where `-1` loops forever, `0` plays once, and positive values add that many repeats; verify focused tests cover completion, explicit stop, and frame progression.
+- [x] 1.4 Document the generic system's entity ownership and controls for character and non-character image animations; verify the documentation matches the exported behavior.
 
 ## 2. Hero Warrior catalog and integration
 

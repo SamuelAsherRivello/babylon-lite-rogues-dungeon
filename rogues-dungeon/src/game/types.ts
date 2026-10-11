@@ -21,6 +21,7 @@ export interface Enemy extends Position {
 }
 export type Entity = Enemy
   | (Position & { id: string; kind: "potion"; resource: "health" | "mana"; name?: string })
+  | (Position & { id: string; kind: "key" | "gold"; amount?: number; name?: string })
   | (Position & { id: string; kind: "stairs" | "discovery"; name?: string })
   | (Position & { id: string; kind: "chest"; opened?: boolean })
   | (Position & { id: string; kind: "item"; item: Item });

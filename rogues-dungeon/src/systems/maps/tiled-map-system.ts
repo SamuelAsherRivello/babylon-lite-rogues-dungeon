@@ -31,7 +31,7 @@ export function serializeFloorToTiled({ campaign, generatorVersion = GENERATOR_V
   const grounds = floor.cells.flatMap((row) => row.map((cell) => cell.walkable ? DUNGEON_TILESET_GROUND_GID : 0));
   const walls = floor.cells.flatMap((row, y) => row.map((cell, x) => !cell.walkable ? (wallByCell.get(`${x},${y}`) ?? 0) : 0));
   const toObject = (entity: Entity, index: number) => ({ id: index + 1, name: entity.id ?? `${entity.kind}-${index}`, type: entity.kind, x: entity.x * TILED_TILE_SIZE, y: entity.y * TILED_TILE_SIZE, width: TILED_TILE_SIZE, height: TILED_TILE_SIZE, properties: propertiesArray({ ...entity, x: undefined, y: undefined, id: undefined, kind: undefined }) });
-  const pickups = (floor.entities ?? []).filter((entity) => ["item", "potion", "chest", "discovery"].includes(entity.kind));
+  const pickups = (floor.entities ?? []).filter((entity) => ["item", "potion", "key", "gold", "chest", "discovery"].includes(entity.kind));
   const decorations = (floor.entities ?? []).filter((entity) => !pickups.includes(entity));
   const markers = [
     { id: 10001, name: "player", type: "player", x: campaign.player.x * TILED_TILE_SIZE, y: campaign.player.y * TILED_TILE_SIZE, width: TILED_TILE_SIZE, height: TILED_TILE_SIZE },

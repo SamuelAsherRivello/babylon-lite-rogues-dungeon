@@ -11,8 +11,10 @@ interface DragPresentation { source: PointerSource; item: PointerSource["item"];
 interface PointerDrag { pointerId: number; source: PointerSource; startX: number; startY: number; active: boolean }
 interface Movement { direction: string; sprint: boolean; source?: string }
 interface SlotItemProps { type?: string; slotType?: "ability" | "quickslot" | "equipment" | "inventory"; slotSubtype?: EquipmentGroup; number?: number; hotkey?: string; text?: string; icon?: string; cost?: string | number; accentColor?: string; disabled?: boolean; onClick?: () => void; onDoubleClick?: () => void; className?: string; dragSource?: Record<string, string | number>; dropTarget?: Record<string, string | number | boolean>; empty?: boolean; tooltip?: string }
+interface InventoryStack { item: Item; quantity: number }
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
-import { abilityCatalog, attributeLabels, createCampaign, createGameSession, effectiveAttributes, isQuickSlottableItem, resourceState } from "../systems/procedural-generation/procedural-generation-system.ts";
+import { abilityCatalog, attributeLabels, createCampaign, createGameSession, directions, effectiveAttributes, isQuickSlottableItem, resourceState } from "../systems/procedural-generation/procedural-generation-system.ts";
+import { isWalkable } from "../systems/procedural-generation/level-grid.ts";
 import { describeInventoryDrop } from "./inventory-drag.ts";
 import { gameZoomPresets } from "../content/world/zoom.ts";
 import { projectLogEvents } from "./log-policy.ts";
@@ -63,11 +65,24 @@ export function AbilityViewItemList({ campaign, dispatch }: WithDispatch) { cons
 function modifierSummary(item: Item | null) { return Object.entries(item?.modifiers ?? {}).map(([name, value]) => `${attributeLabels[name as AttributeName] ?? name} ${value >= 0 ? "+" : ""}${value}`).join(", "); }
 function equipmentSlotHelp(item: Item | null) { const effect = modifierSummary(item); return item ? `${effect || "No stat change"} · Double-click to replace.` : "Equipping changes your attributes."; }
 function inventoryItemHelp(item: Item) { const effect = modifierSummary(item); return effect ? `${effect} · Double-click to equip.` : "No stats · Double-click to equip."; }
+function stackInventoryItems(inventory: Item[]): InventoryStack[] {
+  const stacks: InventoryStack[] = [];
+  const indexes = new Map<string, number>();
+  for (const item of inventory) {
+    const key = isQuickSlottableItem(item) ? `quick:${item.consumableResource}` : null;
+    if (key && indexes.has(key)) stacks[indexes.get(key)!].quantity += 1;
+    else {
+      if (key) indexes.set(key, stacks.length);
+      stacks.push({ item, quantity: 1 });
+    }
+  }
+  return stacks;
+}
 function EquipmentItem({ item, group, index, drag }: { item: Item | null; group: EquipmentGroup; index: number; drag: DragPresentation | null }) { const departure = drag?.source.kind === "slot" && drag.source.group === group && drag.source.index === index; const landing = drag?.destination?.kind === "slot" && drag.destination.group === group && drag.destination.index === index; const presentation = itemPresentation(item); return <SlotItem slotType="equipment" slotSubtype={group} text={item?.name} icon={presentation.icon} cost={presentation.cost} className={["equipment_item", departure && "drag_departure", landing && "drag_landing"].filter(Boolean).join(" ")} dropTarget={{ "data-drop-group": group, "data-drop-index": index }} dragSource={item ? { "data-drag-kind": "slot", "data-drag-id": item.id, "data-drag-group": group, "data-drag-index": index, "aria-label": `Drag ${item.name}` } : {}} empty={!item} tooltip={equipmentSlotHelp(item)} />; }
 export function SlotList({ campaign, drag = null }: { campaign: Campaign; drag?: DragPresentation | null }) { return <div className="slot_scroll">{([["Weapons", "weapons"], ["Armor", "armor"]] as const).map(([label, group]) => <div className="slot_group" key={group}><h3>{label}</h3>{campaign.player.equipment[group].map((item, index) => <EquipmentItem key={index} item={item} group={group} index={index} drag={drag} />)}</div>)}</div>; }
 function QuickSlotItem({ slot, index, drag, dispatch }: { slot: QuickSlot | null; index: number; drag: DragPresentation | null; dispatch(action: Action): unknown }) { const actual = slot?.item && isQuickSlottableItem(slot.item) ? slot.item : null; const landing = drag?.destination?.kind === "quick-slot" && drag.destination.index === index; return <SlotItem type="quick" slotType="quickslot" hotkey={index === 0 ? "Q" : "E"} text={actual ? `${actual.name} x ${slot?.quantity ?? 0}` : ""} className={["quick_slot", landing && "drag_landing", drag?.source.kind === "quick-slot" && drag.source.index === index && "drag_departure"].filter(Boolean).join(" ")} dropTarget={{ "data-drop-quick-slot": index }} dragSource={actual ? { "data-drag-kind": "quick-slot", "data-drag-id": actual.id, "data-drag-index": index, "aria-label": `Drag ${actual.name}` } : {}} empty={!actual} onClick={() => dispatch({ type: "use-quick-slot", index })} tooltip={actual ? `${actual.name}; press ${index === 0 ? "Q" : "E"} to use.` : "Drag a Health Potion or Mana Potion here."} />; }
 export function QuickSlotsView({ campaign, dispatch, drag = null }: WithDispatch & { drag?: DragPresentation | null }) { const slots = campaign.player.quickSlots ?? [null, null]; return <div className="quick_slots_list">{slots.map((slot, index) => <QuickSlotItem key={index} slot={slot} index={index} drag={drag} dispatch={dispatch} />)}</div>; }
-export function InventoryViewItems({ campaign, dispatch, drag = null }: WithDispatch & { drag?: DragPresentation | null }) { const emptySlots = Math.max(0, campaign.player.inventoryCapacity - campaign.player.inventory.length); return <div className="inventory_scroll">{campaign.player.inventory.map((item) => { const departure = drag?.source.kind === "inventory" && drag.source.item.id === item.id; const presentation = itemPresentation(item); return <SlotItem key={item.id} type="inventory" slotType="inventory" text={item.name} icon={presentation.icon} cost={presentation.cost} className={["inventory_item", departure && "drag_departure"].filter(Boolean).join(" ")} onDoubleClick={() => item.category !== "consumable" && dispatch({ type: "equip", itemId: item.id, group: item.group, index: 0 })} dragSource={{ "data-drag-kind": "inventory", "data-drag-id": item.id, "aria-label": `Drag ${item.name}` }} tooltip={inventoryItemHelp(item)} />; })}{Array.from({ length: emptySlots }, (_, index) => <SlotItem key={`empty-inventory-${index}`} type="inventory" slotType="inventory" className={["inventory_item", drag?.destination?.kind === "inventory" && drag.destination.index === index && "drag_landing"].filter(Boolean).join(" ")} dropTarget={{ "data-drop-inventory-slot": index }} empty disabled tooltip="Empty inventory slot." />)}</div>; }
+export function InventoryViewItems({ campaign, dispatch, drag = null }: WithDispatch & { drag?: DragPresentation | null }) { const stacks = stackInventoryItems(campaign.player.inventory); const emptySlots = Math.max(0, campaign.player.inventoryCapacity - campaign.player.inventory.length); return <div className="inventory_scroll">{stacks.map(({ item, quantity }) => { const departure = drag?.source.kind === "inventory" && drag.source.item.id === item.id; const presentation = itemPresentation(item); return <SlotItem key={item.id} type="inventory" slotType="inventory" text={`${item.name}${quantity > 1 ? ` x ${quantity}` : ""}`} icon={presentation.icon} cost={presentation.cost} className={["inventory_item", departure && "drag_departure"].filter(Boolean).join(" ")} onDoubleClick={() => item.category !== "consumable" && dispatch({ type: "equip", itemId: item.id, group: item.group, index: 0 })} dragSource={{ "data-drag-kind": "inventory", "data-drag-id": item.id, "aria-label": `Drag ${item.name}${quantity > 1 ? ` stack of ${quantity}` : ""}` }} tooltip={inventoryItemHelp(item)} />; })}{Array.from({ length: emptySlots }, (_, index) => <SlotItem key={`empty-inventory-${index}`} type="inventory" slotType="inventory" className={["inventory_item", drag?.destination?.kind === "inventory" && drag.destination.index === index && "drag_landing"].filter(Boolean).join(" ")} dropTarget={{ "data-drop-inventory-slot": index }} empty disabled tooltip="Empty inventory slot." />)}</div>; }
 function SecondaryInfoPanel({ campaign, preview, gains, open }: { campaign: Campaign; preview: Attributes | null; gains: Gains; open: boolean }) { return <aside className="info_panel secondary" hidden={!open}><Card title="Minimap"><div className="minimap"><BabylonWorld campaign={campaign} zoom={0.18} minimap /></div></Card><Card title="Quest"><p className="quest_text">{campaign.objective}</p></Card><Card title="Resources"><ResourceList campaign={campaign} gains={gains} /></Card><Card title="Attributes"><AttributeViewItemList campaign={campaign} preview={preview} /></Card><Card title="Log" className="log_card"><ScrollArea className="log_scroll" autoScroll>{campaign.log.map((entry) => <p key={entry.id}>{entry.text}</p>)}</ScrollArea></Card></aside>; }
 function MapFixControls({ campaign, slot, onImport, error }: { campaign: Campaign; slot: string | null; onImport(file?: File): void; error: string }) {
   const exportMap = async () => {
@@ -134,8 +149,8 @@ const keyboardControlRows = Object.freeze([
 ]);
 const collapsedKeyboardGroups = Object.freeze([
   { label: "Move:", keys: ["W", "A", "S", "D"] },
-  { label: "Quick:", keys: ["A", "E"] },
   { label: "Abilities:", keys: ["1", "2", "3"] },
+  { label: "Quick:", keys: ["Q", "E"] },
   { label: "More:", keys: ["Z", "X", "C"] },
 ]);
 const keyboardKeyHelp: Readonly<Partial<Record<string, string>>> = Object.freeze({
@@ -153,22 +168,31 @@ const keyboardKeyHelp: Readonly<Partial<Record<string, string>>> = Object.freeze
   C: "Toggle Panels",
 });
 const keyboardKeyCategory: Readonly<Partial<Record<string, string>>> = Object.freeze({ 1: "abilities", 2: "abilities", 3: "abilities", Q: "quick", W: "move", E: "quick", A: "move", S: "move", D: "move", Z: "more", X: "more", C: "more" });
+const statusMovementDirections: Readonly<Record<string, Direction>> = Object.freeze({ W: "n", A: "w", S: "s", D: "e" });
+type StatusKeyRole = "move" | "quick" | "abilities" | "more" | "default";
+function statusKeyRole(key: string, fallback: StatusKeyRole): StatusKeyRole { return statusMovementDirections[key] ? "move" : /^[1-3]$/.test(key) ? "abilities" : key === "Q" || key === "E" ? "quick" : key === "Z" || key === "X" || key === "C" ? "more" : fallback; }
 const feedbackKeys = new Set(Object.keys(keyboardKeyHelp));
 function InputKey({ keyLabel, category = keyboardKeyCategory[keyLabel], mode = "display", pressed = false, available = true, className = "", onHoverStart, onHoverEnd, onActivate, onPressStart, onPressEnd }: { keyLabel: string; category?: string; mode?: string; pressed?: boolean; available?: boolean; className?: string; onHoverStart?(key: string): void; onHoverEnd?(key: string): void; onActivate?(): void; onPressStart?(key: string): void; onPressEnd?(key: string): void }) {
   const slotKey = category === "abilities" || category === "quick";
-  const classes = ["input-key", category && `input-key--${category}`, slotKey && !available && "input-key--unavailable", mode === "feedback" && pressed && "input-key--pressed", mode === "feedback" && pressed && "input-key--active", className].filter(Boolean).join(" ");
-  return <kbd className={classes} aria-label={`Keyboard key ${keyLabel}`} aria-disabled={slotKey && !available} data-input-mode={mode} onClick={onActivate} onPointerDown={() => available && onPressStart?.(keyLabel)} onPointerUp={() => onPressEnd?.(keyLabel)} onPointerCancel={() => onPressEnd?.(keyLabel)} onPointerEnter={() => onHoverStart?.(keyLabel)} onPointerLeave={() => { onHoverEnd?.(keyLabel); onPressEnd?.(keyLabel); }}>{keyLabel}</kbd>;
+  const unavailableKey = slotKey || keyLabel === "X";
+  const classes = ["input-key", category && `input-key--${category}`, unavailableKey && !available && "input-key--unavailable", mode === "feedback" && pressed && "input-key--pressed", mode === "feedback" && pressed && "input-key--active", className].filter(Boolean).join(" ");
+  return <kbd className={classes} aria-label={`Keyboard key ${keyLabel}`} aria-disabled={unavailableKey && !available} data-input-mode={mode} onClick={onActivate} onPointerDown={() => available && onPressStart?.(keyLabel)} onPointerUp={() => onPressEnd?.(keyLabel)} onPointerCancel={() => onPressEnd?.(keyLabel)} onPointerEnter={() => onHoverStart?.(keyLabel)} onPointerLeave={() => { onHoverEnd?.(keyLabel); onPressEnd?.(keyLabel); }}>{keyLabel}</kbd>;
 }
 export function StatusBar({ campaign, canOverride, orientation, setDeveloperAspect, onTogglePanels, mobilePanel = "controls", setMobilePanel = () => {}, drag = null }: { campaign: Campaign; canOverride: boolean; orientation: Orientation; setDeveloperAspect(value: Orientation): void; onTogglePanels(): void; mobilePanel?: string; setMobilePanel?(value: string): void; drag?: DragPresentation | null }) {
   const { showPivotPoints, setShowPivotPoints } = useContext(LayoutContext);
   const [expanded, setExpanded] = useState(false);
   const [hoveredKey, setHoveredKey] = useState("");
   const [pressedKeys, setPressedKeys] = useState(() => new Set<string>());
-  const keyAvailable = (key: string) => {
-    if ((drag?.source.kind === "ability" && key === String(drag.source.index + 1)) || (drag?.source.kind === "quick-slot" && key === (drag.source.index === 0 ? "Q" : "E"))) return false;
+  const keyAvailable = (key: string, role: StatusKeyRole = "default") => {
+    if ((drag?.source.kind === "ability" && key === String(drag.source.index + 1)) || (role === "quick" && drag?.source.kind === "quick-slot" && key === (drag.source.index === 0 ? "Q" : "E"))) return false;
     if (/^[1-3]$/.test(key)) return Boolean(campaign.player.abilities[Number(key) - 1]);
-    if (key === "Q" || key === "E") { const quickSlot = campaign.player.quickSlots?.[key === "Q" ? 0 : 1]; return Boolean(quickSlot?.item && isQuickSlottableItem(quickSlot.item)); }
-    if (key === "W" || key === "A" || key === "S" || key === "D" || key === "Z" || key === "C") return true;
+    if ((role === "move" || role === "default") && statusMovementDirections[key]) {
+      const direction = statusMovementDirections[key]; const [dx, dy] = directions[direction];
+      return isWalkable(campaign.floor, campaign.player.x + dx, campaign.player.y + dy);
+    }
+    if (role === "quick" && (key === "Q" || key === "E")) return true;
+    if (key === "Q" || (role === "default" && key === "E")) { const quickSlot = campaign.player.quickSlots?.[key === "E" ? 1 : 0]; return Boolean(quickSlot?.item && isQuickSlottableItem(quickSlot.item)); }
+    if (key === "Z" || key === "C") return true;
     return false;
   };
   useEffect(() => {
@@ -192,8 +216,8 @@ export function StatusBar({ campaign, canOverride, orientation, setDeveloperAspe
   return <footer className="statusbar">
     <div className="desktop_status">
       <div className={`keyboard_controls_region${expanded ? " keyboard_controls_region--expanded" : ""}`}>
-        <div className="keyboard_collapsed_controls" aria-hidden={expanded}><div className="keyboard_collapsed_summary" aria-label="Move WASD | Quick: A E | Abilities: 123 | More ZXC">{collapsedKeyboardGroups.map(({ label, keys }, index) => <span className="keyboard_collapsed_group" key={label}><span className="status_shortcut"><span>{label}</span>{keys.map((key) => <InputKey key={key} keyLabel={key} available={keyAvailable(key)} onActivate={key === "Z" ? toggleExpanded : key === "C" ? onTogglePanels : undefined} />)}</span>{index < collapsedKeyboardGroups.length - 1 && <span className="keyboard_summary_separator" aria-hidden="true">|</span>}</span>)}</div></div>
-        <ControlsArea expanded={expanded} titleVisible={titleVisible} titleText={titleText} onToggle={toggleExpanded}>{keyboardControlRows.map(({ label, keys }) => <div className="keyboard_tray_row" key={label}><div className="keyboard_tray_keys">{keys.map((key) => <InputKey key={key} keyLabel={key} mode="feedback" available={keyAvailable(key)} pressed={pressedKeys.has(key)} className="keyboard_tray_key" onActivate={key === "Z" ? toggleExpanded : key === "C" ? onTogglePanels : undefined} onPressStart={(pressedKey) => setPointerPressed(pressedKey, true)} onPressEnd={(pressedKey) => setPointerPressed(pressedKey, false)} {...inputKeyHoverProps} />)}</div></div>)}</ControlsArea>
+        <div className="keyboard_collapsed_controls" aria-hidden={expanded}><div className="keyboard_collapsed_summary" aria-label="Move WASD | Abilities: 123 | Quick: Q E | More ZXC">{collapsedKeyboardGroups.map(({ label, keys }) => <span className="keyboard_collapsed_group" key={label}><span className="status_shortcut"><span>{label}</span>{keys.map((key) => { const role = statusKeyRole(key, label === "Quick:" ? "quick" : label === "Move:" ? "move" : "default"); return <InputKey key={key} keyLabel={key} category={role} available={keyAvailable(key, role)} onActivate={key === "Z" ? toggleExpanded : key === "C" ? onTogglePanels : undefined} />; })}</span></span>)}</div></div>
+        <ControlsArea expanded={expanded} titleVisible={titleVisible} titleText={titleText} onToggle={toggleExpanded}>{keyboardControlRows.map(({ label, keys }) => <div className="keyboard_tray_row" key={label}><div className="keyboard_tray_keys">{keys.map((key) => { const role = statusKeyRole(key, label === "Quick:" ? "quick" : label === "Move:" ? "move" : "default"); return <InputKey key={key} keyLabel={key} category={role} mode="feedback" available={keyAvailable(key, role)} pressed={pressedKeys.has(key)} className="keyboard_tray_key" onActivate={key === "Z" ? toggleExpanded : key === "C" ? onTogglePanels : undefined} onPressStart={(pressedKey) => setPointerPressed(pressedKey, true)} onPressEnd={(pressedKey) => setPointerPressed(pressedKey, false)} {...inputKeyHoverProps} />; })}</div></div>)}</ControlsArea>
       </div>
       {canOverride && <div className="dev_settings"><button tabIndex={-1} onClick={() => setDeveloperAspect(orientation === "landscape" ? "portrait" : "landscape")}>Dev Settings &nbsp; Aspect: {orientation === "landscape" ? "Landscape" : "Portrait"}</button><button tabIndex={-1} type="button" aria-pressed={showPivotPoints} onClick={() => setShowPivotPoints((value) => !value)}>Pivot Points: {showPivotPoints ? "On" : "Off"}</button></div>}
     </div>

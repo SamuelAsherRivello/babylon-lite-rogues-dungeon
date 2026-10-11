@@ -101,7 +101,7 @@ export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "ce
   };
   const targetKindAt = (x: number | undefined, y: number | undefined) => {
     const entity = campaign.floor.entities.find((entry) => entry.x === x && entry.y === y);
-    return entity?.kind === "enemy" ? "enemy" : entity && ["item", "potion", "chest", "stairs"].includes(entity.kind) ? "item" : isWalkable(campaign.floor, x ?? NaN, y ?? NaN) ? "valid" : "invalid";
+    return entity?.kind === "enemy" ? "enemy" : entity && ["item", "potion", "key", "gold", "chest", "stairs"].includes(entity.kind) ? "item" : isWalkable(campaign.floor, x ?? NaN, y ?? NaN) ? "valid" : "invalid";
   };
   const targetAtScreenPosition = (point: Position, rect: DOMRect) => {
     const cellSize = cellSizeAt(rect);
@@ -195,7 +195,7 @@ export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "ce
           updateSprite2D(hero, { positionPx: [state.player.x * 32 + 16, state.player.y * 32 + 16] });
           const byKind: Record<string, typeof world.actors> = { rat: world.actors.filter((actor) => actor.kind === "rat"), skeleton: world.actors.filter((actor) => actor.kind === "skeleton") };
           for (const key of Object.keys(actors)) actors[key].forEach((sprite, i) => { const actor = byKind[key][i]; updateSprite2D(sprite, { positionPx: actor ? [actor.worldX, actor.worldY] : [-10000,-10000] }); });
-          items.forEach((sprite, i) => { const entity = world.objects[i]; const frame = entity?.kind === "item" ? 2 : entity?.kind === "chest" ? 0 : entity?.kind === "stairs" ? 1 : entity?.kind === "potion" ? (entity.resource === "health" ? 3 : 4) : 8; updateSprite2D(sprite, { frame, positionPx: entity ? [entity.worldX, entity.worldY] : [-10000,-10000] }); });
+          items.forEach((sprite, i) => { const entity = world.objects[i]; const frame = entity?.kind === "item" ? 2 : entity?.kind === "chest" ? 0 : entity?.kind === "stairs" ? 1 : entity?.kind === "key" ? 5 : entity?.kind === "gold" ? 3 : entity?.kind === "potion" ? (entity.resource === "health" ? 6 : 7) : 8; updateSprite2D(sprite, { frame, positionPx: entity ? [entity.worldX, entity.worldY] : [-10000,-10000] }); });
         };
         sceneRef.current = { draw };
         resizeSurface(surface); draw();

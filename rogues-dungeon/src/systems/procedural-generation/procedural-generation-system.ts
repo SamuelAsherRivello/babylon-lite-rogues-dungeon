@@ -6,6 +6,13 @@ export const FLOOR_HEIGHT = 100;
 export const FLOOR_CENTER = Object.freeze({ x: Math.floor(FLOOR_WIDTH / 2), y: Math.floor(FLOOR_HEIGHT / 2) });
 export const GENERATOR_VERSION = "rogues-dungeon-floor-v2";
 const ITEM_CAPACITY = 10;
+export const VISIBLE_LANDSCAPE_SCREEN = Object.freeze({ width: 30, height: 17 });
+export const PICKUP_DENSITY_DEFAULTS = Object.freeze({
+  key: Object.freeze({ min: 0.5, max: 1 }),
+  mana: Object.freeze({ min: 0.75, max: 1.5 }),
+  health: Object.freeze({ min: 1, max: 1.75 }),
+  gold: Object.freeze({ min: 1.25, max: 2 }),
+});
 export const GAME_TUNING = Object.freeze({
   startingHealth: 30, startingStamina: 16, startingMana: 12, innateDefense: 1,
   attackStaminaCost: 4, moveStaminaRecovery: 2, readinessFloor: 0.75,
@@ -53,6 +60,12 @@ function ensureStarterConsumables(campaign: Campaign) {
 }
 
 function rng(seed: number) { let value = seed >>> 0; return () => { value = (value * 1664525 + 1013904223) >>> 0; return value / 4294967296; }; }
+function stochasticCount(random: () => number, floorArea: number, range: { min: number; max: number }) {
+  const screens = floorArea / (VISIBLE_LANDSCAPE_SCREEN.width * VISIBLE_LANDSCAPE_SCREEN.height);
+  const expected = screens * (range.min + random() * (range.max - range.min));
+  const whole = Math.floor(expected);
+  return whole + (random() < expected - whole ? 1 : 0);
+}
 function seedNow() { return Math.floor(Math.random() * 0xffffffff) >>> 0; }
 function blankMap(width = FLOOR_WIDTH, height = FLOOR_HEIGHT) { return Array.from({ length: height }, () => Array.from({ length: width }, () => 1)); }
 function itemInstance(item: Omit<Item, "id">, id: string): Item { return { id, ...item, modifiers: { ...item.modifiers } }; }
@@ -88,6 +101,31 @@ function connectRooms(map: number[][], from: Position, to: Position, width = 1) 
   while (x !== to.x) { carveCorridorCell(map, x, y, corridorWidth, "horizontal"); x += Math.sign(to.x - x); }
   while (y !== to.y) { carveCorridorCell(map, x, y, corridorWidth, "vertical"); y += Math.sign(to.y - y); }
   carveCorridorCell(map, x, y, corridorWidth, "vertical");
+}
+
+function shuffledWalkableCells(cells: ReturnType<typeof createLevelContext>["cells"], random: () => number) {
+  const candidates: Position[] = [];
+  for (let y = 1; y < cells.length - 1; y++) for (let x = 1; x < (cells[y]?.length ?? 1) - 1; x++) if (cells[y]?.[x]?.walkable) candidates.push({ x, y });
+  for (let index = candidates.length - 1; index > 0; index--) {
+    const other = Math.floor(random() * (index + 1));
+    [candidates[index], candidates[other]] = [candidates[other], candidates[index]];
+  }
+  return candidates;
+}
+
+function structuralRoute(map: number[][], from: Position, to: Position) {
+  const queue = [from]; const previous = new Map<string, Position | null>([[`${from.x},${from.y}`, null]]);
+  for (let index = 0; index < queue.length; index++) {
+    const current = queue[index]; if (current.x === to.x && current.y === to.y) break;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const next = { x: current.x + dx, y: current.y + dy }; const key = `${next.x},${next.y}`;
+      if (map[next.y]?.[next.x] !== 0 || previous.has(key)) continue;
+      previous.set(key, current); queue.push(next);
+    }
+  }
+  const route: Position[] = []; let current: Position | undefined = to;
+  while (current && previous.has(`${current.x},${current.y}`)) { route.push(current); current = previous.get(`${current.x},${current.y}`) ?? undefined; }
+  return route;
 }
 
 export function createResourcesModel(values: Partial<Record<ResourceName, Partial<Resource>>> = {}): Resources {
@@ -171,8 +209,8 @@ export function upgradeCampaignResources(campaign: Campaign) {
   return campaign;
 }
 
-export function generateFloor(level: number, seed = seedNow(), difficulty = level, options: { corridorWidth?: number } = {}): Floor {
-  const random = rng(seed); const map = blankMap(); const rooms = [];
+export function generateFloor(level: number, seed = seedNow(), difficulty = level, options: { corridorWidth?: number; pickupDensity?: Partial<typeof PICKUP_DENSITY_DEFAULTS> } = {}): Floor {
+  const random = rng(seed); const map = blankMap(); const rooms: Room[] = [];
   const corridorWidth = Math.max(1, Math.floor(Number(options?.corridorWidth ?? 1)));
   const startRoom = { x: FLOOR_CENTER.x - 3, y: FLOOR_CENTER.y - 3, w: 7, h: 7 };
   carveRoom(map, startRoom); rooms.push(startRoom);
@@ -186,28 +224,72 @@ export function generateFloor(level: number, seed = seedNow(), difficulty = leve
     rooms.push(room);
   }
   const start = { ...FLOOR_CENTER }; const exit = roomCenter(rooms.at(-1)!);
-  const entities: Entity[] = [
-    { id: "health-potion", kind: "potion", resource: "health", x: start.x, y: start.y + 1 },
-    { id: "mana-potion", kind: "potion", resource: "mana", x: start.x + 2, y: start.y },
-    { id: "stairs", kind: "stairs", x: exit.x, y: exit.y },
-  ];
-  for (let i = 1; i < rooms.length; i++) {
-    const room = rooms[i]; const x = room.x + 2; const y = room.y + 2;
-    if (random() < 0.76) {
-      const skeleton = difficulty > 1 && random() < 0.4;
-      const health = skeleton ? 20 + (difficulty - 2) * 4 : 12 + (difficulty - 1) * 3;
-      const damage = skeleton ? 6 + (difficulty - 2) * 2 : 3 + (difficulty - 1) * 2;
-      const enemy: Omit<Enemy, "resources"> = { id: `enemy-${i}`, kind: "enemy", x, y, hp: health, maxHp: health, damage, awareness: GAME_TUNING.enemyAwareness, actionCooldown: GAME_TUNING.enemyActionCooldown, nextActionAt: GAME_TUNING.enemyActionCooldown, name: skeleton ? "Skeleton" : "Rat", xp: GAME_TUNING.xpPerKillBase + difficulty };
-      entities.push({ ...enemy, resources: enemyResources(enemy, level) });
-    }
-    if (random() < 0.35) entities.push({ id: `chest-${i}`, kind: "chest", x: Math.min(FLOOR_WIDTH - 2, x + 1), y, opened: false });
-  }
-  const context = createLevelContext({ worldId: "One", realmId: `Underground ${level}`, levelId: level, seed, width: FLOOR_WIDTH, height: FLOOR_HEIGHT, entities, start, exit });
+  const context = createLevelContext({ worldId: "One", realmId: `Underground ${level}`, levelId: level, seed, width: FLOOR_WIDTH, height: FLOOR_HEIGHT, start, exit });
   runLevelPasses(context, [{ id: "structured-dungeon", run: (generation) => {
     for (let y = 0; y < FLOOR_HEIGHT; y++) for (let x = 0; x < FLOOR_WIDTH; x++) if (map[y][x] === 0) generation.writeCell(x, y, { walkable: true });
     return {};
+  } }, { id: "reserve-semantic-cells", run: (generation) => {
+    generation.reserveCell(start.x, start.y);
+    generation.reserveCell(exit.x, exit.y);
+    return {};
+  } }, { id: "place-dungeon-objects", run: (generation) => {
+    // Placement is intentionally a later pass. Every object claims its cell
+    // through one shared reservation map, so a seed cannot overlap actors,
+    // chests, pickups, the start, or the exit.
+    generation.reserveEntityCell(start.x, start.y);
+    generation.reserveEntityCell(exit.x, exit.y);
+    const candidates = shuffledWalkableCells(generation.cells, random);
+    const route = new Set(structuralRoute(map, start, exit).map((cell) => `${cell.x},${cell.y}`));
+    const claim = (cell: Position) => generation.occupiedCells.some((occupied) => occupied.x === cell.x && occupied.y === cell.y) || !isWalkable(generation, cell.x, cell.y) ? false : generation.reserveEntityCell(cell.x, cell.y);
+    const nextCell = () => candidates.find((cell) => !route.has(`${cell.x},${cell.y}`) && claim(cell)) ?? null;
+    const add = (entity: Entity) => { generation.entities.push(entity); };
+    const addPickup = (kind: "health" | "mana", index: number) => {
+      const cell = nextCell(); if (!cell) return;
+      add({ id: `${kind}-potion-${index}`, kind: "potion", resource: kind, x: cell.x, y: cell.y });
+    };
+    const addCounterPickup = (kind: "key" | "gold", index: number) => {
+      const cell = nextCell(); if (!cell) return;
+      add({ id: `${kind}-${index}`, kind, amount: kind === "gold" ? 5 + Math.floor(random() * 16) : 1, x: cell.x, y: cell.y });
+    };
+    // Keep the familiar starter supplies near the start, but reserve them
+    // after the structural pass so they cannot collide with generated actors.
+    const starterHealth = { x: start.x, y: start.y + 1 };
+    const starterMana = { x: start.x + 2, y: start.y };
+    const healthCell = !route.has(`${starterHealth.x},${starterHealth.y}`) && claim(starterHealth) ? starterHealth : nextCell();
+    const manaCell = !route.has(`${starterMana.x},${starterMana.y}`) && claim(starterMana) ? starterMana : nextCell();
+    if (healthCell) add({ id: "health-potion", kind: "potion", resource: "health", ...healthCell });
+    if (manaCell) add({ id: "mana-potion", kind: "potion", resource: "mana", ...manaCell });
+    for (let i = 1; i < rooms.length; i++) {
+      const room = rooms[i]; const preferred = { x: room.x + 2, y: room.y + 2 };
+      const enemyCell = !route.has(`${preferred.x},${preferred.y}`) && claim(preferred) ? preferred : nextCell();
+      if (enemyCell && random() < 0.76) {
+        const skeleton = difficulty > 1 && random() < 0.4;
+        const health = skeleton ? 20 + (difficulty - 2) * 4 : 12 + (difficulty - 1) * 3;
+        const damage = skeleton ? 6 + (difficulty - 2) * 2 : 3 + (difficulty - 1) * 2;
+        const enemy: Omit<Enemy, "resources"> = { id: `enemy-${i}`, kind: "enemy", x: enemyCell.x, y: enemyCell.y, hp: health, maxHp: health, damage, awareness: GAME_TUNING.enemyAwareness, actionCooldown: GAME_TUNING.enemyActionCooldown, nextActionAt: GAME_TUNING.enemyActionCooldown, name: skeleton ? "Skeleton" : "Rat", xp: GAME_TUNING.xpPerKillBase + difficulty };
+        add({ ...enemy, resources: enemyResources(enemy, level) });
+      }
+      if (random() < 0.35) {
+        const chestCell = nextCell(); if (chestCell) add({ id: `chest-${i}`, kind: "chest", x: chestCell.x, y: chestCell.y, opened: false });
+      }
+    }
+    // Pickup counts are area-scaled from the visible 1x landscape screen and
+    // use seeded stochastic rounding. Object cells and pickup cells share the
+    // same reservation set, so density never creates overlaps.
+    const densities = options.pickupDensity ?? {};
+    const density = (kind: keyof typeof PICKUP_DENSITY_DEFAULTS) => ({ ...PICKUP_DENSITY_DEFAULTS[kind], ...(densities[kind] ?? {}) });
+    const healthCount = Math.max(1, stochasticCount(random, FLOOR_WIDTH * FLOOR_HEIGHT, density("health")));
+    const manaCount = Math.max(1, stochasticCount(random, FLOOR_WIDTH * FLOOR_HEIGHT, density("mana")));
+    const keyCount = stochasticCount(random, FLOOR_WIDTH * FLOOR_HEIGHT, density("key"));
+    const goldCount = stochasticCount(random, FLOOR_WIDTH * FLOOR_HEIGHT, density("gold"));
+    for (let index = 1; index < healthCount; index++) addPickup("health", index + 1);
+    for (let index = 1; index < manaCount; index++) addPickup("mana", index + 1);
+    for (let index = 0; index < keyCount; index++) addCounterPickup("key", index + 1);
+    for (let index = 0; index < goldCount; index++) addCounterPickup("gold", index + 1);
+    add({ id: "stairs", kind: "stairs", ...exit });
+    return {};
   } }]);
-  const floor: Floor = { seed, width: FLOOR_WIDTH, height: FLOOR_HEIGHT, cells: context.cells, start, entities, time: 0, level, generatorVersion: GENERATOR_VERSION, generation: { ...context.generation, passes: context.passes } };
+  const floor: Floor = { seed, width: FLOOR_WIDTH, height: FLOOR_HEIGHT, cells: context.cells, start, entities: context.entities, time: 0, level, generatorVersion: GENERATOR_VERSION, generation: { ...context.generation, passes: context.passes } };
   return ensureSemanticCells(floor);
 }
 
@@ -301,6 +383,12 @@ export function applyAction(campaign: Campaign, action: Action): ActionResult {
       if (entity?.kind === "stairs") { const level = (state.floor.level ?? state.floor.depth ?? 1) + 1; const difficulty = (state.progression.difficulty ?? state.floor.depth ?? 1) + 1; const time = state.floor.time; state.progression.difficulty = difficulty; state.floor = generateFloor(level, seedNow(), difficulty); state.floor.time = time; state.realm = `Underground ${level}`; state.player.x = state.floor.start.x; state.player.y = state.floor.start.y; emit(events, "realm.entered", { realm: state.realm, level }, state); }
       else if (entity?.kind === "potion") { const cap = effectiveAttributes(state)[entity.resource]; if (state.player.resources[entity.resource].current < cap) { const previous = state.player.resources[entity.resource].current; const restored = entity.resource === "health" ? GAME_TUNING.healthPotionRestore : GAME_TUNING.manaPotionRestore; changeResource(state, events, entity.resource, previous + restored, "potion"); const current = state.player.resources[entity.resource].current; state.floor.entities = state.floor.entities.filter((entry) => entry.id !== entity.id); emit(events, "potion.consumed", { itemId: entity.id, item: entity.name ?? `${entity.resource} potion`, resource: entity.resource, previous, current }, state); } }
       else if (entity?.kind === "item") { if (state.player.inventory.length < state.player.inventoryCapacity) { state.player.inventory = orderedInventory([...state.player.inventory, entity.item]); state.floor.entities = state.floor.entities.filter((entry) => entry.id !== entity.id); emit(events, "item.collected", { itemId: entity.item.id, name: entity.item.name, destination: "inventory" }, state); } else emit(events, "item.collection.rejected", { itemId: entity.item.id, name: entity.item.name, reason: "inventory-full" }, state); }
+      else if (entity?.kind === "key" || entity?.kind === "gold") {
+        const amount = entity.amount ?? 1;
+        if (entity.kind === "key") state.counters.keys += amount; else state.counters.gold += amount;
+        state.floor.entities = state.floor.entities.filter((entry) => entry.id !== entity.id);
+        emit(events, "item.collected", { itemId: entity.id, name: entity.kind === "key" ? "Key" : "Gold", amount, destination: entity.kind }, state);
+      }
       else if (entity?.kind === "chest" && !entity.opened) { entity.opened = true; const item = itemInstance(itemCatalog[(state.floor.time + lootTier(state)) % itemCatalog.length], `chest-item-${state.floor.time}`); Object.assign(entity, { kind: "item", item }); delete entity.opened; emit(events, "chest.opened", { item: item.name, lootTier: lootTier(state) }, state); }
       changeResource(state, events, "stamina", state.player.resources.stamina.current + recoveryAmount(state), "move");
     }

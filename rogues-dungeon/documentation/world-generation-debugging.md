@@ -34,3 +34,18 @@ Edit the exported map in Tiled, preserve its 100-by-100 dimensions and required 
 Repository-hosted fixtures can also be opened directly with a base-relative `map`, for example `?world=1&level=1&slot=1&seed=17&mute=1&debug-fix-map-autotiled=1&map=debug/fixtures/floor-17.tmj`.
 
 The map-fix flag is opt-in. Ordinary player URLs do not expose export/import controls and continue using the regular save menu and generated floors.
+# Seeded placement diagnostics
+
+Dungeon generation runs in three ordered passes: structural terrain, semantic
+cell reservation, then object and pickup placement. The final pass shares one
+occupied-cell set and excludes a protected start-to-exit route, so generated
+entities are on walkable, unique cells and the exit remains reachable.
+
+Pickup counts are area-scaled using the visible 1x landscape viewport (30 × 17
+tiles) and seeded stochastic rounding. The default ranges are Key 0.5–1.0,
+Mana Potion 0.75–1.5, Health Potion 1.0–1.75, and Gold 1.25–2.0 pickups per
+visible screen. Reusing a seed produces the same counts and coordinates.
+
+For a quick deterministic check, open `?randomSeed=17&mute=1` or
+`?randomSeed=914&mute=1`. The renderer-neutral regression asserts that both
+levels have unique walkable entity cells and a reachable stairs entity.

@@ -17,7 +17,7 @@ import { randomSeedFromSearch } from '../src/game/random-seed.ts';
 import { parseGameUrlOptions } from '../src/game/url-options.ts';
 import { DUNGEON_TILESET_SOURCE, compareTiledRepairLayers, floorFromTiledRepairMap, serializeFloorToTiled, validateTiledRepairMap } from '../src/systems/maps/tiled-map-system.ts';
 import { DUNGEON_WANG_TILE_BY_MASK } from '../src/systems/maps/wang-autotiling-system.ts';
-import { createLevelContext, runLevelPasses } from '../src/systems/procedural-generation/level-grid.ts';
+import { createLevelContext, isWalkable, runLevelPasses } from '../src/systems/procedural-generation/level-grid.ts';
 import { buildManualTileScenario, getManualTileScenario } from '../src/systems/procedural-generation/manual-tile-scenarios.ts';
 
 function present<T>(value: T): NonNullable<T> { assert.ok(value != null, 'expected fixture value to exist'); return value; }
@@ -142,6 +142,23 @@ test('generates deterministic width-aware corridors with connected floor paths',
   const exit = wide.entities.find((entity) => entity.kind === 'stairs')!;
   assert.ok(findCardinalPath(wide, wide.start, { x: exit.x, y: exit.y }));
   assert.ok(wide.map!.flat().filter((cell) => cell === 1).length > 0);
+});
+
+test('places seeded dungeon objects on unique walkable cells while preserving the exit route', () => {
+  for (const seed of [17, 914]) {
+    const floor = generateFloor(1, seed, 1);
+    const stairs = floor.entities.find((entity) => entity.kind === 'stairs')!;
+    const positions = new Set<string>();
+    for (const entity of floor.entities) {
+      assert.equal(isWalkable(floor, entity.x, entity.y), true, `${seed}:${entity.id} must be walkable`);
+      const key = `${entity.x},${entity.y}`;
+      assert.equal(positions.has(key), false, `${seed}:${key} must contain one entity`);
+      positions.add(key);
+    }
+    assert.ok(findCardinalPath(floor, floor.start, stairs), `${seed}: exit must remain reachable`);
+    assert.deepEqual(floor.generation?.passes?.map(({ id }) => id), ['structured-dungeon', 'reserve-semantic-cells', 'place-dungeon-objects']);
+    assert.equal(floor.generation?.passes?.at(-1)?.diagnostics, 0);
+  }
 });
 
 test('projects player Health changes and enemy hits into positioned transient text', () => {

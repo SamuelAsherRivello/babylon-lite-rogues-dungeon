@@ -2,7 +2,7 @@ import type { Entity, Position, TerrainCell } from "../../game/types.ts";
 export interface Grid { cells?: TerrainCell[][]; map?: number[][]; width?: number; height?: number }
 interface Scope extends Position { width: number; height: number }
 interface LevelOptions { worldId?: string; realmId?: string; levelId?: number; seed?: number; width?: number; height?: number; cells?: TerrainCell[][] | null; entities?: Entity[]; start?: Position | null; exit?: Position | null }
-export interface LevelContext extends Grid { worldId: string; realmId: string; levelId: number; seed: number; width: number; height: number; cells: TerrainCell[][]; entities: Entity[]; start: Position | null; exit: Position | null; protectedCells: Position[]; diagnostics: (Position & { type: string; reason: string })[]; passes: { id: string; diagnostics: number }[]; generation: { seed: number; generator: string | null }; activeScope?: Scope | null; reserveCell(x: number, y: number): boolean; writeCell(x: number, y: number, patch?: Partial<TerrainCell>, scope?: Scope | null): boolean }
+export interface LevelContext extends Grid { worldId: string; realmId: string; levelId: number; seed: number; width: number; height: number; cells: TerrainCell[][]; entities: Entity[]; start: Position | null; exit: Position | null; protectedCells: Position[]; occupiedCells: Position[]; diagnostics: (Position & { type: string; reason: string })[]; passes: { id: string; diagnostics: number }[]; generation: { seed: number; generator: string | null }; activeScope?: Scope | null; reserveCell(x: number, y: number): boolean; reserveEntityCell(x: number, y: number): boolean; writeCell(x: number, y: number, patch?: Partial<TerrainCell>, scope?: Scope | null): boolean }
 interface LevelPass { id: string; scope?: Scope; run(context: LevelContext): Partial<LevelContext> | void }
 export const TERRAIN_ROLES = Object.freeze({
   GROUND: "ground",
@@ -66,11 +66,19 @@ export function createLevelContext({ worldId = "One", realmId = "Unknown", level
   const semanticCells = cells ?? createSemanticCells(width ?? 0, height ?? 0);
   const context: LevelContext = {
     worldId, realmId, levelId, seed, width: width ?? semanticCells[0]?.length ?? 0, height: height ?? semanticCells.length,
-    cells: semanticCells, entities, start, exit, protectedCells: [], diagnostics: [], passes: [], generation: { seed, generator: null }, reserveCell: () => false, writeCell: () => false,
+    cells: semanticCells, entities, start, exit, protectedCells: [], occupiedCells: [], diagnostics: [], passes: [], generation: { seed, generator: null }, reserveCell: () => false, reserveEntityCell: () => false, writeCell: () => false,
   };
   context.reserveCell = (x, y) => {
     if (!cellAt(context, x, y)) return false;
     if (!context.protectedCells.some((cell) => cell.x === x && cell.y === y)) context.protectedCells.push({ x, y });
+    return true;
+  };
+  context.reserveEntityCell = (x, y) => {
+    if (!cellAt(context, x, y) || !isWalkable(context, x, y) || context.occupiedCells.some((cell) => cell.x === x && cell.y === y)) {
+      context.diagnostics.push({ type: "entity.rejected", x, y, reason: !cellAt(context, x, y) ? "out-of-bounds" : !isWalkable(context, x, y) ? "blocked-cell" : "occupied-cell" });
+      return false;
+    }
+    context.occupiedCells.push({ x, y });
     return true;
   };
   context.writeCell = (x, y, patch = {}, scope = context.activeScope) => {
