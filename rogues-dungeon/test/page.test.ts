@@ -130,7 +130,7 @@ test('limits ability presentation and mobile controls to three positions', async
 test('centers plus markers for empty equipment and ability slots', async () => {
   const [game, css] = await Promise.all(['src/game/Game.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
   assert.match(game, /aria-label=\{type === "ability" \? "Empty ability slot" : "Empty equipment slot"\}>\+<\/span>/);
-  assert.match(css, /\.slot_item\{position:relative;/);
+  assert.match(css, /\.slot_item \{ position:relative;/);
   assert.match(css, /\.slot_item \.empty_slot\{position:absolute;left:50%;transform:translateX\(-50%\);display:grid;place-items:center/);
 });
 test('matches inventory row spacing to the abilities list', async () => {
