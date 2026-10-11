@@ -7,7 +7,7 @@ const baseURL = `http://${host}:${port}${basePath}`;
 
 export default defineConfig({
   testDir: "./rogues-dungeon/test/browser",
-  outputDir: "test-results",
+  outputDir: "output/playwright/",
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
