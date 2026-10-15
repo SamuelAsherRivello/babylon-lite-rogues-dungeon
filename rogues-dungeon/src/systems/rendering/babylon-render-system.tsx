@@ -16,15 +16,26 @@ import { findWorldTooltipPosition } from "../../content/world/tooltip-placement.
 import { resourceNames } from "../procedural/world-procedural-system.ts";
 import { isWalkable } from "../procedural/level-grid-system.ts";
 import { createHeroWarriorAnimationEntity, heroWarriorIdleAnimationForHeading } from "../../content/characters/hero-warrior/hero-warrior-animation.ts";
+import { particleBoundsAt, particleBoundsAtTile, particleExpired, particleFrameUrl, type ParticleEffect } from "../animation/particle-effects-system.ts";
 
 const texturePaths = {
-  tiles: `${import.meta.env.BASE_URL}assets/Tilesets/Tileset_Dungeon.png`,
-  rat: `${import.meta.env.BASE_URL}assets/Enemies/Rat/Frames/Idle/00.png`,
-  skeleton: `${import.meta.env.BASE_URL}assets/Enemies/Skeleton warrior/Frames/Idle/Down/00.png`,
-  items: `${import.meta.env.BASE_URL}assets/Tilesets/Items_Static.png`,
+  tiles: `${import.meta.env.BASE_URL}assets/art/vendors/dungeons-and-pixels-v1.4/Tilesets/Tileset_Dungeon.png`,
+  rat: `${import.meta.env.BASE_URL}assets/art/vendors/dungeons-and-pixels-v1.4/Enemies/Rat/Frames/Idle/00.png`,
+  skeleton: `${import.meta.env.BASE_URL}assets/art/vendors/dungeons-and-pixels-v1.4/Enemies/Skeleton warrior/Frames/Idle/Down/00.png`,
+  items: `${import.meta.env.BASE_URL}assets/art/vendors/dungeons-and-pixels-v1.4/Tilesets/Items_Static.png`,
 };
 const clear = { r: 0.06, g: 0.05, b: 0.09, a: 1 };
 let sharedEnginePromise: Promise<SharedEngine> | null = null;
+
+export function renderParticle(effect: ParticleEffect, x: number, y: number, width: number, height: number) {
+  const bounds = particleBoundsAt(x, y, width, height);
+  return <img key={effect.id} className="world_particle" src={particleFrameUrl(effect)} width={bounds.width} height={bounds.height} style={{ left: bounds.x, top: bounds.y }} alt="" aria-hidden="true" />;
+}
+
+export function renderParticleAtTile(effect: ParticleEffect, request: Parameters<typeof particleBoundsAtTile>[0]) {
+  const bounds = particleBoundsAtTile(request);
+  return renderParticle(effect, bounds.x, bounds.y, bounds.width, bounds.height);
+}
 let sharedEngineRecord: SharedEngine | null = null;
 let surfaceReferences = 0;
 const sharedTextures = new Map<string, { refs: number; promise: Promise<Texture2D> }>();
@@ -73,13 +84,15 @@ function releaseSharedTexture(path: string) {
   if (entry.refs <= 0) { entry.promise.then(releaseTexture).catch(() => {}); sharedTextures.delete(path); }
 }
 
-export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "center", mouseInteraction = false, floatingFeedback = [], selectedCell = null, selectedCellReachable = null, onSelectedCellChange, onZoom }: { campaign: Campaign; zoom?: number; minimap?: boolean; camera?: string; mouseInteraction?: boolean; floatingFeedback?: Feedback[]; selectedCell?: SelectedCell | null; selectedCellReachable?: boolean | null; onSelectedCellChange?(cell: SelectedCell | null): void; onZoom?(step: number): void }) {
+export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "center", mouseInteraction = false, floatingFeedback = [], particleEffects = [], selectedCell = null, selectedCellReachable = null, onSelectedCellChange, onZoom }: { campaign: Campaign; zoom?: number; minimap?: boolean; camera?: string; mouseInteraction?: boolean; floatingFeedback?: Feedback[]; particleEffects?: ParticleEffect[]; selectedCell?: SelectedCell | null; selectedCellReachable?: boolean | null; onSelectedCellChange?(cell: SelectedCell | null): void; onZoom?(step: number): void }) {
   const hostRef = useRef<HTMLDivElement>(null); const canvasRef = useRef<HTMLCanvasElement>(null); const sceneRef = useRef<{ draw(): void } | null>(null); const latestRef = useRef({ campaign, zoom, minimap, camera });
   const cameraCenterRef = useRef<(Position & { key: string }) | null>(null);
   const mouseDownRef = useRef(false);
   const pointerRef = useRef<Position | null>(null);
   const selectedCellRef = useRef(selectedCell);
   const [message, setMessage] = useState("Preparing the crypt…");
+  const [, setParticleClock] = useState(0);
+  useEffect(() => { if (!particleEffects.length) return undefined; let frame = 0; const tick = () => { setParticleClock(performance.now()); if (particleEffects.some((effect) => !particleExpired(effect))) frame = requestAnimationFrame(tick); }; frame = requestAnimationFrame(tick); return () => cancelAnimationFrame(frame); }, [particleEffects]);
   const [tooltipPosition, setTooltipPosition] = useState<{ left: number; top: number } | null>(null);
   const tooltipRef = useRef<HTMLElement>(null);
   latestRef.current = { campaign, zoom, minimap, camera };
@@ -297,6 +310,10 @@ export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "ce
     return () => { observer.disconnect(); window.removeEventListener("resize", update); };
   }, [hoveredEnemy, selectedCell, campaign.player.x, campaign.player.y, zoom, camera]);
   const offsets = new Map();
+  const particleOverlay = !minimap && feedbackCenter && particleEffects.filter((effect) => !particleExpired(effect)).map((effect) => {
+    const tileCenter = getWorldCellScreenCenter({ x: effect.x, y: effect.y, center: feedbackCenter, viewportWidth: feedbackRect!.width, viewportHeight: feedbackRect!.height, tileCssSize: feedbackCellSize });
+    return renderParticleAtTile(effect, { row: effect.y, column: effect.x, worldZoom: feedbackCellSize / 32, relativeScale: 1, tileCenter: { x: tileCenter.left, y: tileCenter.top } });
+  });
   const reticleKind = selectedCellReachable === false ? "invalid" : targetKindAt(selectedCell?.x, selectedCell?.y);
-  return <div className={`babylon_world${minimap ? " babylon_world--minimap" : ""}`} ref={hostRef} data-renderer="babylon-lite" data-content-style="2d" onMouseMove={mouseInteraction ? pointerMove : undefined} onMouseLeave={mouseInteraction ? pointerLeave : undefined} onMouseDown={mouseInteraction ? pointerDown : undefined} onMouseUp={mouseInteraction ? pointerUp : undefined} onWheel={mouseInteraction ? (event) => { event.preventDefault(); onZoom?.(event.deltaY < 0 ? 1 : -1); } : undefined} onContextMenu={mouseInteraction ? (event) => event.preventDefault() : undefined}><canvas tabIndex={-1} ref={canvasRef} className="babylon_world_canvas" aria-label={minimap ? "Dungeon minimap" : "Pixel-perfect dungeon map"}/>{!minimap && feedbackCenter && floatingFeedback.map((effect) => { const key = `${effect.x},${effect.y}`; const index = offsets.get(key) ?? 0; offsets.set(key, index + 1); const position = getWorldScreenPosition({ x: effect.x, y: effect.y, center: feedbackCenter, viewportWidth: feedbackRect!.width, viewportHeight: feedbackRect!.height, tileCssSize: feedbackCellSize }); const zoomScale = typeof zoom === "number" ? zoom : 1; return <span key={effect.id} className={`world_floating_text world_floating_text--${effect.color}`} style={{ left: position.left, top: position.top - index * 12 * zoomScale, fontSize: `${14 * zoomScale}px`, "--world-floating-travel": `${11 * zoomScale}px` }} aria-hidden="true">{effect.text}</span>; })}{hoveredEnemy && !minimap && <section ref={tooltipRef} className="enemy_world_tooltip" aria-label={`${hoveredEnemy.name} information`} style={{ left: tooltipPosition?.left ?? -10000, top: tooltipPosition?.top ?? -10000, visibility: tooltipPosition ? "visible" : "hidden" }}><div className="enemy_tooltip_section enemy_tooltip_portrait"><h2>ENEMY: {hoveredEnemy.name}</h2><img src={hoveredEnemy.name === "Skeleton" ? texturePaths.skeleton : texturePaths.rat} alt="" /></div><div className="enemy_tooltip_section enemy_tooltip_resource_panel"><h2>RESOURCES</h2><EnemyResourceRows resources={hoveredEnemy.resources} /></div></section>}{mouseInteraction && selectedCell && reticleStyle && <i className={`grid_reticle ${reticleKind}`} style={reticleStyle} />}{message && <div role="status" className="babylon_world_message">{message}</div>}</div>;
+  return <div className={`babylon_world${minimap ? " babylon_world--minimap" : ""}`} ref={hostRef} data-renderer="babylon-lite" data-content-style="2d" onMouseMove={mouseInteraction ? pointerMove : undefined} onMouseLeave={mouseInteraction ? pointerLeave : undefined} onMouseDown={mouseInteraction ? pointerDown : undefined} onMouseUp={mouseInteraction ? pointerUp : undefined} onWheel={mouseInteraction ? (event) => { event.preventDefault(); onZoom?.(event.deltaY < 0 ? 1 : -1); } : undefined} onContextMenu={mouseInteraction ? (event) => event.preventDefault() : undefined}><canvas tabIndex={-1} ref={canvasRef} className="babylon_world_canvas" aria-label={minimap ? "Dungeon minimap" : "Pixel-perfect dungeon map"}/>{particleOverlay}{!minimap && feedbackCenter && floatingFeedback.map((effect) => { const key = `${effect.x},${effect.y}`; const index = offsets.get(key) ?? 0; offsets.set(key, index + 1); const position = getWorldScreenPosition({ x: effect.x, y: effect.y, center: feedbackCenter, viewportWidth: feedbackRect!.width, viewportHeight: feedbackRect!.height, tileCssSize: feedbackCellSize }); const zoomScale = typeof zoom === "number" ? zoom : 1; return <span key={effect.id} className={`world_floating_text world_floating_text--${effect.color}`} style={{ left: position.left, top: position.top - index * 12 * zoomScale, fontSize: `${14 * zoomScale}px`, "--world-floating-travel": `${11 * zoomScale}px` }} aria-hidden="true">{effect.text}</span>; })}{hoveredEnemy && !minimap && <section ref={tooltipRef} className="enemy_world_tooltip" aria-label={`${hoveredEnemy.name} information`} style={{ left: tooltipPosition?.left ?? -10000, top: tooltipPosition?.top ?? -10000, visibility: tooltipPosition ? "visible" : "hidden" }}><div className="enemy_tooltip_section enemy_tooltip_portrait"><h2>ENEMY: {hoveredEnemy.name}</h2><img src={hoveredEnemy.name === "Skeleton" ? texturePaths.skeleton : texturePaths.rat} alt="" /></div><div className="enemy_tooltip_section enemy_tooltip_resource_panel"><h2>RESOURCES</h2><EnemyResourceRows resources={hoveredEnemy.resources} /></div></section>}{mouseInteraction && selectedCell && reticleStyle && <i className={`grid_reticle ${reticleKind}`} style={reticleStyle} />}{message && <div role="status" className="babylon_world_message">{message}</div>}</div>;
 }

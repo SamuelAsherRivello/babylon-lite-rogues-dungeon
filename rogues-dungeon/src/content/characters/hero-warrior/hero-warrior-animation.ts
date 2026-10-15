@@ -15,7 +15,7 @@ type Direction = typeof directions[number];
 
 function framePath(baseUrl: string, animation: string, direction: Direction | null, index: number) {
   const folder = direction ? `${animation}/${direction}` : animation;
-  return `${baseUrl}assets/Characters/Hero_Warrior/Frames/${folder}/${String(index).padStart(2, "0")}.png`;
+  return `${baseUrl}assets/art/vendors/dungeons-and-pixels-v1.4/Characters/Hero_Warrior/Frames/${folder}/${String(index).padStart(2, "0")}.png`;
 }
 
 function frameList(baseUrl: string, animation: string, direction: Direction | null, count: number, widthPx: number, heightPx: number) {

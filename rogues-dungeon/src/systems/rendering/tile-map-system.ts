@@ -10,7 +10,7 @@ import { FLOOR_HEIGHT, FLOOR_WIDTH, GENERATOR_VERSION, generateFloor } from "../
 import { ensureSemanticCells, isWalkable, semanticCellsFromMap } from "../procedural/level-grid-system.ts";
 
 export const TILED_TILE_SIZE = 32;
-export const DUNGEON_TILESET_SOURCE = "../../assets/Tiled_Examples/Tilesets/Tileset_Dungeon.tsx";
+export const DUNGEON_TILESET_SOURCE = "../../assets/art/vendors/dungeons-and-pixels-v1.4/Tiled_Examples/Tilesets/Tileset_Dungeon.tsx";
 const DUNGEON_TILESET_GROUND_GID = 14;
 
 const DIRECTIONS = Object.freeze([[0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1]]);

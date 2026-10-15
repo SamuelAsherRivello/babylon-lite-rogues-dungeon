@@ -74,15 +74,15 @@ test('uses current camera state and reconfiguration inputs when framing the main
 });
 
 test('declares and retains the provided 32-pixel Tiled dungeon assets', async () => {
-  const tileset = await readFile(new URL('../public/assets/Tiled_Examples/Tilesets/Tileset_Dungeon.tsx', import.meta.url), 'utf8');
+  const tileset = await readFile(new URL('../public/assets/art/vendors/dungeons-and-pixels-v1.4/Tiled_Examples/Tilesets/Tileset_Dungeon.tsx', import.meta.url), 'utf8');
   const world = await readFile(new URL('../src/systems/rendering/babylon-render-system.tsx', import.meta.url), 'utf8');
   assert.match(tileset, /tilewidth="32" tileheight="32"/);
   assert.match(tileset, /Tileset_Dungeon\.png/);
   assert.match(world, /cellWidthPx: 32, cellHeightPx: 32, columns: 12, rows: 9/);
   for (const path of [
-    '../public/assets/Tilesets/Tileset_Dungeon.png',
-    '../public/assets/Characters/Hero_Warrior/Frames/Idle/Down/00.png',
-    '../public/assets/Enemies/Rat/Frames/Idle/00.png',
+    '../public/assets/art/vendors/dungeons-and-pixels-v1.4/Tilesets/Tileset_Dungeon.png',
+    '../public/assets/art/vendors/dungeons-and-pixels-v1.4/Characters/Hero_Warrior/Frames/Idle/Down/00.png',
+    '../public/assets/art/vendors/dungeons-and-pixels-v1.4/Enemies/Rat/Frames/Idle/00.png',
   ]) {
     const bytes = await readFile(new URL(path, import.meta.url));
     assert.deepEqual([...bytes.subarray(0, 8)], [137, 80, 78, 71, 13, 10, 26, 10]);

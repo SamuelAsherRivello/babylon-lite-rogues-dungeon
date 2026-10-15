@@ -1,21 +1,30 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { TweenAnimationSystem, easeOutCubic } from "../systems/animation/tween-animation-system.ts";
 
-export type UiAnimationKind = "status-controls" | "status-summary" | "info-primary" | "info-secondary";
+export type UiAnimationKind = "status-controls" | "status-summary" | "info-primary" | "info-secondary" | "info-primary-tab" | "info-secondary-tab";
 
 export interface UiMotion {
   x?: number;
   y?: number;
   opacity?: number;
   depth?: number;
+  leftPercent?: number;
+}
+
+interface CompletedUiMotion {
+  x: number;
+  y: number;
+  opacity: number;
+  depth: number;
+  leftPercent?: number;
 }
 
 export type UiMotionStyle = CSSProperties;
 
 const uiTweenSystem = new TweenAnimationSystem();
 const reduceMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-const complete = (motion: UiMotion): Required<UiMotion> => ({ x: motion.x ?? 0, y: motion.y ?? 0, opacity: motion.opacity ?? 1, depth: motion.depth ?? 0 });
-const toStyle = (motion: Required<UiMotion>): UiMotionStyle => ({ transform: `translate3d(${motion.x}%, ${motion.y}%, 0)`, opacity: motion.opacity, zIndex: motion.depth });
+const complete = (motion: UiMotion): CompletedUiMotion => ({ x: motion.x ?? 0, y: motion.y ?? 0, opacity: motion.opacity ?? 1, depth: motion.depth ?? 0, leftPercent: motion.leftPercent });
+const toStyle = (motion: CompletedUiMotion): UiMotionStyle => ({ transform: `translate3d(${motion.x}%, ${motion.y}%, 0)`, opacity: motion.opacity, zIndex: motion.depth, ...(motion.leftPercent === undefined ? {} : { left: `${motion.leftPercent}%` }) });
 
 /**
  * Applies tweening to the vocabulary shared by the in-viewport UI: horizontal
@@ -27,7 +36,7 @@ export function useUiMotion(_kind: UiAnimationKind, target: UiMotion, duration =
   const current = useRef(targetMotion);
   const cancel = useRef<(() => void) | null>(null);
   const [style, setStyle] = useState(() => toStyle(targetMotion));
-  const targetKey = `${targetMotion.x},${targetMotion.y},${targetMotion.opacity},${targetMotion.depth}`;
+  const targetKey = `${targetMotion.x},${targetMotion.y},${targetMotion.opacity},${targetMotion.depth},${targetMotion.leftPercent}`;
 
   useEffect(() => {
     const next = complete(target);
@@ -47,11 +56,12 @@ export function useUiMotion(_kind: UiAnimationKind, target: UiMotion, duration =
       duration,
       easing: easeOutCubic,
       onUpdate(progress) {
-        const value: Required<UiMotion> = {
+        const value: CompletedUiMotion = {
           x: from.x + (next.x - from.x) * progress,
           y: from.y + (next.y - from.y) * progress,
           opacity: from.opacity + (next.opacity - from.opacity) * progress,
           depth: next.depth,
+          leftPercent: next.leftPercent === undefined ? undefined : (from.leftPercent ?? next.leftPercent) + (next.leftPercent - (from.leftPercent ?? next.leftPercent)) * progress,
         };
         current.current = value;
         setStyle(toStyle(value));

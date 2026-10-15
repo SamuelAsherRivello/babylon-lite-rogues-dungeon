@@ -147,8 +147,11 @@ body {
 @keyframes resource_gain_fade { from { opacity:1 } to { opacity:.55 } }
 .attribute_grid { display:grid; grid-template-columns:1fr 1fr; gap:.3rem; }.attribute_item { display:flex; justify-content:space-between; gap:.25rem; font-size:.63rem; line-height:1.45; }.attribute_tooltip_trigger { border:0; padding:0; background:transparent; color:inherit; font:inherit; text-align:left; cursor:help; }.delta_value { display:inline-flex; justify-content:flex-end; }.delta_value_number { color:#e8dec4; }.delta_value_green { color:#76c878; }.delta_value_red { color:#df6161; }.delta_value_pulse { animation:delta_value_pulse 300ms ease-out; } @keyframes delta_value_pulse { 0%,100% { transform:scale(1); } 50% { transform:scale(2); } }
 .babylon_world { flex:1 1 0; min-width:0; min-height:0; position:relative; overflow:hidden; background:#100e17; cursor:crosshair; isolation:isolate; }
+/* Temporary visual boundary for the primary Tiled world render host. */
+.game_view > .babylon_world { outline:2px solid #ff3bd4; outline-offset:-2px; }
 .babylon_world_canvas { width:100%; height:100%; display:block; image-rendering:pixelated; }
 .world_floating_text { position:absolute; z-index:2; pointer-events:none; transform:translate(-50%,-100%); font:700 14px/1 ui-monospace,monospace; text-shadow:1px 1px 0 #100e17,-1px -1px 0 #100e17,1px -1px 0 #100e17,-1px 1px 0 #100e17; animation:world_floating_text 900ms ease-out forwards; --world-floating-travel:11px; white-space:nowrap; }
+.world_particle { position:absolute; z-index:1; pointer-events:none; image-rendering:pixelated; transform:translate(-50%,-50%); }
 .world_floating_text--gain { color:#67e879; }
 .world_floating_text--loss { color:#ff625f; }
 @keyframes world_floating_text { from { opacity:1; translate:0 0; } to { opacity:0; translate:0 calc(-1 * var(--world-floating-travel)); } }
