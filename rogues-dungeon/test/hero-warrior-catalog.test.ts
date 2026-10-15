@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { HERO_WARRIOR_ANIMATION_NAMES, createHeroWarriorAnimationEntity, heroWarriorAnimationCatalog, heroWarriorIdleAnimationForHeading } from "../src/systems/rendering/hero-warrior-catalog.ts";
+import { HERO_WARRIOR_ANIMATION_NAMES, createHeroWarriorAnimationEntity, heroWarriorAnimationCatalog, heroWarriorIdleAnimationForHeading } from "../src/content/characters/hero-warrior/hero-warrior-animation.ts";
 
 test("preserves all Hero Warrior animation groups and directional sequences", () => {
   const catalog = heroWarriorAnimationCatalog("/game/");

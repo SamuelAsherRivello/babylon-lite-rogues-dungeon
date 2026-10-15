@@ -13,9 +13,9 @@ import { getRenderedTileCssSize } from "../../content/world/zoom.ts";
 import { pixelPerfectOptions } from "../../content/babylon/config.ts";
 import { getInitializationMessage } from "../../content/babylon/initialization.ts";
 import { findWorldTooltipPosition } from "../../content/world/tooltip-placement.ts";
-import { resourceNames } from "../procedural-generation/procedural-generation-system.ts";
-import { isWalkable } from "../procedural-generation/level-grid.ts";
-import { createHeroWarriorAnimationEntity, heroWarriorIdleAnimationForHeading } from "./hero-warrior-catalog.ts";
+import { resourceNames } from "../procedural/world-procedural-system.ts";
+import { isWalkable } from "../procedural/level-grid-system.ts";
+import { createHeroWarriorAnimationEntity, heroWarriorIdleAnimationForHeading } from "../../content/characters/hero-warrior/hero-warrior-animation.ts";
 
 const texturePaths = {
   tiles: `${import.meta.env.BASE_URL}assets/Tilesets/Tileset_Dungeon.png`,

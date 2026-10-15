@@ -1,5 +1,5 @@
 import type { Action, ActionResult, Attributes, AttributeName, Campaign, ConsumableResource, Direction, Enemy, Entity, Equipment, EquipmentGroup, EventFacts, Floor, GameEvent, Item, Position, QuickSlot, Resource, ResourceInput, ResourceName, Resources, Room } from "../../game/types.ts";
-import { createLevelContext, ensureSemanticCells, isWalkable, runLevelPasses } from "./level-grid.ts";
+import { createLevelContext, ensureSemanticCells, isWalkable, runLevelPasses } from "./level-grid-system.ts";
 
 export const FLOOR_WIDTH = 100;
 export const FLOOR_HEIGHT = 100;

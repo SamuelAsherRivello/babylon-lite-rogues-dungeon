@@ -5,7 +5,7 @@ interface WangModel { tileSize: number; terrain: WangEntry[]; walls: WangEntry[]
 interface WorldOptions { map?: number[][] | null; cells?: TerrainCell[][] | null; entities?: Entity[]; player: Position; start?: Position; tileSize?: number; view?: string; detail?: string; groundTiles?: number[] | null; wallTiles?: number[] | null }
 interface Projection { center: Position; viewportWidth: number; viewportHeight: number; tileCssSize: number }
 function isLegacyGrid(grid: RenderGrid): grid is number[][] { return Array.isArray(grid) && (grid.length === 0 || typeof grid[0]?.[0] === "number"); }
-import { buildDungeonWangTerrain, buildDungeonWangWalls } from "../maps/wang-autotiling-system.ts";
+import { buildDungeonWangTerrain, buildDungeonWangWalls } from "./tile-map-system.ts";
 
 const wangTerrainCache = new WeakMap<RenderGrid, WangModel>();
 

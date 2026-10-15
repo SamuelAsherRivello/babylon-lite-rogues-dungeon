@@ -1,5 +1,5 @@
-import type { CharacterHeading } from "../../game/types.ts";
-import { createSpriteSheetAnimationEntity, type SpriteAnimationDefinition, type SpriteAnimationSummary, type SpriteSheetAnimationEntity } from "./sprite-sheet-animation-system.ts";
+import type { CharacterHeading } from "../../../game/types.ts";
+import { createSpriteSheetAnimationEntity, type SpriteAnimationDefinition, type SpriteAnimationSummary, type SpriteSheetAnimationEntity } from "../../../systems/animation/sprite-animation-system.ts";
 
 export const HERO_WARRIOR_ANIMATION_NAMES = ["Idle/Down", "Idle/Side", "Idle/Up", "Run/Down", "Run/Side", "Run/Up", "Attack/Down", "Attack/Side", "Attack/Up", "Death"] as const;
 export type HeroWarriorAnimationName = typeof HERO_WARRIOR_ANIMATION_NAMES[number];

@@ -8,9 +8,9 @@ interface LegacyCampaign extends Omit<Campaign, "player" | "progression"> {
 }
 // Preserve the existing shallow save guards; normalization owns legacy fields.
 function candidate(value: unknown): Partial<Campaign> | null { return typeof value === "object" && value !== null ? value as Partial<Campaign> : null; }
-import { createCampaign, createResourcesModel, effectiveAttributes, FLOOR_HEIGHT, FLOOR_WIDTH, GENERATOR_VERSION, isResourcesModel, normalizeQuickSlots, normalizeStackableLocations, upgradeCampaignResources } from "../procedural-generation/procedural-generation-system.ts";
+import { createCampaign, createResourcesModel, effectiveAttributes, FLOOR_HEIGHT, FLOOR_WIDTH, GENERATOR_VERSION, isResourcesModel, normalizeQuickSlots, normalizeStackableLocations, upgradeCampaignResources } from "../procedural/world-procedural-system.ts";
 import { gameZoomPresets } from "../../content/world/zoom.ts";
-import { createSemanticCells, ensureSemanticCells, semanticCellsFromMap } from "../procedural-generation/level-grid.ts";
+import { createSemanticCells, ensureSemanticCells, semanticCellsFromMap } from "../procedural/level-grid-system.ts";
 
 const PREFIX = "rogues-dungeon.slot.";
 const BACKUP_PREFIX = "rogues-dungeon.slot.v1-backup.";

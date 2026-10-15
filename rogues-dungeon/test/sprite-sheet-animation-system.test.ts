@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { createSpriteSheetAnimationEntity, type SpriteAnimationDefinition } from "../src/systems/rendering/sprite-sheet-animation-system.ts";
+import { createSpriteSheetAnimationEntity, type SpriteAnimationDefinition } from "../src/systems/animation/sprite-animation-system.ts";
 
 const frame = (path: string, widthPx = 32, heightPx = 48) => ({ path, widthPx, heightPx });
 const definitions: SpriteAnimationDefinition[] = [

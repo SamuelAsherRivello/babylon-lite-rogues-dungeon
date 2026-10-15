@@ -4,7 +4,7 @@
 
 ## Extending events
 
-Add stable event types to `EVENT_TYPES` in `src/systems/procedural-generation/procedural-generation-system.ts`. Emit structured `facts` at the source with the relevant previous/current values, cause, item identity, or destination. Do not add formatted Log sentences or Log-only callbacks to domain rules. Subscribers receive raw events regardless of the Log policy.
+Add stable event types to `EVENT_TYPES` in `src/systems/procedural/world-procedural-system.ts`. Emit structured `facts` at the source with the relevant previous/current values, cause, item identity, or destination. Do not add formatted Log sentences or Log-only callbacks to domain rules. Subscribers receive raw events regardless of the Log policy.
 
 ## Log policy
 

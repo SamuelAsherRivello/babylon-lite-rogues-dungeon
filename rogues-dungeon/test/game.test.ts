@@ -1,8 +1,8 @@
 import type { ActionResult, Campaign, Enemy, Entity, Item, Direction } from '../src/game/types.ts';
-import type { TileLayer } from '../src/systems/maps/tiled-map-system.ts';
+import type { TileLayer } from '../src/systems/rendering/tile-map-system.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { applyAction, combatReadiness, createCampaign, createGameSession, effectiveAttributes, FLOOR_CENTER, FLOOR_HEIGHT, FLOOR_WIDTH, GAME_TUNING, generateFloor, headingFromMovement, levelUpOptions, previewEquipment, resourceState, upgradeCampaignResources } from '../src/systems/procedural-generation/procedural-generation-system.ts';
+import { applyAction, combatReadiness, createCampaign, createGameSession, effectiveAttributes, FLOOR_CENTER, FLOOR_HEIGHT, FLOOR_WIDTH, GAME_TUNING, generateFloor, headingFromMovement, levelUpOptions, previewEquipment, resourceState, upgradeCampaignResources } from '../src/systems/procedural/world-procedural-system.ts';
 import { projectLogEvents } from '../src/game/log-policy.ts';
 import { projectFloatingFeedback, removeFloatingFeedback } from '../src/game/floating-feedback.ts';
 import { getLatestMovement, getMovementKey, getMoveInitialDelay, getMoveRepeatDelay, getMoveScheduleDelay, SPRINT_INITIAL_DELAY, SPRINT_REPEAT_DELAY, WALK_INITIAL_DELAY, WALK_REPEAT_DELAY } from '../src/game/keyboard-input.ts';
@@ -15,10 +15,9 @@ import { gameZoomPresets, getTileCssSize } from '../src/content/world/zoom.ts';
 import { clearRoguesDungeonStorage, migrateCampaign, readPreferences, readSlot, readSlotSummary, writePreferences, writeSlot } from '../src/systems/persistence/save-system.ts';
 import { randomSeedFromSearch } from '../src/game/random-seed.ts';
 import { parseGameUrlOptions } from '../src/game/url-options.ts';
-import { DUNGEON_TILESET_SOURCE, compareTiledRepairLayers, floorFromTiledRepairMap, serializeFloorToTiled, validateTiledRepairMap } from '../src/systems/maps/tiled-map-system.ts';
-import { DUNGEON_WANG_TILE_BY_MASK } from '../src/systems/maps/wang-autotiling-system.ts';
-import { createLevelContext, isWalkable, runLevelPasses } from '../src/systems/procedural-generation/level-grid.ts';
-import { buildManualTileScenario, getManualTileScenario } from '../src/systems/procedural-generation/manual-tile-scenarios.ts';
+import { DUNGEON_TILESET_SOURCE, DUNGEON_WANG_TILE_BY_MASK, compareTiledRepairLayers, floorFromTiledRepairMap, serializeFloorToTiled, validateTiledRepairMap } from '../src/systems/rendering/tile-map-system.ts';
+import { createLevelContext, isWalkable, runLevelPasses } from '../src/systems/procedural/level-grid-system.ts';
+import { buildManualTileScenario, getManualTileScenario } from '../src/systems/procedural/manual-tile-scenarios.ts';
 
 function present<T>(value: T): NonNullable<T> { assert.ok(value != null, 'expected fixture value to exist'); return value; }
 // These tests exercise runtime normalization of old enemies. Do not add defaults here:

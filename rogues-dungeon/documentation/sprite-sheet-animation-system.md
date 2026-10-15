@@ -1,6 +1,6 @@
 # Sprite-Sheet Animation System
 
-`src/systems/rendering/sprite-sheet-animation-system.ts` provides renderer-neutral playback for image-based animations used by characters, props, effects, and other sprites.
+`src/systems/animation/sprite-animation-system.ts` provides renderer-neutral playback for image-based animations used by characters, props, effects, and other sprites.
 
 An animation entity registers named animations and exposes:
 

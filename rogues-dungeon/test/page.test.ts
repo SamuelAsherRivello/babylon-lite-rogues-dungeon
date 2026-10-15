@@ -80,7 +80,7 @@ test('supports deterministic direct-slot map-fix URLs', async () => {
 test('derives sparse dungeon terrain from the verified Wang mapping', async () => {
   const [world, wang] = await Promise.all([
     readFile(new URL('../src/systems/rendering/world-render-system.ts', import.meta.url), 'utf8'),
-    readFile(new URL('../src/systems/maps/wang-autotiling-system.ts', import.meta.url), 'utf8'),
+    readFile(new URL('../src/systems/rendering/tile-map-system.ts', import.meta.url), 'utf8'),
   ]);
   assert.match(world, /buildDungeonWangTerrain/);
   assert.match(wang, /DUNGEON_WANG_TILE_BY_MASK/);

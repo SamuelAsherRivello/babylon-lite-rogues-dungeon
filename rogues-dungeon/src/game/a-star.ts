@@ -1,7 +1,7 @@
 import type { Position } from "./types.ts";
-import type { Grid } from "../systems/procedural-generation/level-grid.ts";
+import type { Grid } from "../systems/procedural/level-grid-system.ts";
 import { createAStarPathfinder, createGridMap } from "@esengine/pathfinding";
-import { ensureSemanticCells, isWalkable } from "../systems/procedural-generation/level-grid.ts";
+import { ensureSemanticCells, isWalkable } from "../systems/procedural/level-grid-system.ts";
 
 // Adapted from the MIT-licensed cardinal A* integration in
 // https://github.com/SamuelAsherRivello/babylon-lite-ascii-rpg

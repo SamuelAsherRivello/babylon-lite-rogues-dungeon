@@ -1,16 +1,31 @@
 import type { Campaign, Entity, Floor } from "../../game/types.ts";
+import type { Grid } from "../procedural/level-grid-system.ts";
+import type { TerrainCell } from "../../game/types.ts";
 export interface TiledProperty { name: string; type?: string; value: unknown }
 export interface TiledObject { id: number; name: string; type: string; x: number; y: number; width?: number; height?: number; properties?: TiledProperty[] }
 export interface TileLayer { id: number; name: string; type: "tilelayer"; visible: boolean; opacity: number; width: number; height: number; data: number[] }
 export interface ObjectLayer { id: number; name: string; type: "objectgroup"; visible: boolean; opacity: number; draworder: string; objects: TiledObject[] }
 export interface TiledMap { type: string; version: string; tiledversion: string; orientation: string; renderorder: string; width: number; height: number; tilewidth: number; tileheight: number; infinite: boolean; properties: TiledProperty[]; tilesets: { firstgid: number; source: string }[]; layers: (TileLayer | ObjectLayer)[] }
-import { FLOOR_HEIGHT, FLOOR_WIDTH, GENERATOR_VERSION, generateFloor } from "../procedural-generation/procedural-generation-system.ts";
-import { ensureSemanticCells, semanticCellsFromMap } from "../procedural-generation/level-grid.ts";
-import { buildDungeonWangWalls } from "./wang-autotiling-system.ts";
+import { FLOOR_HEIGHT, FLOOR_WIDTH, GENERATOR_VERSION, generateFloor } from "../procedural/world-procedural-system.ts";
+import { ensureSemanticCells, isWalkable, semanticCellsFromMap } from "../procedural/level-grid-system.ts";
 
 export const TILED_TILE_SIZE = 32;
 export const DUNGEON_TILESET_SOURCE = "../../assets/Tiled_Examples/Tilesets/Tileset_Dungeon.tsx";
 const DUNGEON_TILESET_GROUND_GID = 14;
+
+const DIRECTIONS = Object.freeze([[0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1]]);
+export const DUNGEON_WANG_TILE_BY_MASK: Readonly<Record<number, number>> = Object.freeze({ 7: 48, 28: 0, 31: 12, 112: 5, 124: 1, 127: 32, 193: 53, 199: 49, 223: 8, 241: 17, 247: 6, 253: 30, 255: 13 });
+export const DUNGEON_WANG_INTERIOR_TILE = 13;
+const DUNGEON_WANG_WALL_BY_MASK: Readonly<Record<number, number>> = Object.freeze({ 1: 49, 4: 12, 16: 1, 64: 17, 5: 12, 17: 1, 20: 1, 65: 17, 68: 17, 80: 1, 2: 48, 8: 0, 15: 8, 128: 53, 135: 8, 143: 8, 195: 6, 227: 6, 225: 6, 226: 59, 230: 21, 232: 34, 236: 21, 238: 21 });
+const CARDINAL_BITS = Object.freeze([1, 4, 16, 64]);
+const DIAGONAL_BITS = Object.freeze([2, 8, 32, 128]);
+function maskDistance(actual: number, candidate: number) { let score = 0; for (const bit of CARDINAL_BITS) if ((actual & bit) !== (candidate & bit)) score += 8; for (const bit of DIAGONAL_BITS) if ((actual & bit) !== (candidate & bit)) score += 1; return score; }
+function nearestFrame(mask: number, table: Readonly<Record<number, number>>) { return Object.entries(table).map(([candidate, frame]) => ({ candidate: Number(candidate), frame, score: maskDistance(mask, Number(candidate)) })).sort((a, b) => a.score - b.score || a.candidate - b.candidate)[0]?.frame ?? null; }
+function walkableAt(grid: number[][] | Grid | undefined, x: number, y: number) { return Array.isArray(grid) ? grid[y]?.[x] === 0 : isWalkable(grid, x, y); }
+export function walkableMask(grid: number[][] | Grid | undefined, x: number, y: number) { return DIRECTIONS.reduce((mask, [dx, dy], index) => mask | (walkableAt(grid, x + dx, y + dy) ? 1 << index : 0), 0); }
+export function isWalkableBoundary(mask: number) { return mask !== 255; }
+export function buildDungeonWangTerrain({ map, cells, tileSize = 32 }: { map?: number[][]; cells?: TerrainCell[][]; tileSize?: number }) { const grid = cells ? { cells } : map; const height = cells?.length ?? map?.length ?? 0; const width = cells?.[0]?.length ?? map?.[0]?.length ?? 0; const terrain = []; const diagnostics: { x: number; y: number; mask: number; worldX: number; worldY: number }[] = []; for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) { if (!walkableAt(grid, x, y)) continue; const mask = walkableMask(grid, x, y); const frame = DUNGEON_WANG_TILE_BY_MASK[mask] ?? nearestFrame(mask, DUNGEON_WANG_TILE_BY_MASK) ?? DUNGEON_WANG_INTERIOR_TILE; terrain.push({ x, y, mask, worldX: x * tileSize + tileSize / 2, worldY: y * tileSize + tileSize / 2, frame, floorFrame: frame, wallFrame: null, wall: false }); } return { terrain, diagnostics }; }
+export function buildDungeonWangWalls({ map, cells, tileSize = 32 }: { map?: number[][]; cells?: TerrainCell[][]; tileSize?: number }) { const grid = cells ? { cells } : map; const height = cells?.length ?? map?.length ?? 0; const width = cells?.[0]?.length ?? map?.[0]?.length ?? 0; const walls = []; const diagnostics: { x: number; y: number; mask: number; worldX: number; worldY: number }[] = []; for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) { if (walkableAt(grid, x, y)) continue; const mask = walkableMask(grid, x, y); if (!mask) continue; const frame = DUNGEON_WANG_WALL_BY_MASK[mask] ?? nearestFrame(mask, DUNGEON_WANG_WALL_BY_MASK); const entry = { x, y, mask, worldX: x * tileSize + tileSize / 2, worldY: y * tileSize + tileSize / 2, frame }; if (frame == null) diagnostics.push({ ...entry }); walls.push(entry); } return { walls, wallDiagnostics: diagnostics }; }
 
 function propertiesObject(properties: TiledProperty[] = []) { return Object.fromEntries(properties.map(({ name, value }) => [name, value])); }
 function propertiesArray(values: Record<string, unknown>): TiledProperty[] { return Object.entries(values).filter(([, value]) => value !== undefined).map(([name, value]) => ({ name, type: typeof value === "number" ? "int" : "string", value })); }

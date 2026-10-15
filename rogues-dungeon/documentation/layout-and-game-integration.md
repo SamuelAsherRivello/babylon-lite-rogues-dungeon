@@ -8,4 +8,4 @@ Zoom, Camera, and desired Fullscreen state are stored once per browser under `ro
 
 World tiles and actor frames are 32 by 32 pixels. Native zoom keeps each tile at source dimensions; Half and Double use the template's render-resolution dimension calculation and preserve nearest-neighbor pixel edges. Supplied Tiled tilesets and example maps remain under `public/assets/` with their relative image paths intact.
 
-The current turn model is in `src/systems/procedural-generation/procedural-generation-system.ts`; slot persistence is in `src/systems/persistence/save-system.ts`. Both are independent from the React display. The active view is assembled in `src/game/Game.tsx` and mounted by `src/content/Content.tsx`.
+The current turn model is in `src/systems/procedural/world-procedural-system.ts`; slot persistence is in `src/systems/persistence/save-system.ts`. Both are independent from the React display. The active view is assembled in `src/game/Game.tsx` and mounted by `src/content/Content.tsx`.

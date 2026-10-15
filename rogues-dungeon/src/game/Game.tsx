@@ -13,15 +13,15 @@ interface Movement { direction: string; sprint: boolean; source?: string }
 interface SlotItemProps { type?: string; slotType?: "ability" | "quickslot" | "equipment" | "inventory"; slotSubtype?: EquipmentGroup; number?: number; hotkey?: string; text?: string; icon?: string; cost?: string | number; accentColor?: string; disabled?: boolean; unavailable?: boolean; onClick?: () => void; onDoubleClick?: () => void; className?: string; dragSource?: Record<string, string | number>; dropTarget?: Record<string, string | number | boolean>; empty?: boolean; tooltip?: string }
 interface InventoryStack { item: Item; quantity: number }
 import { useCallback, useContext, useEffect, useRef, useState } from "react";
-import { abilityCatalog, attributeLabels, createCampaign, createGameSession, directions, effectiveAttributes, isQuickSlottableItem, resourceState } from "../systems/procedural-generation/procedural-generation-system.ts";
-import { isWalkable } from "../systems/procedural-generation/level-grid.ts";
+import { abilityCatalog, attributeLabels, createCampaign, createGameSession, directions, effectiveAttributes, isQuickSlottableItem, resourceState } from "../systems/procedural/world-procedural-system.ts";
+import { isWalkable } from "../systems/procedural/level-grid-system.ts";
 import { describeInventoryDrop } from "./inventory-drag.ts";
 import { gameZoomPresets } from "../content/world/zoom.ts";
 import { projectLogEvents } from "./log-policy.ts";
 import { createAudioManager } from "../systems/audio/audio-system.ts";
 import { parseGameUrlOptions } from "./url-options.ts";
-import { floorFromTiledRepairMap, serializeFloorToTiled } from "../systems/maps/tiled-map-system.ts";
-import { buildManualTileScenario, getManualTileScenario } from "../systems/procedural-generation/manual-tile-scenarios.ts";
+import { floorFromTiledRepairMap, serializeFloorToTiled } from "../systems/rendering/tile-map-system.ts";
+import { buildManualTileScenario, getManualTileScenario } from "../systems/procedural/manual-tile-scenarios.ts";
 import { createStoredZip } from "./zip.ts";
 import { projectFloatingFeedback, removeFloatingFeedback } from "./floating-feedback.ts";
 import { getLatestMovement, getMovementKey, getMoveRepeatDelay, getMoveScheduleDelay } from "./keyboard-input.ts";
@@ -386,7 +386,7 @@ export function Game() {
     }).catch((error) => setMapFixError(error.message));
   }, [campaign, slot, urlOptions.map, urlOptions.mapFix, urlOptions.slot]);
   const newGameLabel = randomSeed === null ? "New Game" : `New Game · Seed ${randomSeed}`;
-  if (!campaign) return <main className="saved_games"><h1>Rogue's Dungeon</h1><h2>3 Saved Games</h2>{summaries.map((entry) => <button tabIndex={-1} key={entry.slot} disabled={entry.invalid} onClick={() => begin(entry.slot)}><b>Saved Game {entry.slot}</b><span>{entry.invalid ? "Unavailable" : entry.occupied ? "Level " + String(entry.level).padStart(2, "0") + " · XP " + String(entry.xpLevel).padStart(2, "0") : newGameLabel}</span></button>)}<button tabIndex={-1} type="button" onClick={clearLocalStorage}>Clear Local Storage</button>{saveError && <p role="alert">{saveError}</p>}</main>;
+  if (!campaign) return <><main className="saved_games"><h1>Rogue's Dungeon</h1><h2>3 Saved Games</h2>{summaries.map((entry) => <button tabIndex={-1} key={entry.slot} disabled={entry.invalid} onClick={() => begin(entry.slot)}><b>Saved Game {entry.slot}</b><span>{entry.invalid ? "Unavailable" : entry.occupied ? "Level " + String(entry.level).padStart(2, "0") + " · XP " + String(entry.xpLevel).padStart(2, "0") : newGameLabel}</span></button>)}<button tabIndex={-1} type="button" onClick={() => setSettings(true)}>Settings</button>{saveError && <p role="alert">{saveError}</p>}</main>{settings && <SettingsDialog onClose={() => setSettings(false)} onReturn={() => setSettings(false)} onClearLocalStorage={clearLocalStorage} preferences={preferences} setPreference={setPreference} mutedByUrl={audio.hardMuted} />}</>;
   return <GameScreen orientation={orientation} onPointerDown={handlePointerDown}>
     <TitleBar campaign={campaign} preferences={preferences} setPreference={setPreference} onFullscreen={toggleFullscreen} onSettings={() => setSettings(true)} fullscreenActual={fullscreenActual} />
     {urlOptions.mapFix && <MapFixControls campaign={campaign} slot={slot} onImport={importRepairMap} error={mapFixError} />}

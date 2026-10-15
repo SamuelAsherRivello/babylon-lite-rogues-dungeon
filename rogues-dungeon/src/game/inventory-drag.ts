@@ -1,5 +1,5 @@
 import type { Action, Campaign, DragSource, DropDestination, EquipmentGroup, Item } from "./types.ts";
-import { effectiveAttributes, isQuickSlottableItem, previewEquipment } from "../systems/procedural-generation/procedural-generation-system.ts";
+import { effectiveAttributes, isQuickSlottableItem, previewEquipment } from "../systems/procedural/world-procedural-system.ts";
 
 export function previewInventoryDrop(campaign: Campaign, drag: DragSource | null, group: EquipmentGroup, index: number, targetItem: Item | null) {
   if (!drag) return null;

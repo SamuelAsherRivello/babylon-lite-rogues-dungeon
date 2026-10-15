@@ -1,7 +1,7 @@
 # Rogue's Dungeon Code Organization
 
 - `src/game/types.ts` owns serializable domain contracts: campaigns, floors, entities, items, actions, events, and preferences. Pure game helpers and the simulation/persistence/map systems must not acquire React or renderer dependencies. `src/game/Game.tsx` is the existing React composition layer.
-- `src/systems/procedural-generation/` owns generation and turn rules; `persistence/`, `maps/`, `audio/`, and `rendering/` own their corresponding integrations.
+- `src/systems/procedural/` owns generation and turn rules; `persistence/`, `animation/`, `audio/`, and `rendering/` own their corresponding integrations.
 - `src/content/` mounts the active game experience.
 - `src/ui/` owns the PC-landscape/mobile-portrait browser surface, developer-only PC aspect preview, command desk, and styles. Keep primary game UI inside the fitted viewport; do not restore template corner units. Portrait uses a statusbar Control/Info toggle to switch the bottom content.
 - Keep movement, enemy phases, persistence, and choices deterministic from explicit state where practical.

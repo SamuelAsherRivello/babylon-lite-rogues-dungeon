@@ -1,6 +1,6 @@
 import type { Entity, Floor, Position, Room } from "../../game/types.ts";
-import { createSemanticCells, ensureSemanticCells, mapFromSemanticCells } from "./level-grid.ts";
-import { FLOOR_HEIGHT, FLOOR_WIDTH, GENERATOR_VERSION } from "./procedural-generation-system.ts";
+import { createSemanticCells, ensureSemanticCells, mapFromSemanticCells } from "./level-grid-system.ts";
+import { FLOOR_HEIGHT, FLOOR_WIDTH, GENERATOR_VERSION } from "./world-procedural-system.ts";
 
 export interface ManualTileScenario {
   name: string;

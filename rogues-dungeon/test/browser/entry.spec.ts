@@ -1,4 +1,4 @@
-import { GENERATOR_VERSION } from '../../src/systems/procedural-generation/procedural-generation-system.ts';
+import { GENERATOR_VERSION } from '../../src/systems/procedural/world-procedural-system.ts';
 import { expect, test } from "@playwright/test";
 import path from "node:path";
 
