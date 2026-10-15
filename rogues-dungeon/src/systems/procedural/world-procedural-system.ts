@@ -296,6 +296,13 @@ export function generateFloor(level: number, seed = seedNow(), difficulty = leve
     const manaCell = !route.has(`${starterMana.x},${starterMana.y}`) && claim(starterMana) ? starterMana : nextCell();
     if (healthCell) add({ id: "health-potion", kind: "potion", resource: "health", ...healthCell });
     if (manaCell) add({ id: "mana-potion", kind: "potion", resource: "mana", ...manaCell });
+    // Keep one of every pickup type within a few steps of a new character so
+    // collection and its UI handoff are immediately playable and testable.
+    const nearStart = (offsets: readonly Position[]) => offsets.map(({ x, y }) => ({ x: start.x + x, y: start.y + y })).find((cell) => !route.has(`${cell.x},${cell.y}`) && claim(cell));
+    const starterKey = nearStart([{ x: -2, y: 2 }, { x: -2, y: -2 }, { x: 2, y: 2 }]);
+    const starterGold = nearStart([{ x: 2, y: -2 }, { x: 2, y: 2 }, { x: -2, y: -2 }]);
+    if (starterKey) add({ id: "starter-key", kind: "key", amount: 1, ...starterKey });
+    if (starterGold) add({ id: "starter-gold", kind: "gold", amount: 10, ...starterGold });
     for (let i = 1; i < rooms.length; i++) {
       const room = rooms[i]; const preferred = { x: room.x + 2, y: room.y + 2 };
       const enemyCell = !route.has(`${preferred.x},${preferred.y}`) && claim(preferred) ? preferred : nextCell();

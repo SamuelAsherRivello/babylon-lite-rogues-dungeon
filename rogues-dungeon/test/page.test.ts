@@ -41,7 +41,7 @@ test('removes fitted gutters while the browser surface is fullscreen', async () 
 });
 test('uses a command desk and removes template corner units', async () => {
   const [game, controlsArea, app, css] = await Promise.all(['src/game/Game.tsx', 'src/ui/ControlsArea.tsx', 'src/ui/App.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
-  assert.match(game, /PrimaryInfoPanel/); assert.match(game, /SecondaryInfoPanel/); assert.match(game, /3 Saved Games/); assert.match(game, /Dev Settings/);
+  assert.match(game, /PrimaryInfoPanel/); assert.match(game, /SecondaryInfoPanel/); assert.match(game, /Choose Your Descent/); assert.match(game, /Dev Settings/);
   assert.match(game, /className="titlebar_left"/); assert.match(game, /className="titlebar_right"/); assert.match(game, /className="titlebar_identity"/); assert.match(game, /className="titlebar_progress"/); assert.match(game, /World: \{campaign\.world === "One" \? 1 : campaign\.world\}/);
   assert.match(game, /aria-label="Time">⏱️<\/span>/); assert.match(game, /aria-label="Gold">🪙<\/span><span className="titlebar_counter_value">\{campaign\.counters\.gold\}/); assert.match(game, /aria-label="Keys">🔑<\/span><span className="titlebar_counter_value">\{String\(campaign\.counters\.keys\)/);
   assert.doesNotMatch(game, /titlebar_icon_group/); assert.doesNotMatch(css, /titlebar_icon_group/);

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { TabControl } from "./TabControl.tsx";
-import { useUiMotion } from "./ui-animation-system.tsx";
+import { useUiMotion } from "./ui-transition-system.tsx";
 
 interface ControlsAreaProps {
   expanded: boolean;
@@ -16,7 +16,7 @@ export function ControlsArea({ expanded, titleVisible, titleText, onToggle, chil
     <div className="controls-area_surface" style={motion}>
       <TabControl ariaLabel={expanded ? "Collapse keyboard controls" : "Expand keyboard controls"} expanded={expanded} onClick={onToggle} />
       <section className="keyboard_tray_panel" aria-label="Keyboard controls" aria-hidden={!expanded}><div className="keyboard_tray_rows">{children}</div></section>
+      <button tabIndex={-1} type="button" className="keyboard_tray_title" aria-label={expanded ? "Collapse keyboard controls" : "Expand keyboard controls"} aria-expanded={expanded} aria-hidden={!titleVisible} onClick={onToggle}>{titleText}</button>
     </div>
-    <button tabIndex={-1} type="button" className="keyboard_tray_title" aria-label={expanded ? "Collapse keyboard controls" : "Expand keyboard controls"} aria-expanded={expanded} aria-hidden={!titleVisible} onClick={onToggle}>{titleText}</button>
   </div>;
 }

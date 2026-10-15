@@ -16,6 +16,10 @@ verification evidence consistent with one another.
 ## Quality expectations
 
 - Keep changes scoped to the stated outcome.
+- Name every new file with lowercase kebab case in the form
+  `blah-foo.extension`. Retain every extension in compound filenames, such as
+  `dungeon-map.test.ts`. Rename modified nonconforming files unless a
+  framework, tool, or platform requires its exact filename.
 - Run the relevant automated checks and record manual verification when needed.
 - Verify browser-visible changes in a real browser or runtime.
 - Update README commands, screenshots, and release instructions only from

@@ -51,6 +51,16 @@ recommend 4 to 10 event-based sound effects and provide both an in-game mute
 toggle and a documented URL argument that mutes all sound for silent AI
 testing. Human players may enable sound in the normal experience.
 
+## File naming
+
+Name every new file with lowercase kebab case in the form
+`blah-foo.extension`. Use one or more lowercase words separated by single
+hyphens, followed by the file's normal extension. For compound extensions,
+keep every extension, such as `game-state.test.ts`. Rename files that you
+modify when they do not follow this convention, unless a framework, tool, or
+platform requires an exact filename such as `package.json`, `vite.config.ts`,
+or `AGENTS.md`.
+
 ## Repository and application layout
 
 - The repository root is the npm project root and contains `.git`, package

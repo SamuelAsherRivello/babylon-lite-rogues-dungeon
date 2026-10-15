@@ -4,6 +4,17 @@ import test from 'node:test';
 import { contentConfig, getRenderingPolicy, pixelPerfectOptions } from '../src/content/babylon/config.ts';
 import { getInitializationMessage } from '../src/content/babylon/initialization.ts';
 import { gameZoomPresets, getRenderedTileCssSize, getTileCssSize } from '../src/content/world/zoom.ts';
+import { sortGridRenderEntries } from '../src/systems/rendering/grid-render-order-system.ts';
+
+test('sorts grid visuals by layer and then vertical position', () => {
+  const entries = sortGridRenderEntries([
+    { id: 'player', layer: 1, y: 4 },
+    { id: 'lower-particle', layer: 1, y: 5 },
+    { id: 'background', layer: 0, y: 99 },
+    { id: 'upper-particle', layer: 1, y: 3 },
+  ]);
+  assert.deepEqual(entries.map(({ id }) => id), ['background', 'upper-particle', 'player', 'lower-particle']);
+});
 
 test('keeps Babylon Lite Pixel Perfect settings and WebGPU-only initialization', () => {
   assert.deepEqual(contentConfig, { renderer: 'babylon-lite', style: '2d' });
@@ -52,6 +63,8 @@ test('mounts the dungeon and minimap in Babylon Lite from the same world compone
   assert.match(source, /wallHandles\.slice\(world\.walls\.length\)/);
   assert.match(source, /debugHandles\.slice\(world\.diagnostics\.length \+ world\.wallDiagnostics\.length\)/);
   assert.match(source, /getInitializationMessage\(Boolean\(navigator\.gpu\), error\)/);
+  assert.doesNotMatch(source, /shouldRenderWorld/, 'the main renderer mounts immediately behind the loading iris');
+  assert.match(source, /irisPhase === "closed" && rendererLoaded/, 'the iris reveals only after the mounted renderer is ready');
   assert.doesNotMatch(source, /getContext\(["'](?:2d|webgl2?)["']/i);
 });
 
