@@ -105,6 +105,9 @@ body {
 .tab-control-placement--minimap { top:calc(.75rem + 16.5% - 3.25rem); left:calc(78% - .2rem); }
 .tab-control-placement .tab-control { top:50%; left:50%; transform:translate(-50%,-50%) rotate(-90deg); }
 .desktop_info { display:grid; grid-template-columns:1fr 1fr; min-width:0; min-height:0; }
+.desktop_info { position:absolute; inset:0 0 0 56%; display:block; overflow:hidden; }
+.desktop_info .info_panel { position:absolute; inset:0 auto 0 0; width:50%; pointer-events:auto; will-change:transform,opacity; }
+.desktop_info .info_panel[aria-hidden="true"] { pointer-events:none; }
 .desk_middle[data-secondary-open="false"] .desktop_info > .primary { grid-column:2; }
 .desk_middle[data-primary-open="false"] .desktop_info > .secondary { grid-column:2; }
 .desk_middle[data-primary-open="true"][data-secondary-open="false"] .tab-control-placement--abilities,
