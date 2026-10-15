@@ -1,6 +1,6 @@
 # Dungeon tileset Wang mapping
 
-Author: Codex, 2026-10-08. Source art: `../public/assets/art/vendors/dungeons-and-pixels-v1.4/Tilesets/Tileset_Dungeon.png` (384 × 288 pixels, 12 columns × 9 rows of 32-pixel tiles). Source tileset: `../public/assets/art/vendors/dungeons-and-pixels-v1.4/Tiled_Examples/Tilesets/Tileset_Dungeon.tsx`. Local tile IDs below refer to that exact TSX. The wall and stone floor family occupies the first five rows; animated liquids, dirt, and props are excluded.
+Author: Codex, 2026-10-08. Source art: `../public/assets/art/vendors/dungeons-and-pixels-v1.4/tilesets/tileset-dungeon.png` (384 × 288 pixels, 12 columns × 9 rows of 32-pixel tiles). Source tileset: `../public/assets/art/vendors/dungeons-and-pixels-v1.4/tiled-examples/tilesets/tileset-dungeon.tsx`. Local tile IDs below refer to that exact TSX. The wall and stone floor family occupies the first five rows; animated liquids, dirt, and props are excluded.
 
 The `Walkable floor` region uses a **mixed** Wang set. Values are in Tiled's clockwise order `N, NE, E, SE, S, SW, W, NW`; `1` is painted floor and `0` is outside that region. The assignments follow the documented Dungeon Figure 8 limited profile and were checked against the exact source sheet. Tile 31 is an optional decorative variant of tile 1 and is excluded so the upper boundary has one predictable choice.
 

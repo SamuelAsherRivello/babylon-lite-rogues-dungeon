@@ -43,7 +43,7 @@ test('uses a command desk and removes template corner units', async () => {
   const [game, controlsArea, app, css] = await Promise.all(['src/game/Game.tsx', 'src/ui/ControlsArea.tsx', 'src/ui/App.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
   assert.match(game, /PrimaryInfoPanel/); assert.match(game, /SecondaryInfoPanel/); assert.match(game, /Choose Your Descent/); assert.match(game, /Dev Settings/);
   assert.match(game, /className="titlebar_left"/); assert.match(game, /className="titlebar_right"/); assert.match(game, /className="titlebar_identity"/); assert.match(game, /className="titlebar_progress"/); assert.match(game, /World: \{campaign\.world === "One" \? 1 : campaign\.world\}/);
-  assert.match(game, /aria-label="Time">⏱️<\/span>/); assert.match(game, /aria-label="Gold">🪙<\/span><span className="titlebar_counter_value">\{campaign\.counters\.gold\}/); assert.match(game, /aria-label="Keys">🔑<\/span><span className="titlebar_counter_value">\{String\(campaign\.counters\.keys\)/);
+  assert.match(game, /aria-label="Time">⏱️<\/span>/); assert.match(game, /data-ui-counter-icon="gold" role="img" aria-label="Gold">🪙<\/span><span className="titlebar_counter_value">\{counters\.gold\}/); assert.match(game, /data-ui-counter-icon="key" role="img" aria-label="Keys">🔑<\/span><span className="titlebar_counter_value">\{String\(counters\.keys\)/);
   assert.doesNotMatch(game, /titlebar_icon_group/); assert.doesNotMatch(css, /titlebar_icon_group/);
   assert.match(game, /className="titlebar_identity">Rogue's Dungeon<\/span>/);
   assert.doesNotMatch(game, /Dungeon Roguelite/);
@@ -51,13 +51,21 @@ test('uses a command desk and removes template corner units', async () => {
   assert.match(game, /Clear Local Storage/); assert.match(game, /clearRoguesDungeonStorage\(localStorage\)/); assert.match(game, /window\.location\.reload\(\)/);
   assert.match(css, /\.titlebar \.titlebar_select_utility \{ width:9\.5em; flex:0 0 9\.5em/); assert.match(css, /\.titlebar \.titlebar_select_utility select \{ width:7\.4em/);
   assert.match(game, /const selectPreference = \(event: SyntheticEvent<HTMLElement>, preference: Partial<Preferences>\) => \{ setPreference\(preference\); event\.currentTarget\.blur\(\); \}/);
-  assert.match(game, /keyboardControlRows/); assert.match(game, /collapsedKeyboardGroups/); assert.match(controlsArea, /aria-label="Keyboard controls"/); assert.match(game, /console\.info\(`\[keyboard-controls\]/); assert.doesNotMatch(game, /Sprint:/); assert.doesNotMatch(game, /Sneak:/); assert.doesNotMatch(game, /\[1, 2, 3, 4\]/); assert.match(game, /<InputKey key=\{key\}/); assert.match(css, /\.controls-area_surface \{[^}]*transition:transform 250ms ease/); assert.match(css, /\.keyboard_tray_keys \{[^}]*grid-template-columns:repeat\(3,2\.25rem\)/);
+  assert.match(game, /keyboardControlRows/); assert.match(game, /collapsedKeyboardGroups/); assert.match(controlsArea, /aria-label="Keyboard controls"/); assert.match(game, /console\.info\(`\[keyboard-controls\]/); assert.doesNotMatch(game, /Sprint:/); assert.doesNotMatch(game, /Sneak:/); assert.doesNotMatch(game, /\[1, 2, 3, 4\]/); assert.match(game, /<InputKey key=\{key\}/); assert.match(css, /\.keyboard_tray_keys \{[^}]*grid-template-columns:repeat\(3,2\.25rem\)/);
   assert.match(game, /<option value="deadzone">Deadzone<\/option>/);
   assert.doesNotMatch(app, /AppCorner/); assert.match(css, /mobile_controls/);
   assert.match(css, /grid-template-rows:4% 92% 4%/); assert.match(css, /grid-template-rows:4% 46% 4% 46%/);
   assert.match(css, /grid-template-columns:minmax\(0,56%\) minmax\(0,44%\)/);
   assert.match(css, /\.titlebar_identity \{[^}]*background:#1a1720/); assert.match(css, /\.titlebar_progress \{[^}]*justify-content:center/);
   assert.match(css, /align-items:center/);
+});
+test('hands pickups from the rendered Babylon projection into their destination UI layer', async () => {
+  const [game, renderer, css] = await Promise.all(['src/game/Game.tsx', 'src/systems/rendering/babylon-render-system.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
+  assert.match(renderer, /renderedProjectionRef/); assert.match(renderer, /renderedProjectionRef\.current = \{ rect, center: cameraCenter, tileCssSize: cellSizeAt\(rect\) \}/);
+  assert.match(renderer, /target\?\.closest<HTMLElement>\("\.desk_middle"\)/); assert.match(renderer, /destinationLayer\.append\(transfer\)/);
+  assert.match(css, /width 500ms/); assert.match(renderer, /window\.setTimeout\(\(\) => \{ transfer\.remove\(\);/);
+  assert.match(game, /data-ui-counter-icon/); assert.match(game, /destination = entity\.kind === "gold" \|\| entity\.kind === "key" \? "counter" : "row"/);
+  assert.match(css, /z-index:10000/);
 });
 test('returns to the saved-game menu when a player death event is committed', async () => {
   const game = await readFile(new URL('../src/game/Game.tsx', import.meta.url), 'utf8');

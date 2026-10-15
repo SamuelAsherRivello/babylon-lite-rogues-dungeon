@@ -290,15 +290,13 @@ export function generateFloor(level: number, seed = seedNow(), difficulty = leve
     };
     // Keep the familiar starter supplies near the start, but reserve them
     // after the structural pass so they cannot collide with generated actors.
-    const starterHealth = { x: start.x, y: start.y + 1 };
-    const starterMana = { x: start.x + 2, y: start.y };
-    const healthCell = !route.has(`${starterHealth.x},${starterHealth.y}`) && claim(starterHealth) ? starterHealth : nextCell();
-    const manaCell = !route.has(`${starterMana.x},${starterMana.y}`) && claim(starterMana) ? starterMana : nextCell();
+    const nearStart = (offsets: readonly Position[]) => offsets.map(({ x, y }) => ({ x: start.x + x, y: start.y + y })).find((cell) => !route.has(`${cell.x},${cell.y}`) && claim(cell));
+    const healthCell = nearStart([{ x: 0, y: 1 }, { x: -1, y: 1 }, { x: 1, y: 1 }, { x: 0, y: 2 }]);
+    const manaCell = nearStart([{ x: 2, y: 0 }, { x: 2, y: 1 }, { x: 1, y: 2 }, { x: -1, y: 2 }]);
     if (healthCell) add({ id: "health-potion", kind: "potion", resource: "health", ...healthCell });
     if (manaCell) add({ id: "mana-potion", kind: "potion", resource: "mana", ...manaCell });
     // Keep one of every pickup type within a few steps of a new character so
     // collection and its UI handoff are immediately playable and testable.
-    const nearStart = (offsets: readonly Position[]) => offsets.map(({ x, y }) => ({ x: start.x + x, y: start.y + y })).find((cell) => !route.has(`${cell.x},${cell.y}`) && claim(cell));
     const starterKey = nearStart([{ x: -2, y: 2 }, { x: -2, y: -2 }, { x: 2, y: 2 }]);
     const starterGold = nearStart([{ x: 2, y: -2 }, { x: 2, y: 2 }, { x: -2, y: -2 }]);
     if (starterKey) add({ id: "starter-key", kind: "key", amount: 1, ...starterKey });

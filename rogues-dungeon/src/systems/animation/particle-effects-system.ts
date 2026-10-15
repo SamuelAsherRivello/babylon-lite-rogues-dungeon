@@ -8,7 +8,7 @@ export const smokePuffDurationMs = SMOKE_POFF.frameCount * SMOKE_POFF.frameDurat
 export function createSmokePuff(position: Position, startedAt = performance.now()): ParticleEffect { return { id: `smoke-poff-${startedAt}-${position.x}-${position.y}`, name: "smoke-poff", x: position.x, y: position.y, startedAt }; }
 export function particleFrame(effect: ParticleEffect, now = performance.now()) { return Math.min(SMOKE_POFF.frameCount - 1, Math.max(0, Math.floor((now - effect.startedAt) / SMOKE_POFF.frameDurationMs))); }
 export function particleExpired(effect: ParticleEffect, now = performance.now()) { return now - effect.startedAt >= smokePuffDurationMs; }
-export function particleFrameUrl(effect: ParticleEffect) { return `${import.meta.env.BASE_URL}assets/art/custom/particles/smoke-poff/Smoke_Poff_${particleFrame(effect) + 1}.png`; }
+export function particleFrameUrl(effect: ParticleEffect) { return `${import.meta.env.BASE_URL}assets/art/custom/particles/smoke-poff/smoke-poff-${particleFrame(effect) + 1}.png`; }
 
 /** Return CSS-pixel bounds for a particle placed directly in the renderer. */
 export function particleBoundsAt(x: number, y: number, width: number, height: number): ParticleRenderBounds {

@@ -39,7 +39,7 @@
   "tilesets": [
     {
       "firstgid": 1,
-      "source": "assets/art/vendors/dungeons-and-pixels-v1.4/Tiled_Examples/Tilesets/Tileset_Dungeon.tsx"
+      "source": "assets/art/vendors/dungeons-and-pixels-v1.4/tiled-examples/tilesets/tileset-dungeon.tsx"
     }
   ],
   "layers": [

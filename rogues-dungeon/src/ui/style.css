@@ -160,12 +160,10 @@ body {
 @keyframes resource_gain_fade { from { opacity:1 } to { opacity:.55 } }
 .attribute_grid { display:grid; grid-template-columns:1fr 1fr; gap:.3rem; }.attribute_item { display:flex; justify-content:space-between; gap:.25rem; font-size:.63rem; line-height:1.45; }.attribute_tooltip_trigger { border:0; padding:0; background:transparent; color:inherit; font:inherit; text-align:left; cursor:help; }.delta_value { display:inline-flex; justify-content:flex-end; }.delta_value_number { color:#e8dec4; }.delta_value_green { color:#76c878; }.delta_value_red { color:#df6161; }.delta_value_pulse { animation:delta_value_pulse 300ms ease-out; } @keyframes delta_value_pulse { 0%,100% { transform:scale(1); } 50% { transform:scale(2); } }
 .babylon_world { flex:1 1 0; min-width:0; min-height:0; position:relative; overflow:hidden; background:#100e17; cursor:crosshair; }
-/* Temporary visual boundary for the primary Tiled world render host. */
-.game_view > .babylon_world { outline:2px solid #ff3bd4; outline-offset:-2px; }
 .babylon_world_canvas { width:100%; height:100%; display:block; image-rendering:pixelated; }
 .world_floating_text { position:absolute; z-index:2; pointer-events:none; transform:translate(-50%,-100%); font:700 14px/1 ui-monospace,monospace; text-shadow:1px 1px 0 #100e17,-1px -1px 0 #100e17,1px -1px 0 #100e17,-1px 1px 0 #100e17; animation:world_floating_text 900ms ease-out forwards; --world-floating-travel:11px; white-space:nowrap; }
 .world_particle,.world_character { position:absolute; pointer-events:none; image-rendering:pixelated; }
-.game_view_ui_animation { position:fixed; z-index:10000; display:grid; place-items:center; color:#fff4bb; font-size:clamp(.75rem,2vw,1.25rem); line-height:1; pointer-events:none; text-shadow:1px 1px #100e17,-1px -1px #100e17; transition:left 500ms cubic-bezier(.22,.61,.36,1),top 500ms cubic-bezier(.22,.61,.36,1),transform 500ms cubic-bezier(.22,.61,.36,1); }
+.game_view_ui_animation { position:fixed; z-index:10000; display:grid; place-items:center; color:#fff4bb; font-size:clamp(.75rem,2vw,1.25rem); line-height:1; pointer-events:none; text-shadow:1px 1px #100e17,-1px -1px #100e17; transition:left 500ms cubic-bezier(.22,.61,.36,1),top 500ms cubic-bezier(.22,.61,.36,1),width 500ms cubic-bezier(.22,.61,.36,1),height 500ms cubic-bezier(.22,.61,.36,1),transform 500ms cubic-bezier(.22,.61,.36,1); }
 .world_particle { transform:translate(-50%,-50%); }
 .world_floating_text--gain { color:#67e879; }
 .world_floating_text--loss { color:#ff625f; }
@@ -203,11 +201,12 @@ body {
 .keyboard_tray_rows { position:relative; z-index:2; order:1; gap:.1rem; }
 .keyboard_tray_row { min-height:0; }
 .keyboard_tray--expanded .keyboard_tray_panel::before { border-top:0; border-bottom:0; }
-.controls-area { position:absolute; z-index:6; inset:0; width:100%; pointer-events:none; }
-.controls-area_surface { --keyboard-panel-height:min(7rem,15dvh); --keyboard-tab-height:1rem; position:absolute; left:30px; top:0; width:max-content; height:auto; }
+.controls-area { position:absolute; z-index:6; inset:0; width:100%; container-type:size; pointer-events:none; }
+.controls-area_surface { --keyboard-panel-height:min(7rem,15dvh); --keyboard-tab-height:1rem; position:absolute; left:30px; top:-1px; width:max-content; height:auto; }
 .controls-area--expanded .keyboard_tray_panel { opacity:1; pointer-events:auto; }
 .controls-area--title-visible .keyboard_tray_title { opacity:1; }
-.controls-area .keyboard_tray_title { top:.85rem; left:50%; width:max-content; min-width:4rem; height:auto; white-space:nowrap; text-align:center; transform:translate(-50%,-50%); }
+.controls-area .keyboard_tray_title { top:50cqh; left:50%; width:max-content; min-width:4rem; height:auto; white-space:nowrap; text-align:center; transform:translate(-50%,-50%); }
+.controls-area--expanded .keyboard_tray_title { top:calc(100% + 50cqh); }
 .tab-control { position:absolute; z-index:1; top:-.55rem; left:50%; width:4rem; height:.55rem; box-sizing:border-box; padding:0; border:0; outline:none; background:transparent; color:#fff; cursor:pointer; pointer-events:auto; transform:translate(-50%,2px); }
 .tab-control__shape { position:absolute; inset:0; width:100%; height:100%; overflow:visible; }
 .tab-control__fill { fill:var(--surface-color); }

@@ -8,20 +8,20 @@ test("preserves all Hero Warrior animation groups and directional sequences", ()
   assert.deepEqual(catalog.map(({ frameCount }) => frameCount), [4, 4, 4, 6, 6, 6, 4, 4, 4, 6]);
   assert.equal(catalog[0].frames[0].widthPx, 32); assert.equal(catalog[0].frames[0].heightPx, 48);
   assert.equal(catalog.at(-1)?.frames[0].widthPx, 48); assert.equal(catalog.at(-1)?.frames[0].heightPx, 48);
-  assert.equal(catalog[0].frames[0].path, "/game/assets/art/vendors/dungeons-and-pixels-v1.4/Characters/Hero_Warrior/Frames/Idle/Down/00.png");
+  assert.equal(catalog[0].frames[0].path, "/game/assets/art/vendors/dungeons-and-pixels-v1.4/characters/hero-warrior/frames/idle/down/00.png");
 });
 
-test("starts the player on right-facing Idle/Side and exposes deferred action animations", () => {
+test("starts the player on right-facing idle/side and exposes deferred action animations", () => {
   const entity = createHeroWarriorAnimationEntity("/game/");
-  assert.equal(entity.getState().animation, "Idle/Side");
+  assert.equal(entity.getState().animation, "idle/side");
   assert.equal(entity.getSpeed(), 0.5);
-  entity.selectAnimation("Attack/Side"); assert.equal(entity.getState().animation, "Attack/Side");
-  entity.selectAnimation("Death"); assert.equal(entity.getState().animation, "Death");
+  entity.selectAnimation("attack/side"); assert.equal(entity.getState().animation, "attack/side");
+  entity.selectAnimation("death"); assert.equal(entity.getState().animation, "death");
 });
 
 test("maps character headings to directional idle art", () => {
-  assert.equal(heroWarriorIdleAnimationForHeading("e"), "Idle/Side");
-  assert.equal(heroWarriorIdleAnimationForHeading("w"), "Idle/Side");
-  assert.equal(heroWarriorIdleAnimationForHeading("n"), "Idle/Up");
-  assert.equal(heroWarriorIdleAnimationForHeading("s"), "Idle/Down");
+  assert.equal(heroWarriorIdleAnimationForHeading("e"), "idle/side");
+  assert.equal(heroWarriorIdleAnimationForHeading("w"), "idle/side");
+  assert.equal(heroWarriorIdleAnimationForHeading("n"), "idle/up");
+  assert.equal(heroWarriorIdleAnimationForHeading("s"), "idle/down");
 });
