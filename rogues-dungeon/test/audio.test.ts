@@ -26,11 +26,11 @@ test('prewarming loads the complete catalog before ordinary playback begins', as
   assert.equal(audio.prewarm(), firstWarmup);
   await firstWarmup;
   assert.equal(audio.isPrewarmed(), true);
-  assert.deepEqual(fake.made.map(({ src }) => src), [...AUDIO_ASSETS.music, ...Object.values(AUDIO_ASSETS.sfx)]);
+  assert.deepEqual(fake.made.map(({ src }) => src), [...AUDIO_ASSETS.music, ...Object.values(AUDIO_ASSETS.sfx).flatMap((src) => [src, src])]);
   assert.equal(audio.startMusic(), true);
-  const music = fake.made.at(-1)!;
+  const music = fake.made[0];
   assert.equal(music.src, AUDIO_ASSETS.music[0]); assert.equal(music.loop, true); assert.equal(music.volume, 0.24);
-  assert.equal(audio.playCue('accepted'), true); assert.equal(fake.made.at(-1)?.volume, 0.35);
+  assert.equal(audio.playCue('accepted'), true); assert.equal(fake.made.find(({ src }) => src === AUDIO_ASSETS.sfx.accepted)?.volume, 0.35);
   audio.setPreferences({ sfxVolume: 0, musicVolume: 47, muteAll: false });
   assert.equal(music.volume, 0.47); assert.equal(audio.isMuted('sfx'), true); assert.equal(audio.isMuted('music'), false);
   assert.equal(audio.playCue('accepted'), false);
@@ -42,32 +42,27 @@ test('committed simulation events map to one cue and rejected events stay quiet'
   const fake = recorder(); const audio = createAudioManager({ createAudio: fake.createAudio });
   audio.setPreferences({ sfxVolume: 80, musicVolume: 20, muteAll: false });
   await audio.prewarm();
-  const prewarmedCount = fake.made.length;
   audio.playEvents([
     { type: 'player.moved', outcome: 'committed', facts: {} },
     { type: 'combat.hit', outcome: 'committed', facts: {} },
     { type: 'combat.hit', outcome: 'committed', facts: { source: 'wand' } },
     { type: 'resource.changed', outcome: 'committed', facts: { cause: 'enemy-attack' } },
     { type: 'enemy.defeated', outcome: 'committed', facts: {} },
+    { type: 'item.collected', outcome: 'committed', facts: {} },
     { type: 'potion.consumed', outcome: 'committed', facts: {} },
     { type: 'chest.opened', outcome: 'committed', facts: {} },
     { type: 'realm.entered', outcome: 'committed', facts: {} },
     { type: 'ability.used', outcome: 'committed', facts: {} },
     { type: 'combat.hit', outcome: 'rejected', facts: {} },
   ]);
-  assert.deepEqual(fake.made.slice(prewarmedCount).map(({ src }) => src), [
-    AUDIO_ASSETS.sfx.footstep, AUDIO_ASSETS.sfx.weaponHit, AUDIO_ASSETS.sfx.enemyHit,
-    AUDIO_ASSETS.sfx.enemyFall, AUDIO_ASSETS.sfx.potion, AUDIO_ASSETS.sfx.chest,
-    AUDIO_ASSETS.sfx.stairs, AUDIO_ASSETS.sfx.ability,
-  ]);
+  assert.deepEqual(new Set(fake.made.filter(({ playCount }) => playCount > 0).map(({ src }) => src)), new Set([AUDIO_ASSETS.sfx.footstep, AUDIO_ASSETS.sfx.weaponHit, AUDIO_ASSETS.sfx.enemyHit, AUDIO_ASSETS.sfx.enemyFall, AUDIO_ASSETS.sfx.pickupClick, AUDIO_ASSETS.sfx.potion, AUDIO_ASSETS.sfx.chest, AUDIO_ASSETS.sfx.stairs, AUDIO_ASSETS.sfx.ability]));
 });
 
 test('equipment drop feedback distinguishes accepted and rejected drops', async () => {
   const fake = recorder(); const audio = createAudioManager({ createAudio: fake.createAudio });
   await audio.prewarm();
-  const prewarmedCount = fake.made.length;
   audio.playDropResult(true); audio.playDropResult(false);
-  assert.deepEqual(fake.made.slice(prewarmedCount).map(({ src }) => src), [AUDIO_ASSETS.sfx.accepted, AUDIO_ASSETS.sfx.rejected]);
+  assert.deepEqual(fake.made.filter(({ playCount }) => playCount > 0).map(({ src }) => src), [AUDIO_ASSETS.sfx.accepted, AUDIO_ASSETS.sfx.rejected]);
   const muted = createAudioManager({ search: '?mute=1', createAudio: fake.createAudio });
   assert.equal(muted.playDropResult(true), false);
 });
@@ -76,10 +71,12 @@ test('footsteps are rate-limited and bundled audio assets exist', async () => {
   const fake = recorder(); const audio = createAudioManager({ createAudio: fake.createAudio });
   assert.equal(audio.playCue('footstep', 900), false);
   await audio.prewarm();
-  assert.equal(audio.playCue('footstep', 1000), true); assert.equal(audio.playCue('footstep', 1100), false); assert.equal(audio.playCue('footstep', 1140), true);
+  assert.equal(audio.playCue('footstep', 1000), true); assert.equal(fake.made.find(({ src }) => src === AUDIO_ASSETS.sfx.footstep)?.volume, 0.2); assert.equal(audio.playCue('footstep', 1100), false); assert.equal(audio.playCue('footstep', 1140), true);
+  audio.playCue('key'); assert.equal(fake.made.find(({ src }) => src === AUDIO_ASSETS.sfx.key)?.volume, 0.4);
+  audio.playCue('inventory'); assert.equal(fake.made.find(({ src }) => src === AUDIO_ASSETS.sfx.inventory)?.volume, 0.4);
   const root = new URL('../public/assets/audio/', import.meta.url);
   const docs = await readFile(new URL('../documentation/audio.md', import.meta.url), 'utf8');
-  assert.equal(AUDIO_ASSETS.music.length, 3); assert.equal(Object.keys(AUDIO_ASSETS.sfx).length, 10);
+  assert.equal(AUDIO_ASSETS.music.length, 3); assert.equal(Object.keys(AUDIO_ASSETS.sfx).length, 14);
   for (const path of [...AUDIO_ASSETS.music, ...Object.values(AUDIO_ASSETS.sfx)]) {
     await access(new URL(path.replace(/^.*?assets\/audio\//, ''), root));
     assert.ok(docs.includes(path.split('/').at(-1)!), `missing provenance entry for ${path}`);

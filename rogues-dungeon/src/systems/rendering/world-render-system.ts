@@ -1,8 +1,8 @@
-import type { Entity, Position, TerrainCell } from "../../game/types.ts";
+import type { Entity, Position, TerrainCell, WorldDecoration } from "../../game/types.ts";
 type RenderGrid = number[][] | TerrainCell[][];
 interface WangEntry extends Position { mask: number; worldX: number; worldY: number; frame: number | null; floorFrame?: number | null }
 interface WangModel { tileSize: number; terrain: WangEntry[]; walls: WangEntry[]; diagnostics: Omit<WangEntry, "frame">[]; wallDiagnostics: Omit<WangEntry, "frame">[] }
-interface WorldOptions { map?: number[][] | null; cells?: TerrainCell[][] | null; entities?: Entity[]; player: Position; start?: Position; tileSize?: number; view?: string; detail?: string; groundTiles?: number[] | null; wallTiles?: number[] | null }
+interface WorldOptions { map?: number[][] | null; cells?: TerrainCell[][] | null; entities?: Entity[]; decorations?: WorldDecoration[]; player: Position; start?: Position; tileSize?: number; view?: string; detail?: string; groundTiles?: number[] | null; wallTiles?: number[] | null }
 interface Projection { center: Position; viewportWidth: number; viewportHeight: number; tileCssSize: number }
 function isLegacyGrid(grid: RenderGrid): grid is number[][] { return Array.isArray(grid) && (grid.length === 0 || typeof grid[0]?.[0] === "number"); }
 import { buildDungeonWangTerrain, buildDungeonWangWalls } from "./tile-map-system.ts";
@@ -52,13 +52,14 @@ function applyTiledFrames(model: WangModel, grid: RenderGrid, groundTiles: numbe
 
 /** Build renderer-neutral geometry/placement for either world view. */
 export const WorldRender = Object.freeze({
-  Render({ map = null, cells = null, entities = [], player, start = player, tileSize = 32, view = "game", detail = "full", groundTiles = null, wallTiles = null }: WorldOptions) {
+  Render({ map = null, cells = null, entities = [], decorations = [], player, start = player, tileSize = 32, view = "game", detail = "full", groundTiles = null, wallTiles = null }: WorldOptions) {
     const grid = (cells ?? map)!;
     const computed = getWangTerrain(grid, tileSize);
     const { terrain, walls, diagnostics, wallDiagnostics } = groundTiles || wallTiles ? applyTiledFrames(computed, grid, groundTiles, wallTiles, tileSize) : computed;
     const actors = entities.filter((entry) => entry.kind === "enemy").map((entry) => ({ id: entry.id, kind: entry.name === "Skeleton" ? "skeleton" : "rat", heading: entry.heading ?? "e", x: entry.x, y: entry.y, worldX: entry.x * tileSize + tileSize / 2, worldY: entry.y * tileSize + tileSize / 2 }));
     const objects = entities.filter((entry) => ["item", "potion", "key", "gold", "chest", "stairs", "discovery"].includes(entry.kind)).map((entry) => ({ id: entry.id, kind: entry.kind, direction: entry.kind === "stairs" ? entry.direction : undefined, resource: entry.kind === "potion" ? entry.resource : null, x: entry.x, y: entry.y, worldX: entry.x * tileSize + tileSize / 2, worldY: entry.y * tileSize + tileSize / 2 }));
-    return { view, detail, tileSize, width: grid[0]?.length ?? 0, height: grid.length, terrain, grounds: terrain, walls, diagnostics, wallDiagnostics, actors, objects, markers: { player: { x: player.x, y: player.y }, exit: objects.find((entry) => entry.kind === "stairs") ?? null } };
+    const wallDecorations = decorations.map((decoration) => ({ ...decoration, worldX: decoration.x * tileSize + tileSize / 2, worldY: decoration.y * tileSize + tileSize / 2 }));
+    return { view, detail, tileSize, width: grid[0]?.length ?? 0, height: grid.length, terrain, grounds: terrain, walls, diagnostics, wallDiagnostics, actors, objects, wallDecorations, markers: { player: { x: player.x, y: player.y }, exit: objects.find((entry) => entry.kind === "stairs") ?? null } };
   },
 });
 

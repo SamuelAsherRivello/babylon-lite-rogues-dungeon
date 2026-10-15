@@ -8,7 +8,7 @@ Players also need an intentional way to spend one tactical turn without moving, 
 
 ## What Changes
 
-- Give each accepted tactical turn up to one second of presentation time while retaining immediate, deterministic turn resolution.
+- Give each accepted tactical turn up to one second of presentation time while retaining immediate, deterministic turn resolution. Enemy movement is an instantaneous grid-position change, separated by delays; it is never tweened.
 - Stage only enemies visible in the game view within that budget. Give each enemy a persistent playback rank for its floor lifetime so the same visible group reacts in a predictable sequence.
 - When a new accepted action arrives before the current window ends, finish all pending enemy presentation moves immediately and start playback for the newly resolved turn. Do not block player input while playback runs.
 - Add a `wait` action bound to a non-repeating X-key press and a mobile Wait button. It advances time and resolves the normal enemy phase without changing the player's position.

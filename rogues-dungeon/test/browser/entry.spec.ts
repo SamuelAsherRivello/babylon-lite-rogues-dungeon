@@ -11,6 +11,15 @@ test("@smoke opens the muted saved-game entry screen", async ({ page }) => {
   await expect(page.getByRole("button", { name: /Saved Game [1-3]/ })).toHaveCount(3);
 });
 
+test("@smoke shows My First Quest in a new muted Saved Game", async ({ page }) => {
+  await page.goto("/babylon-lite-rogues-dungeon/?mute=1");
+  await page.getByRole("button", { name: /Saved Game 1/ }).click();
+  await expect(page.getByText("My First Quest", { exact: true })).toBeVisible();
+  await expect(page.getByText("Walk through the stairs", { exact: true })).toBeVisible();
+  await expect(page.getByText("Collect a Health Potion", { exact: true })).toBeVisible();
+  await expect(page.getByText("Collect a coin", { exact: true })).toBeVisible();
+});
+
 test("@smoke clears local storage from the main menu", async ({ page }) => {
   await page.goto("/babylon-lite-rogues-dungeon/?mute=1");
   await page.evaluate(() => {
@@ -28,7 +37,7 @@ test("@smoke anchors settings to its menu panel or live game view", async ({ pag
   await page.goto("/babylon-lite-rogues-dungeon/?mute=1");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const menuPlacement = await page.evaluate(() => {
-    const panel = document.querySelector(".saved_games_panel")!.getBoundingClientRect();
+    const panel = document.querySelector(".main-menu-window")!.getBoundingClientRect();
     const dialog = document.querySelector(".settings-window")!.getBoundingClientRect();
     return { panel, dialog, background: getComputedStyle(document.querySelector(".settings-window")!).backgroundColor };
   });
@@ -39,9 +48,12 @@ test("@smoke anchors settings to its menu panel or live game view", async ({ pag
   expect(menuPlacement.background).not.toBe("rgb(16, 14, 23)");
   await page.getByRole("button", { name: "Close dialog" }).click();
   await page.getByRole("button", { name: /Saved Game 1/ }).click();
+  await expect(page.locator(".game-screen")).toBeVisible();
+  await expect(page.locator(".world-view")).toBeVisible();
+  await expect(page.locator(".minimap-view")).toBeVisible();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const gamePlacement = await page.evaluate(() => {
-    const view = document.querySelector(".game_view")!.getBoundingClientRect();
+    const view = document.querySelector(".world-view-region")!.getBoundingClientRect();
     const dialog = document.querySelector(".settings-window")!.getBoundingClientRect();
     return { view, dialog };
   });
@@ -49,6 +61,8 @@ test("@smoke anchors settings to its menu panel or live game view", async ({ pag
   expect(Math.abs(gamePlacement.dialog.height - menuPlacement.dialog.height)).toBeLessThan(1);
   expect(Math.abs((gamePlacement.dialog.x + gamePlacement.dialog.width / 2) - (gamePlacement.view.x + gamePlacement.view.width / 2))).toBeLessThan(1);
   expect(Math.abs((gamePlacement.dialog.y + gamePlacement.dialog.height / 2) - (gamePlacement.view.y + gamePlacement.view.height / 2))).toBeLessThan(1);
+  await page.getByRole("button", { name: "Close dialog" }).click();
+  await expect(page.locator(".settings-window")).toHaveCount(0);
 });
 
 test("@smoke opens the named manual tile scenario and exports its editable map", async ({ page }) => {
@@ -181,10 +195,10 @@ test("@smoke exposes only ability positions 1–3 and ignores key 4", async ({ p
   }, GENERATOR_VERSION);
   await page.goto("/babylon-lite-rogues-dungeon/?mute=1");
   await page.getByRole("button", { name: /Saved Game 1/ }).click();
-  const abilityRows = page.locator(".desktop_info .primary .slot_item--ability");
+  const abilityRows = page.locator(".information-panels .info-panel--primary .slot_item--ability");
   await expect(abilityRows).toHaveCount(3);
   await expect(abilityRows).toHaveText([/\[1\]/, /\[2\]/, /\[3\]/]);
-  await expect(page.locator(".desktop_info .primary")).not.toContainText("[04]");
+  await expect(page.locator(".information-panels .info-panel--primary")).not.toContainText("[04]");
   const before = await page.evaluate(() => JSON.parse(localStorage.getItem("rogues-dungeon.slot.1")!).floor.time);
   await page.keyboard.press("4");
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("rogues-dungeon.slot.1")!).floor.time)).toBe(before);
@@ -207,7 +221,7 @@ test("@smoke resolves a visible level-up choice without another turn", async ({ 
   await page.getByRole("button", { name: /Saved Game 1/ }).click();
   await page.keyboard.press("ArrowRight");
   await expect(page.getByRole("heading", { name: "Level 2: Choose a Stat" })).toBeVisible();
-  await page.locator(".level_up_chooser").getByRole("button", { name: /Vitality/ }).click();
+  await page.locator(".level-up-window").getByRole("button", { name: /Vitality/ }).click();
   await expect(page.getByRole("heading", { name: "Level 2: Choose a Stat" })).toBeHidden();
 });
 

@@ -11,7 +11,7 @@ The game view and minimap SHALL derive terrain, walls, object coordinates, and a
 
 #### Scenario: Stage enemy movement
 - **WHEN** a resolved turn is presenting a visible enemy movement
-- **THEN** the game view and minimap show that enemy at the same staged coordinate
+- **THEN** the game view and minimap show that enemy at the same staged coordinate, before or after the instantaneous snap, with no interpolated coordinate
 
 #### Scenario: Descend to another realm
 - **WHEN** the player completes a dungeon

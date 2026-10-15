@@ -76,7 +76,7 @@ automated runner.
 
 | Mode | CSS viewport | DPR | Result |
 |---|---:|---:|---|
-| PC landscape, windowed | 1280×720 | 1 | Dungeon tiles, HUD, controls, and panels visible; titlebar/statusbar each measure 4% of shell height. |
+| PC landscape, windowed | 1280×720 | 1 | Dungeon tiles, HUD, controls, and panels visible; title bar and status bar each measure 4% of shell height. |
 | PC landscape at zoom-equivalent viewport | 1024×576 | 1.25 | Layout remains contained and native game Zoom stays selected. This represents a 1280×720 display at 125% browser zoom. |
 | PC developer portrait preview | 405×720 fitted within 1280×720 | 1 | Portrait controls and panels appear; return-to-landscape control is available. |
 | Mobile portrait | 360×640 | 1 | Controls visible initially; Info scrolls through the panels to Inventory. |

@@ -36,7 +36,7 @@ Portrait SHALL render cardinal movement buttons, ability buttons 1–4, Sneak, a
 - **THEN** the ability currently assigned to that position is requested
 
 ### Requirement: Display turn and game status
-The titlebar SHALL show the title `Dungeon Roguelite (DR)`, world, Dungeon Level, Time, keys, and gold; the secondary panel SHALL show Minimap, Quest, and Log; and the primary panel SHALL show Resources, Attributes, Abilities, Slots, and Inventory. Statusbar content SHALL be vertically centered within its region. Difficulty SHALL remain hidden. Level-up or item-decision overlays SHALL be removed.
+The titlebar SHALL show the title `Dungeon Roguelite (DR)`, world, Dungeon Level, Time, keys, and gold; the secondary panel SHALL show Minimap, Quest, and Log; and the primary panel SHALL show Resources, Attributes, Abilities, Slots, and Inventory. Statusbar content SHALL be vertically centered within its region. Difficulty SHALL remain hidden. A level-up selection SHALL appear in a modal window while an upgrade choice is pending. Item-decision overlays SHALL be removed.
 
 #### Scenario: Show turn counter
 - **WHEN** an accepted action advances one time unit
@@ -53,6 +53,10 @@ The titlebar SHALL show the title `Dungeon Roguelite (DR)`, world, Dungeon Level
 #### Scenario: Align statusbar content
 - **WHEN** the landscape shell is shown
 - **THEN** the control legend and developer content are vertically centered within the statusbar
+
+#### Scenario: Choose a level-up stat
+- **WHEN** a player has a pending level-up choice
+- **THEN** the game displays a modal level-up window until the player selects one option
 
 ### Requirement: Scale interface typography consistently with browser zoom
 All interface text SHALL respond consistently to browser zoom while the world retains its selected game Zoom. Browser zoom, shell fitting, and fullscreen SHALL not change the stored game Zoom or add template corner text.

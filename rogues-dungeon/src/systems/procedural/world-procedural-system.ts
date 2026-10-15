@@ -1,5 +1,6 @@
-import type { Action, ActionResult, Attributes, AttributeName, Campaign, ConsumableResource, Direction, Enemy, Entity, Equipment, EquipmentGroup, EventFacts, Floor, GameEvent, Item, Position, QuickSlot, Resource, ResourceInput, ResourceName, Resources, Room } from "../../game/types.ts";
+import type { Action, ActionResult, Attributes, AttributeName, Campaign, ConsumableResource, Direction, Enemy, Entity, Equipment, EquipmentGroup, EventFacts, Floor, GameEvent, Item, Position, QuickSlot, Resource, ResourceInput, ResourceName, Resources, Room, WorldDecoration } from "../../game/types.ts";
 import { createLevelContext, ensureSemanticCells, isWalkable, runLevelPasses } from "./level-grid-system.ts";
+import { isWallDecorationCell, TRAP_FRAME_DURATION_MS, trapFrameAt, trapIsDangerous, trapStrikeDamage } from "./world-hazards-system.ts";
 
 export const FLOOR_WIDTH = 100;
 export const FLOOR_HEIGHT = 100;
@@ -24,16 +25,17 @@ export const GAME_TUNING = Object.freeze({
 });
 export const STAIRS_MAX_DISTANCE_FROM_START = 10;
 
-function stairsAtStart(level: number, start: Position): Extract<Entity, { kind: "stairs" }>[] {
-  const forward = { id: "stairs-forward", kind: "stairs" as const, direction: "forward" as const, name: "Stairs up", x: start.x + 3, y: start.y };
+function stairsForLevel(level: number, start: Position, forward: Position): Extract<Entity, { kind: "stairs" }>[] {
+  const forwardStair = { id: "stairs-forward", kind: "stairs" as const, direction: "forward" as const, name: "Stairs up", ...forward };
   return level > 1
-    ? [{ id: "stairs-back", kind: "stairs" as const, direction: "back" as const, name: "Stairs down", x: start.x - 3, y: start.y }, forward]
-    : [forward];
+    ? [{ id: "stairs-back", kind: "stairs" as const, direction: "back" as const, name: "Stairs down", x: start.x - 3, y: start.y }, forwardStair]
+    : [forwardStair];
 }
 
 export function ensureNearbyStairs(floor: Floor) {
   const level = floor.level ?? floor.depth ?? 1;
-  const expected = stairsAtStart(level, floor.start).filter((stair) => isWalkable(floor, stair.x, stair.y));
+  const forward = floor.entities?.find((entity) => entity.kind === "stairs" && entity.direction !== "back") ?? { x: floor.start.x + 3, y: floor.start.y };
+  const expected = stairsForLevel(level, floor.start, forward).filter((stair) => isWalkable(floor, stair.x, stair.y));
   if (!expected.length) return floor;
   floor.entities = [...(floor.entities ?? []).filter((entity) => entity.kind !== "stairs"), ...expected];
   return floor;
@@ -129,6 +131,10 @@ export function normalizeStackableLocations(campaign: Campaign) {
   return campaign;
 }
 function entityAt(entities: Entity[], x: number, y: number) { return entities.find((entity) => entity.x === x && entity.y === y); }
+function entrancePosition(floor: Floor): Position {
+  const returnStair = floor.entities.find((entity) => entity.kind === "stairs" && entity.direction === "back");
+  return returnStair ? { x: returnStair.x + 1, y: returnStair.y } : { ...floor.start };
+}
 function emit(events: GameEvent[], type: string, facts: EventFacts, state: Campaign, source = type.split(".")[0]) { events.push({ type, facts, source, gameTime: state.floor.time, sequence: events.length + 1 }); }
 function carveRoom(map: number[][], room: Room) { for (let y = room.y; y < room.y + room.h; y++) for (let x = room.x; x < room.x + room.w; x++) map[y][x] = 0; }
 function roomCenter(room: Room) { return { x: room.x + Math.floor(room.w / 2), y: room.y + Math.floor(room.h / 2) }; }
@@ -156,6 +162,16 @@ function connectRooms(map: number[][], from: Position, to: Position, width = 1) 
 function shuffledWalkableCells(cells: ReturnType<typeof createLevelContext>["cells"], random: () => number) {
   const candidates: Position[] = [];
   for (let y = 1; y < cells.length - 1; y++) for (let x = 1; x < (cells[y]?.length ?? 1) - 1; x++) if (cells[y]?.[x]?.walkable) candidates.push({ x, y });
+  for (let index = candidates.length - 1; index > 0; index--) {
+    const other = Math.floor(random() * (index + 1));
+    [candidates[index], candidates[other]] = [candidates[other], candidates[index]];
+  }
+  return candidates;
+}
+
+function shuffledWallDecorationCells(map: number[][], random: () => number) {
+  const candidates: Position[] = [];
+  for (let y = 1; y < map.length - 1; y++) for (let x = 1; x < (map[y]?.length ?? 1) - 1; x++) if (isWallDecorationCell(map, { x, y })) candidates.push({ x, y });
   for (let index = candidates.length - 1; index > 0; index--) {
     const other = Math.floor(random() * (index + 1));
     [candidates[index], candidates[other]] = [candidates[other], candidates[index]];
@@ -264,7 +280,7 @@ export function upgradeCampaignResources(campaign: Campaign) {
   return campaign;
 }
 
-export function generateFloor(level: number, seed = seedNow(), difficulty = level, options: { corridorWidth?: number; pickupDensity?: Partial<typeof PICKUP_DENSITY_DEFAULTS> } = {}): Floor {
+export function generateFloor(level: number, seed = seedNow(), difficulty = level, options: { corridorWidth?: number; pickupDensity?: Partial<typeof PICKUP_DENSITY_DEFAULTS>; level1TestMode?: boolean } = {}): Floor {
   const random = rng(seed); const map = blankMap(); const rooms: Room[] = [];
   const corridorWidth = Math.max(1, Math.floor(Number(options?.corridorWidth ?? 1)));
   const startRoom = { x: FLOOR_CENTER.x - 3, y: FLOOR_CENTER.y - 3, w: 7, h: 7 };
@@ -279,9 +295,12 @@ export function generateFloor(level: number, seed = seedNow(), difficulty = leve
     rooms.push(room);
   }
   const start = { ...FLOOR_CENTER };
-  // The forward stair is on the player's right. Floors after the first also
-  // expose a return stair on the left, making the level connection explicit.
-  const stairs = stairsAtStart(level, start);
+  const level1TestMode = level === 1 && options.level1TestMode === true;
+  const exitCandidates: Position[] = [];
+  for (let y = 1; y < FLOOR_HEIGHT - 1; y++) for (let x = 1; x < FLOOR_WIDTH - 1; x++) if (map[y][x] === 0 && Math.hypot(x - start.x, y - start.y) >= 20) exitCandidates.push({ x, y });
+  const distantExit = exitCandidates[Math.floor(random() * exitCandidates.length)] ?? { x: start.x + 3, y: start.y };
+  const forward = level1TestMode ? { x: start.x + 3, y: start.y } : distantExit;
+  const stairs = stairsForLevel(level, start, forward);
   const exit = stairs.find((stair) => stair.direction === "forward")!;
   const context = createLevelContext({ worldId: "One", realmId: `Underground ${level}`, levelId: level, seed, width: FLOOR_WIDTH, height: FLOOR_HEIGHT, start, exit });
   runLevelPasses(context, [{ id: "structured-dungeon", run: (generation) => {
@@ -310,19 +329,22 @@ export function generateFloor(level: number, seed = seedNow(), difficulty = leve
       const cell = nextCell(); if (!cell) return;
       add({ id: `${kind}-${index}`, kind, amount: kind === "gold" ? 5 + Math.floor(random() * 16) : 1, x: cell.x, y: cell.y });
     };
-    // Keep the familiar starter supplies near the start, but reserve them
-    // after the structural pass so they cannot collide with generated actors.
+    // Test mode places introductory pickups beside the first start and a chest beside the exit.
+    // Normal floors use the seeded random layout below.
     const nearStart = (offsets: readonly Position[]) => offsets.map(({ x, y }) => ({ x: start.x + x, y: start.y + y })).find((cell) => !route.has(`${cell.x},${cell.y}`) && claim(cell));
-    const healthCell = nearStart([{ x: 0, y: 1 }, { x: -1, y: 1 }, { x: 1, y: 1 }, { x: 0, y: 2 }]);
-    const manaCell = nearStart([{ x: 2, y: 0 }, { x: 2, y: 1 }, { x: 1, y: 2 }, { x: -1, y: 2 }]);
-    if (healthCell) add({ id: "health-potion", kind: "potion", resource: "health", ...healthCell });
-    if (manaCell) add({ id: "mana-potion", kind: "potion", resource: "mana", ...manaCell });
-    // Keep one of every pickup type within a few steps of a new character so
-    // collection and its UI handoff are immediately playable and testable.
-    const starterKey = nearStart([{ x: -2, y: 2 }, { x: -2, y: -2 }, { x: 2, y: 2 }]);
-    const starterGold = nearStart([{ x: 2, y: -2 }, { x: 2, y: 2 }, { x: -2, y: -2 }]);
-    if (starterKey) add({ id: "starter-key", kind: "key", amount: 1, ...starterKey });
-    if (starterGold) add({ id: "starter-gold", kind: "gold", amount: 10, ...starterGold });
+    const nearExit = (offsets: readonly Position[]) => offsets.map(({ x, y }) => ({ x: exit.x + x, y: exit.y + y })).find(claim);
+    if (level1TestMode) {
+      const healthCell = nearStart([{ x: 0, y: 1 }, { x: -1, y: 1 }, { x: 1, y: 1 }, { x: 0, y: 2 }]);
+      const manaCell = nearStart([{ x: 2, y: 0 }, { x: 2, y: 1 }, { x: 1, y: 2 }, { x: -1, y: 2 }]);
+      const starterKey = nearStart([{ x: -2, y: 2 }, { x: -2, y: -2 }, { x: 2, y: 2 }]);
+      const starterGold = nearStart([{ x: 2, y: -2 }, { x: 2, y: 2 }, { x: -2, y: -2 }]);
+      if (healthCell) add({ id: "health-potion", kind: "potion", resource: "health", ...healthCell });
+      if (manaCell) add({ id: "mana-potion", kind: "potion", resource: "mana", ...manaCell });
+      if (starterKey) add({ id: "starter-key", kind: "key", amount: 1, ...starterKey });
+      if (starterGold) add({ id: "starter-gold", kind: "gold", amount: 10, ...starterGold });
+      const testChest = nearExit([{ x: 0, y: 1 }, { x: 0, y: -1 }, { x: -1, y: 1 }, { x: -1, y: -1 }]);
+      if (testChest) add({ id: "test-chest", kind: "chest", opened: false, ...testChest });
+    }
     for (let i = 1; i < rooms.length; i++) {
       const room = rooms[i]; const preferred = { x: room.x + 2, y: room.y + 2 };
       const enemyCell = !route.has(`${preferred.x},${preferred.y}`) && claim(preferred) ? preferred : nextCell();
@@ -336,6 +358,16 @@ export function generateFloor(level: number, seed = seedNow(), difficulty = leve
       if (random() < 0.35) {
         const chestCell = nextCell(); if (chestCell) add({ id: `chest-${i}`, kind: "chest", x: chestCell.x, y: chestCell.y, opened: false });
       }
+    }
+    if (level1TestMode) {
+      const testEnemy = (id: string, name: "Rat" | "Skeleton", offsets: readonly Position[]) => {
+        const cell = nearStart(offsets); if (!cell) return;
+        const skeleton = name === "Skeleton"; const health = skeleton ? 20 : 12; const damage = skeleton ? 6 : 3;
+        const enemy: Omit<Enemy, "resources"> = { id, kind: "enemy", x: cell.x, y: cell.y, hp: health, maxHp: health, damage, awareness: GAME_TUNING.enemyAwareness, actionCooldown: GAME_TUNING.enemyActionCooldown, nextActionAt: GAME_TUNING.enemyActionCooldown, name, xp: GAME_TUNING.xpPerKillBase + difficulty, heading: "e" };
+        add({ ...enemy, resources: enemyResources(enemy, level) });
+      };
+      testEnemy("test-rat", "Rat", [{ x: -1, y: 0 }, { x: -1, y: -1 }]);
+      testEnemy("test-skeleton", "Skeleton", [{ x: 0, y: -1 }, { x: 1, y: -1 }]);
     }
     // Pickup counts are area-scaled from the visible 1x landscape screen and
     // use seeded stochastic rounding. Object cells and pickup cells share the
@@ -353,7 +385,10 @@ export function generateFloor(level: number, seed = seedNow(), difficulty = leve
     stairs.forEach(add);
     return {};
   } }]);
-  const floor: Floor = { seed, width: FLOOR_WIDTH, height: FLOOR_HEIGHT, cells: context.cells, start, entities: context.entities, time: 0, level, generatorVersion: GENERATOR_VERSION, generation: { ...context.generation, passes: context.passes } };
+  const decorationCells = shuffledWallDecorationCells(map, random);
+  const decorationCount = Math.max(4, Math.floor(context.cells.flat().filter((cell) => cell.walkable).length / 120));
+  const decorations: WorldDecoration[] = decorationCells.slice(0, decorationCount).map((cell, index) => ({ id: `wall-${index % 3 === 2 ? "trap" : "torch"}-${index + 1}`, kind: index % 3 === 2 ? "trap" : "torch", wallMounted: true, ...cell }));
+  const floor: Floor = { seed, width: FLOOR_WIDTH, height: FLOOR_HEIGHT, cells: context.cells, start, entities: context.entities, decorations, time: 0, level, generatorVersion: GENERATOR_VERSION, generation: { ...context.generation, passes: context.passes } };
   return ensureSemanticCells(floor);
 }
 
@@ -377,9 +412,9 @@ export function resourceState(campaign: Campaign) {
   return playerResourcesFromCampaign(campaign);
 }
 
-export function createCampaign(seed = seedNow(), difficulty = 1, level = 1): Campaign {
-  const floor = generateFloor(level, seed, difficulty); const attributes = { health: GAME_TUNING.startingHealth, stamina: GAME_TUNING.startingStamina, offense: 0, defense: GAME_TUNING.innateDefense, mana: GAME_TUNING.startingMana, vitality: 0, strength: 0, luck: 0, recovery: 0, stealth: 0 };
-  const campaign: Campaign = { version: 3, world: "One", realm: `Underground ${floor.level}`, floor, floors: { [floor.level]: structuredClone(floor) }, progression: { attributes, level: 1, xp: 0, nextXp: GAME_TUNING.xpThreshold, totalKills: 0, difficulty, pendingUpgrades: [] }, player: { x: floor.start.x, y: floor.start.y, heading: "e", resources: createResourcesModel(), equipment: { weapons: [itemInstance(itemCatalog[3], "starter-stick"), null], armor: [null, null] }, inventory: [consumableInstance("health", "starter-health-potion"), consumableInstance("mana", "starter-mana-potion", 2)], inventoryCapacity: ITEM_CAPACITY, abilities: ["heal", "wand", null], quickSlots: [null, null], sneaking: false }, starterConsumablesSeeded: true, counters: { keys: 1, gold: 55 }, objective: "Find the exit", log: [] };
+export function createCampaign(seed = seedNow(), difficulty = 1, level = 1, options: { level1TestMode?: boolean } = {}): Campaign {
+  const floor = generateFloor(level, seed, difficulty, options); const attributes = { health: GAME_TUNING.startingHealth, stamina: GAME_TUNING.startingStamina, offense: 0, defense: GAME_TUNING.innateDefense, mana: GAME_TUNING.startingMana, vitality: 0, strength: 0, luck: 0, recovery: 0, stealth: 0 };
+  const campaign: Campaign = { version: 3, world: "One", realm: `Underground ${floor.level}`, floor, floors: { [floor.level]: structuredClone(floor) }, progression: { attributes, level: 1, xp: 0, nextXp: GAME_TUNING.xpThreshold, totalKills: 0, difficulty, pendingUpgrades: [] }, player: { x: floor.start.x, y: floor.start.y, heading: "e", resources: createResourcesModel(), equipment: { weapons: [itemInstance(itemCatalog[3], "starter-stick"), null], armor: [null, null] }, inventory: [consumableInstance("health", "starter-health-potion"), consumableInstance("mana", "starter-mana-potion", 2)], inventoryCapacity: ITEM_CAPACITY, abilities: ["heal", "wand", null], quickSlots: [null, null], sneaking: false }, starterConsumablesSeeded: true, counters: { keys: 1, gold: 55 }, objective: "Find the exit", quest: { id: "my-first-quest", title: "My First Quest", items: [{ id: "walk-through-stairs", title: "Walk through the stairs", complete: false }, { id: "collect-health-potion", title: "Collect a Health Potion", complete: false }, { id: "collect-coin", title: "Collect a coin", complete: false }], activeItemId: "walk-through-stairs" }, log: [] };
   campaign.player.resources = playerResourcesFromCampaign(campaign, { health: GAME_TUNING.startingHealth, stamina: GAME_TUNING.startingStamina, mana: GAME_TUNING.startingMana });
   return campaign;
 }
@@ -390,6 +425,12 @@ export function wallFrameAt(floor: Floor, x: number, y: number) { const wall = (
 function tick(state: Campaign, events: GameEvent[]) { const previous = state.floor.time; state.floor.time++; emit(events, "time.advanced", { previous, current: state.floor.time }, state); enemyPhase(state, events); }
 function normalizeResources(state: Campaign, events: GameEvent[], cause: string, previousCaps: Attributes) { const caps = effectiveAttributes(state); for (const key of ["health", "stamina", "mana"] as const) { const prior = state.player.resources[key].current; const oldMax = previousCaps[key]; const ratio = oldMax > 0 ? prior / oldMax : 0; const next = Math.max(0, Math.min(caps[key], ratio * caps[key])); state.player.resources[key] = { current: next, currentMax: caps[key] }; if (prior !== next) emit(events, "resource.changed", { resource: key, previous: prior, current: next, previousMax: oldMax, currentMax: caps[key], cause }, state); } state.player.resources = playerResourcesFromCampaign(state, state.player.resources); }
 function changeResource(state: Campaign, events: GameEvent[], key: "health" | "stamina" | "mana", value: number, cause: string) { const cap = effectiveAttributes(state)[key]; const previous = state.player.resources[key].current; const current = Math.max(0, Math.min(cap, value)); state.player.resources[key] = { current, currentMax: cap }; state.player.resources = playerResourcesFromCampaign(state, state.player.resources); if (current !== previous) emit(events, "resource.changed", { resource: key, previous, current, currentMax: cap, cause, ...(key === "health" ? { position: { x: state.player.x, y: state.player.y } } : {}) }, state); }
+function applyTrapOnEntry(state: Campaign, events: GameEvent[], elapsedMs: number) {
+  const trap = state.floor.decorations?.find((decoration) => decoration.kind === "trap" && decoration.x === state.player.x && decoration.y === state.player.y);
+  if (!trap || !trapIsDangerous(trapFrameAt(elapsedMs))) return;
+  const damage = trapStrikeDamage(resourceState(state).defense.current);
+  changeResource(state, events, "health", state.player.resources.health.current - damage, "trap");
+}
 function gainXp(state: Campaign, events: GameEvent[], amount: number, cause: string) {
   const previous = state.progression.xp; state.progression.xp += amount;
   emit(events, "xp.gained", { amount, cause, previous, current: state.progression.xp }, state);
@@ -446,6 +487,7 @@ export function applyAction(campaign: Campaign, action: Action): ActionResult {
     if (entity?.kind === "enemy") attack(state, events, entity); else {
       state.player.heading = action.direction as Direction;
       state.player.x = x; state.player.y = y; emit(events, "player.moved", { from: { x: campaign.player.x, y: campaign.player.y }, to: { x, y } }, state);
+      applyTrapOnEntry(state, events, Number.isFinite(action.hazardElapsedMs) ? action.hazardElapsedMs! : state.floor.time * TRAP_FRAME_DURATION_MS);
       if (entity?.kind === "stairs") {
         const currentLevel = state.floor.level ?? state.floor.depth ?? 1;
         const level = entity.direction === "back" ? Math.max(1, currentLevel - 1) : currentLevel + 1;
@@ -459,7 +501,8 @@ export function applyAction(campaign: Campaign, action: Action): ActionResult {
         state.floor.time = time;
         state.floors[String(level)] = structuredClone(state.floor);
         state.realm = `Underground ${level}`;
-        state.player.x = state.floor.start.x; state.player.y = state.floor.start.y;
+        const entrance = entrancePosition(state.floor);
+        state.player.x = entrance.x; state.player.y = entrance.y;
         emit(events, "realm.entered", { realm: state.realm, level }, state);
       }
       else if (entity?.kind === "potion") { const item = consumableInstance(entity.resource, entity.id); const quickIndex = state.player.quickSlots!.findIndex((slot) => slot?.item.consumableResource === entity.resource); const inventoryItem = state.player.inventory.find((entry) => isQuickSlottableItem(entry) && entry.consumableResource === entity.resource); if (quickIndex >= 0) { state.player.quickSlots![quickIndex]!.quantity += 1; state.floor.entities = state.floor.entities.filter((entry) => entry.id !== entity.id); emit(events, "item.collected", { itemId: item.id, item: item.name, name: item.name, resource: entity.resource, destination: { quickSlot: quickIndex }, quickSlot: quickIndex, quantity: state.player.quickSlots![quickIndex]!.quantity }, state); } else if (inventoryItem) { inventoryItem.quantity = (inventoryItem.quantity ?? 1) + 1; state.floor.entities = state.floor.entities.filter((entry) => entry.id !== entity.id); emit(events, "item.collected", { itemId: item.id, item: item.name, name: item.name, resource: entity.resource, destination: "inventory", quantity: inventoryItem.quantity }, state); } else if (state.player.inventory.length < state.player.inventoryCapacity) { state.player.inventory = orderedInventory([...state.player.inventory, item]); state.floor.entities = state.floor.entities.filter((entry) => entry.id !== entity.id); emit(events, "item.collected", { itemId: item.id, item: item.name, name: item.name, resource: entity.resource, destination: "inventory", quantity: 1 }, state); } else emit(events, "item.collection.rejected", { itemId: entity.id, name: entity.name ?? `${entity.resource} potion`, resource: entity.resource, reason: "inventory-full" }, state); }

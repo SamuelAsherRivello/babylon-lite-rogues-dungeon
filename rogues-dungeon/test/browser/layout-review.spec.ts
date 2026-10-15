@@ -11,8 +11,8 @@ mkdirSync(evidenceDirectory, { recursive: true });
 async function startGame(page: Page) {
   await page.goto(appPath);
   await page.getByRole("button", { name: /Saved Game 1/ }).click();
-  await expect(page.locator(".command_desk")).toBeVisible();
-  await expect(page.locator(".titlebar_identity")).toHaveText("Rogue's Dungeon");
+  await expect(page.locator(".game-screen")).toBeVisible();
+  await expect(page.locator(".title-bar__identity")).toHaveText("Rogue's Dungeon");
 }
 
 async function capture(page: Page, name: string) {
@@ -25,17 +25,17 @@ test("@layout landscape and PC portrait preview retain the full game UI", async 
   await page.setViewportSize({ width: 1440, height: 900 });
   await startGame(page);
 
-  const shell = page.locator(".command_desk");
+  const shell = page.locator(".game-screen");
   const viewport = page.locator("#viewport");
   await expect(viewport).toHaveAttribute("data-orientation", "landscape");
-  await expect(page.locator(".desktop_info")).toBeVisible();
+  await expect(page.locator(".information-panels")).toBeVisible();
   await expect(page.getByRole("heading", { name: "MINIMAP" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "RESOURCES" })).toBeVisible();
   await expect(page.locator(".mobile_bottom")).toBeHidden();
   await expect(page.locator("[data-corner], .app_corner")).toHaveCount(0);
   const landscape = await shell.evaluate((element) => {
     const rect = element.getBoundingClientRect();
-    const world = element.querySelector(".babylon_world")!.getBoundingClientRect();
+    const world = element.querySelector(".world-view")!.getBoundingClientRect();
     return { width: rect.width, height: rect.height, worldWidth: world.width, worldHeight: world.height, dpr: window.devicePixelRatio };
   });
   expect(landscape.worldWidth).toBeGreaterThan(landscape.worldHeight);
@@ -45,13 +45,13 @@ test("@layout landscape and PC portrait preview retain the full game UI", async 
   await expect(viewport).toHaveAttribute("data-orientation", "portrait");
   await expect(page.getByRole("button", { name: "Control", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: "Info", exact: true })).toHaveAttribute("aria-pressed", "false");
-  await expect(page.locator(".mobile_controls")).toBeVisible();
-  await expect(page.locator(".mobile_info")).toBeHidden();
+  await expect(page.locator(".mobile-controls")).toBeVisible();
+  await expect(page.locator(".mobile-information-panels")).toBeHidden();
   const portrait = await shell.evaluate((element) => {
     const rect = element.getBoundingClientRect();
-    const world = element.querySelector(".babylon_world")!.getBoundingClientRect();
-    const title = element.querySelector(".titlebar")!.getBoundingClientRect();
-    const status = element.querySelector(".statusbar")!.getBoundingClientRect();
+    const world = element.querySelector(".world-view")!.getBoundingClientRect();
+    const title = element.querySelector(".title-bar")!.getBoundingClientRect();
+    const status = element.querySelector(".status-bar")!.getBoundingClientRect();
     const bottom = element.querySelector(".mobile_bottom")!.getBoundingClientRect();
     return { width: rect.width, height: rect.height, world: { x: world.x, y: world.y, width: world.width, height: world.height }, title, status, bottom };
   });
@@ -61,14 +61,14 @@ test("@layout landscape and PC portrait preview retain the full game UI", async 
   await capture(page, "portrait-controls-dpr1-windowed");
 
   await page.getByRole("button", { name: "Info", exact: true }).click();
-  await expect(page.locator(".mobile_controls")).toBeHidden();
-  await expect(page.locator(".mobile_info")).toBeVisible();
+  await expect(page.locator(".mobile-controls")).toBeHidden();
+  await expect(page.locator(".mobile-information-panels")).toBeVisible();
   await expect(page.getByRole("heading", { name: "MINIMAP" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "RESOURCES" })).toBeVisible();
   await capture(page, "portrait-info-dpr1-windowed");
   await page.getByRole("button", { name: "Control", exact: true }).click();
-  await expect(page.locator(".mobile_controls")).toBeVisible();
-  await expect(page.locator(".game_view canvas")).toBeVisible();
+  await expect(page.locator(".mobile-controls")).toBeVisible();
+  await expect(page.locator(".world-view-region canvas")).toBeVisible();
 
   await page.keyboard.press("Control++");
   await page.waitForTimeout(150);
@@ -93,14 +93,14 @@ test("@layout mobile defaults to portrait and preserves the requested DPR", asyn
     const page = await context.newPage();
     await startGame(page);
     await expect(page.locator("#viewport")).toHaveAttribute("data-orientation", "portrait");
-    await expect(page.locator(".mobile_controls")).toBeVisible();
+    await expect(page.locator(".mobile-controls")).toBeVisible();
     await expect(page.locator(".mobile_status")).toBeVisible();
     await expect(page.locator(".dev_settings")).toHaveCount(0);
-    await expect(page.locator(".game_view canvas")).toBeVisible();
+    await expect(page.locator(".world-view-region canvas")).toBeVisible();
     expect(await page.evaluate(() => window.devicePixelRatio)).toBe(deviceScaleFactor);
     await capture(page, `mobile-portrait-controls-dpr${deviceScaleFactor}`);
     await page.getByRole("button", { name: "Info", exact: true }).click();
-    await expect(page.locator(".mobile_info")).toBeVisible();
+    await expect(page.locator(".mobile-information-panels")).toBeVisible();
     await expect(page.getByRole("heading", { name: "RESOURCES" })).toBeVisible();
     await capture(page, `mobile-portrait-info-dpr${deviceScaleFactor}`);
     await context.close();

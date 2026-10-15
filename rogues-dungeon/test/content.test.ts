@@ -70,11 +70,11 @@ test('mounts the dungeon and minimap in Babylon Lite from the same world compone
 
 test('uses controller-derived path availability to render an unreachable mouse reticle as black', async () => {
   const world = await readFile(new URL('../src/systems/rendering/babylon-render-system.tsx', import.meta.url), 'utf8');
-  const game = await readFile(new URL('../src/game/Game.tsx', import.meta.url), 'utf8');
+  const game = await readFile(new URL('../src/game/game.tsx', import.meta.url), 'utf8');
   assert.match(game, /getMousePathFromSelectedCell\(selectedGridSpot, campaign\)/);
   assert.match(game, /selectedCellReachable=\{selectedCellReachable\}/);
   assert.match(world, /selectedCellReachable === false \? "invalid"/);
-  assert.match(world, /grid_reticle \$\{reticleKind\}/);
+  assert.match(world, /world-view__grid-reticle--\$\{reticleKind\}/);
 });
 
 test('uses current camera state and reconfiguration inputs when framing the main world', async () => {

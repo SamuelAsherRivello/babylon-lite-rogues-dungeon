@@ -18,11 +18,11 @@ The game SHALL use at most one second to present visible enemy movement after ea
 - **THEN** the game does not reserve or display a one-second delay before later input
 
 ### Requirement: Stage visible enemy movement in playback order
-The game SHALL present only visible enemies that changed cells during a resolved turn one at a time in ascending playback order, dividing the available one-second budget equally among those movements.
+The game SHALL present only visible enemies that changed cells during a resolved turn one at a time in ascending playback order, dividing the available one-second budget equally among those movements. Each movement SHALL be an instantaneous change from its source cell to its destination cell at the beginning of its assigned time slice; the interval between moves SHALL be a delay, not a positional tween.
 
 #### Scenario: Several visible enemies move
 - **WHEN** several visible eligible enemies move during one resolved turn
-- **THEN** their moves play sequentially across the full one-second budget rather than at the same instant as the player's action
+- **THEN** the first enemy snaps immediately, and every later enemy snaps at the start of its equal assigned slice across the one-second budget rather than tweening from source to destination
 
 #### Scenario: Enemy becomes visible
 - **WHEN** an enemy first appears in the game view

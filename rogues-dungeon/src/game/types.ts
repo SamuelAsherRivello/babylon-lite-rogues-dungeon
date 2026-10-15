@@ -28,13 +28,18 @@ export type Entity = Enemy
   | (Position & { id: string; kind: "discovery"; name?: string })
   | (Position & { id: string; kind: "chest"; opened?: boolean })
   | (Position & { id: string; kind: "item"; item: Item });
+export interface WorldDecoration extends Position { id: string; kind: "torch" | "trap"; wallMounted: true }
 export interface Floor {
   seed: number; width: number; height: number; cells: TerrainCell[][]; map?: number[][];
   start: Position; entities: Entity[]; time: number; level: number; depth?: number; generatorVersion?: string;
   scenario?: string;
   generation?: { seed: number; generator: string | null; passes?: { id: string; diagnostics: number }[] };
   tiledGrounds?: number[]; tiledWalls?: number[];
+  decorations?: WorldDecoration[];
 }
+export type QuestItemId = "walk-through-stairs" | "collect-health-potion" | "collect-coin";
+export interface QuestItem { id: QuestItemId; title: string; complete: boolean }
+export interface Quest { id: "my-first-quest"; title: "My First Quest"; items: QuestItem[]; activeItemId: QuestItemId | null }
 export interface Campaign {
   version: number; world: string; realm: string; floor: Floor;
   /** Previously visited floors, keyed by level, so a return stair restores its dungeon. */
@@ -42,13 +47,13 @@ export interface Campaign {
   progression: { attributes: Attributes; level: number; xp: number; nextXp: number; totalKills: number; difficulty: number; pendingUpgrades: { level: number; options: AttributeName[] }[] };
   player: Position & { resources: Resources; equipment: Equipment; inventory: Item[]; inventoryCapacity: number; abilities: (AbilityId | null)[]; quickSlots?: [QuickSlot | null, QuickSlot | null]; sneaking: boolean; heading?: CharacterHeading };
   starterConsumablesSeeded?: boolean;
-  counters: { keys: number; gold: number }; objective: string; log: LogEntry[]; savedAt?: number;
+  counters: { keys: number; gold: number }; objective: string; quest?: Quest; log: LogEntry[]; savedAt?: number;
 }
 export interface Preferences { zoom: number; camera: "center" | "deadzone" | "screen"; fullscreenDesired: boolean; sfxVolume: number; musicVolume: number; muteAll: boolean }
 export interface StorageAccess { getItem(key: string): string | null; setItem(key: string, value: string): void; removeItem(key: string): void }
 export interface StorageCollection extends StorageAccess { length: number; key(index: number): string | null }
 export type Action =
-  | { type: "move"; direction: string }
+  | { type: "move"; direction: string; hazardElapsedMs?: number }
   | { type: "wait" }
   | { type: "toggle-sneak" }
   | { type: "choose-upgrade"; stat: AttributeName }

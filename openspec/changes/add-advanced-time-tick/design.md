@@ -33,9 +33,9 @@ The UI will retain the previously committed campaign long enough to compare it w
 
 The main Babylon world and minimap will consume that snapshot instead of reading actor coordinates directly from the current campaign. Terrain, non-actor objects, player state, and game rules remain sourced from the current campaign.
 
-### Use a maximum one-second sequential playback budget
+### Use a maximum one-second sequential playback budget with instantaneous moves
 
-Each visible moved enemy receives `1000 / visibleMovedEnemyCount` milliseconds. Its animation begins after the preceding visible enemy completes. A turn with no visible moved enemies starts no presentation delay.
+Each visible moved enemy receives `1000 / visibleMovedEnemyCount` milliseconds. At the beginning of its assigned slice, the enemy immediately snaps from its source cell to its already-resolved destination cell. The remainder of that slice is a delay before the next eligible enemy snaps. For example, five eligible enemies snap at 0 ms, 200 ms, 400 ms, 600 ms, and 800 ms. There is no interpolation or tweening of an enemy position.
 
 The player stays at its newly resolved coordinate, so movement reads as player action followed by enemy reaction. The camera continues to use the committed player coordinate.
 
@@ -51,7 +51,7 @@ The keyboard handler will replace its temporary X-key log with `dispatch({ type:
 
 ## Risks / Trade-offs
 
-- [Rapid accepted input can hide intermediate enemy motion] -> Flush prior motion before the new schedule so the renderer never carries stale source positions into the next turn.
+- [Rapid accepted input can hide intermediate enemy moves] -> Flush prior pending snaps before the new schedule so the renderer never carries stale source positions into the next turn.
 - [The logical world leads the visible enemies for up to one second] -> Keep that difference presentation-only and synchronize both world views to the same staged snapshot.
 - [A turn can contain only offscreen enemy movement] -> Do not spend presentation time on motion the player cannot see; retain the logical result and wait for a later visible turn.
 - [Actor identity or floor changes can invalidate source data] -> Reset the coordinator whenever the realm identity changes or an actor is removed.

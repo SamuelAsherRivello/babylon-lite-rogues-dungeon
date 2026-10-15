@@ -1,6 +1,7 @@
 import type { GameEvent, Preferences } from "../../game/types.ts";
 export interface AudioHandle {
   preload?: string;
+  currentTime?: number;
   volume: number;
   loop: boolean;
   play(): Promise<void> | void;
@@ -23,6 +24,10 @@ export const AUDIO_ASSETS = Object.freeze({
     enemyFall: `${baseUrl}assets/audio/sfx/enemy_fall.ogg`,
     potion: `${baseUrl}assets/audio/sfx/potion.ogg`,
     chest: `${baseUrl}assets/audio/sfx/chest.ogg`,
+    pickupClick: `${baseUrl}assets/audio/sfx/pickup-click.wav`,
+    collect: `${baseUrl}assets/audio/sfx/collect.ogg`,
+    key: `${baseUrl}assets/audio/sfx/key.ogg`,
+    inventory: `${baseUrl}assets/audio/sfx/inventory.ogg`,
     stairs: `${baseUrl}assets/audio/sfx/stairs.ogg`,
     accepted: `${baseUrl}assets/audio/sfx/ui_accept.ogg`,
     rejected: `${baseUrl}assets/audio/sfx/ui_reject.ogg`,
@@ -34,9 +39,16 @@ const eventCues: Readonly<Partial<Record<string, keyof typeof AUDIO_ASSETS.sfx>>
   "player.moved": "footstep",
   "enemy.defeated": "enemyFall",
   "potion.consumed": "potion",
+  "item.collected": "pickupClick",
   "chest.opened": "chest",
   "realm.entered": "stairs",
   "ability.used": "ability",
+});
+
+const SFX_VOLUME_MULTIPLIERS: Readonly<Partial<Record<keyof typeof AUDIO_ASSETS.sfx, number>>> = Object.freeze({
+  footstep: 0.25,
+  key: 0.5,
+  inventory: 0.5,
 });
 
 function readVolume(value: unknown, fallback: number) { return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 100 ? value : fallback; }
@@ -66,6 +78,9 @@ export function createAudioManager({ search = "", createAudio = (src) => new Aud
   const hardMuted = muteFromSearch(search);
   let preferences = { sfxVolume: 80, musicVolume: 20, muteAll: false };
   let musicAudio: AudioHandle | null = null;
+  const prewarmedMusic: AudioHandle[] = [];
+  const prewarmedSfx = new Map<keyof typeof AUDIO_ASSETS.sfx, AudioHandle[]>();
+  const nextSfxHandle = new Map<keyof typeof AUDIO_ASSETS.sfx, number>();
   let lastFootstepAt = -Infinity;
   let warmupComplete = hardMuted;
   let warmup: Promise<void> | null = null;
@@ -83,7 +98,12 @@ export function createAudioManager({ search = "", createAudio = (src) => new Aud
   const prewarm = () => {
     if (warmup) return warmup;
     if (hardMuted) return Promise.resolve();
-    const handles = [...AUDIO_ASSETS.music, ...Object.values(AUDIO_ASSETS.sfx)].map((src) => createAudio(src));
+    prewarmedMusic.push(...AUDIO_ASSETS.music.map((src) => createAudio(src)));
+    for (const [cue, src] of Object.entries(AUDIO_ASSETS.sfx) as [keyof typeof AUDIO_ASSETS.sfx, string][]) {
+      // A pair keeps repeated impacts responsive without requiring a cold element.
+      prewarmedSfx.set(cue, [createAudio(src), createAudio(src)]);
+    }
+    const handles = [...prewarmedMusic, ...prewarmedSfx.values()].flat();
     warmup = Promise.all(handles.map(warmAudio)).then(() => { warmupComplete = true; });
     return warmup;
   };
@@ -95,9 +115,13 @@ export function createAudioManager({ search = "", createAudio = (src) => new Aud
       if (now - lastFootstepAt < 140) return false;
       lastFootstepAt = now;
     }
-    const audio = createAudio(src);
-    audio.preload = "auto";
-    audio.volume = preferences.sfxVolume / 100;
+    const handles = prewarmedSfx.get(cue);
+    if (!handles?.length) return false;
+    const index = nextSfxHandle.get(cue) ?? 0;
+    const audio = handles[index];
+    nextSfxHandle.set(cue, (index + 1) % handles.length);
+    if (audio.currentTime !== undefined) audio.currentTime = 0;
+    audio.volume = preferences.sfxVolume / 100 * (SFX_VOLUME_MULTIPLIERS[cue] ?? 1);
     ignoreRejectedPlay(audio.play());
     return true;
   };
@@ -117,8 +141,8 @@ export function createAudioManager({ search = "", createAudio = (src) => new Aud
     if (musicAudio) return true;
     const tracks = AUDIO_ASSETS.music;
     const index = Math.min(tracks.length - 1, Math.max(0, Math.floor(random() * tracks.length)));
-    musicAudio = createAudio(tracks[index]);
-    musicAudio.preload = "auto";
+    musicAudio = prewarmedMusic[index];
+    if (!musicAudio) return false;
     musicAudio.loop = true;
     musicAudio.volume = preferences.musicVolume / 100;
     ignoreRejectedPlay(musicAudio.play());

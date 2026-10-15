@@ -11,6 +11,7 @@ function candidate(value: unknown): Partial<Campaign> | null { return typeof val
 import { createCampaign, createResourcesModel, effectiveAttributes, ensureNearbyStairs, FLOOR_HEIGHT, FLOOR_WIDTH, GENERATOR_VERSION, isResourcesModel, normalizeQuickSlots, normalizeStackableLocations, upgradeCampaignResources } from "../procedural/world-procedural-system.ts";
 import { gameZoomPresets } from "../../content/world/zoom.ts";
 import { createSemanticCells, ensureSemanticCells, semanticCellsFromMap } from "../procedural/level-grid-system.ts";
+import { normalizeQuest } from "../quests/quest-progression-system.ts";
 
 const PREFIX = "rogues-dungeon.slot.";
 const BACKUP_PREFIX = "rogues-dungeon.slot.v1-backup.";
@@ -87,8 +88,9 @@ export function migrateCampaign(value: unknown): Campaign {
     const needsFloorMigration = sourceCells.length < FLOOR_HEIGHT || (sourceCells[0]?.length ?? 0) < FLOOR_WIDTH;
     const needsBalanceMigration = value.version !== 3 || !Object.hasOwn(value.progression.attributes, "stealth") || !Array.isArray(value.progression.pendingUpgrades) || (value.floor.entities ?? []).some((entity) => entity.kind === "enemy" && (!Number.isFinite(entity.actionCooldown) || !Number.isFinite(entity.nextActionAt)));
     const needsAbilityMigration = !Array.isArray(value.player.abilities) || value.player.abilities.length !== 3;
-    if (value.floor.level === level && value.progression.difficulty === difficulty && !needsSemanticMigration && !needsResourceMigration && !needsFloorMigration && !needsBalanceMigration && !needsAbilityMigration) return upgradeCampaignResources(value);
-    const next = { ...structuredClone(value), version: 3, floor: { ...structuredClone(value.floor), level }, progression: { ...structuredClone(value.progression), difficulty, pendingUpgrades: structuredClone(value.progression.pendingUpgrades ?? []) }, player: { ...structuredClone(value.player), abilities: normalizeAbilityBindings(value) }, realm: value.realm ?? `Underground ${level}` };
+    const needsQuestMigration = !value.quest;
+    if (value.floor.level === level && value.progression.difficulty === difficulty && !needsSemanticMigration && !needsResourceMigration && !needsFloorMigration && !needsBalanceMigration && !needsAbilityMigration && !needsQuestMigration) { value.quest = normalizeQuest(value.quest); return upgradeCampaignResources(value); }
+    const next = { ...structuredClone(value), version: 3, floor: { ...structuredClone(value.floor), level }, progression: { ...structuredClone(value.progression), difficulty, pendingUpgrades: structuredClone(value.progression.pendingUpgrades ?? []) }, player: { ...structuredClone(value.player), abilities: normalizeAbilityBindings(value) }, realm: value.realm ?? `Underground ${level}`, quest: normalizeQuest(value.quest) };
     ensureSemanticCells(next.floor);
     expandUndersizedFloor(next);
     if (needsBalanceMigration) rebuildBalanceProfile(next, value.progression.attributes, value.player.resources);
@@ -120,6 +122,7 @@ export function migrateCampaign(value: unknown): Campaign {
   next.log = [];
   expandUndersizedFloor(next);
   rebuildBalanceProfile(next, stats, value.player.resources);
+  next.quest = normalizeQuest(next.quest);
   return upgradeCampaignResources(next);
 }
 export function readSlot(storage: StorageAccess, slot: string | number) {
@@ -145,6 +148,7 @@ export function writeSlot(storage: StorageAccess, slot: string | number, campaig
   ensureSemanticCells(campaign.floor);
   normalizeQuickSlots(campaign);
   normalizeStackableLocations(campaign);
+  campaign.quest = normalizeQuest(campaign.quest);
   storage.setItem(PREFIX + slot, JSON.stringify({ ...campaign, player: { ...campaign.player, abilities: normalizeAbilityBindings(campaign), quickSlots: campaign.player.quickSlots }, savedAt: Date.now() }));
 }
 export function deleteSlot(storage: StorageAccess, slot: string | number) { if (!SLOT_IDS.includes(String(slot))) throw new Error("Unknown Saved Game."); storage.removeItem(PREFIX + slot); }

@@ -2,7 +2,7 @@ import type { Campaign, Enemy, Position } from "../../game/types.ts";
 
 export const TURN_PLAYBACK_DURATION_MS = 1000;
 
-export interface PresentedEnemy extends Position { id: string; from: Position; to: Position; rank: number; startAt: number; endAt: number }
+export interface PresentedEnemy { id: string; from: Position; to: Position; rank: number; startAt: number; endAt: number }
 
 export interface TurnPlaybackPlan { duration: number; enemies: PresentedEnemy[] }
 
@@ -28,6 +28,9 @@ export class TurnPresentationSystem {
     if (this.floorKey !== floorKey) this.reset(current);
     this.flush();
     const before = new Map(enemies(previous).map((enemy) => [enemy.id, enemy]));
+    const liveIds = new Set(enemies(current).map((enemy) => enemy.id));
+    for (const id of this.positions.keys()) if (!liveIds.has(id)) this.positions.delete(id);
+    for (const id of this.ranks.keys()) if (!liveIds.has(id)) this.ranks.delete(id);
     const visible = enemies(current).filter((enemy) => visibleEnemyIds.has(enemy.id));
     for (const enemy of visible) if (!this.ranks.has(enemy.id)) this.ranks.set(enemy.id, this.nextRank++);
     const changed = visible.filter((enemy) => !samePosition(before.get(enemy.id), enemy)).sort((a, b) => this.rankOf(a.id) - this.rankOf(b.id));
@@ -48,9 +51,8 @@ export class TurnPresentationSystem {
     if (!this.active) return false;
     let running = false;
     for (const enemy of this.active.enemies) {
-      const progress = Math.max(0, Math.min(1, (now - enemy.startAt) / (enemy.endAt - enemy.startAt)));
-      this.positions.set(enemy.id, { x: enemy.from.x + (enemy.to.x - enemy.from.x) * progress, y: enemy.from.y + (enemy.to.y - enemy.from.y) * progress });
-      running ||= progress < 1;
+      this.positions.set(enemy.id, now >= enemy.startAt ? enemy.to : enemy.from);
+      running ||= now < enemy.endAt;
     }
     if (!running) this.active = null;
     return running;

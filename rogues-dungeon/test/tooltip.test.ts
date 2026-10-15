@@ -42,9 +42,11 @@ test("translates a fitted viewport tooltip from viewport coordinates to page coo
 });
 
 test("wires UI tooltips to pointer and keyboard focus with accessible descriptions", async () => {
-  const [tooltip, game] = await Promise.all([
+  const [tooltip, game, titleBar, gameCard] = await Promise.all([
     readFile(new URL("../src/ui/Tooltip.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../src/game/Game.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/game/game.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/game/panels/title-bar.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/game/cards/game-card.tsx", import.meta.url), "utf8"),
   ]);
   assert.match(tooltip, /onPointerEnter:/);
   assert.match(tooltip, /onPointerLeave:/);
@@ -57,9 +59,9 @@ test("wires UI tooltips to pointer and keyboard focus with accessible descriptio
   assert.match(tooltip, /new ResizeObserver\(update\)/);
   assert.match(game, /<Tooltip key=\{name\} content=\{resourceHelp\[name\]\}/);
   assert.match(game, /className="resource_tooltip_trigger"/);
-  assert.match(game, /className="card_title_trigger"/);
+  assert.match(gameCard, /className="game-card__title-trigger"/);
   assert.match(game, /className="attribute_tooltip_trigger"/);
-  assert.match(game, /const cardHelp[^=]*=/);
+  assert.match(gameCard, /const cardHelp[^=]*=/);
   assert.match(game, /const attributeHelp[^=]*=/);
   assert.match(game, /function abilityHelp\(ability: [^)]+\)/);
   assert.match(game, /function equipmentSlotHelp\(item: [^)]+\)/);
@@ -76,28 +78,28 @@ test("wires UI tooltips to pointer and keyboard focus with accessible descriptio
   assert.match(game, /No stats · Double-click to equip\./);
   assert.match(game, /<Tooltip content="Show movement and ability controls\."/);
   assert.match(game, /<Tooltip content="Show stats, gear, quest, and log\."/);
-  assert.match(game, /<Tooltip content="Time advances with each move\."/);
-  assert.match(game, /<Tooltip content="Gold pays for goods\."/);
-  assert.match(game, /<Tooltip content="Keys open doors\."/);
-  assert.doesNotMatch(game, /titlebar_icon_group/);
-  assert.match(game, /className="titlebar_icon_copy titlebar_icon_copy--time" role="img"/);
-  for (const icon of ["zoom", "camera", "fullscreen", "settings"]) assert.ok(game.includes(`className="titlebar_icon_copy titlebar_icon_copy--${icon}" aria-hidden="true"`));
-  assert.match(game, /aria-label="Time"/);
-  assert.match(game, /aria-label="Gold"/);
-  assert.match(game, /aria-label="Keys"/);
-  assert.match(game, /className="titlebar_counter_value"/);
-  assert.match(game, /<Tooltip content="Zoom to change the game view\."/);
-  assert.match(game, /const cameraHelp[^=]*= \{ center:.*deadzone:.*screen:/);
-  assert.match(game, /content=\{cameraHelp\[preferences\.camera\]/);
-  assert.match(game, /titlebar_select_utility/);
-  assert.match(game, /<Tooltip content="Enter or leave fullscreen\."/);
-  assert.match(game, /<Tooltip content="Adjust sound and return to menu\."/);
-  assert.match(css, /\.titlebar \.titlebar_select_utility \{ width:9\.5em; flex:0 0 9\.5em/);
+  assert.match(titleBar, /<Tooltip content="Time advances with each move\."/);
+  assert.match(titleBar, /<Tooltip content="Gold pays for goods\."/);
+  assert.match(titleBar, /<Tooltip content="Keys open doors\."/);
+  assert.doesNotMatch(titleBar, /titlebar_icon_group/);
+  assert.match(titleBar, /className="title-bar__icon title-bar__icon--time" role="img"/);
+  for (const icon of ["zoom", "camera", "fullscreen", "settings"]) assert.ok(titleBar.includes(`className="title-bar__icon title-bar__icon--${icon}" aria-hidden="true"`));
+  assert.match(titleBar, /aria-label="Time"/);
+  assert.match(titleBar, /aria-label="Gold"/);
+  assert.match(titleBar, /aria-label="Keys"/);
+  assert.match(titleBar, /className="title-bar__counter-value"/);
+  assert.match(titleBar, /<Tooltip content="Zoom to change the game view\."/);
+  assert.match(titleBar, /const cameraHelp[^=]*= \{[\s\S]*deadzone:[\s\S]*screen:/);
+  assert.match(titleBar, /content=\{cameraHelp\[preferences\.camera\]/);
+  assert.match(titleBar, /title-bar__select-utility/);
+  assert.match(titleBar, /<Tooltip content="Enter or leave fullscreen\."/);
+  assert.match(titleBar, /<Tooltip content="Adjust sound and return to menu\."/);
+  assert.match(css, /\.title-bar \.title-bar__select-utility \{ width:9\.5em; flex:0 0 9\.5em/);
 });
 
 test("renders and measures the in-world tooltip after its React node mounts", async () => {
   const world = await readFile(new URL("../src/systems/rendering/babylon-render-system.tsx", import.meta.url), "utf8");
-  assert.match(world, /<section ref=\{tooltipRef\} className="enemy_world_tooltip"/);
+  assert.match(world, /<section ref=\{tooltipRef\} className="world-view__enemy-tooltip"/);
   assert.match(world, /if \(!host \|\| !panel\) return;/);
   assert.match(world, /if \(tooltipRef\.current\) observer\.observe\(tooltipRef\.current\)/);
   assert.match(world, /<h2>ENEMY: \{hoveredEnemy\.name\}<\/h2>/);

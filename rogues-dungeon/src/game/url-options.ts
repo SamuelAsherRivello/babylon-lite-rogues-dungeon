@@ -25,6 +25,7 @@ export function parseGameUrlOptions(search = "") {
     slot: slotValue !== null && VALID_SAVE_SLOTS.includes(slotValue) ? slotValue : null,
     seed: unsignedParam(params, "seed", unsignedParam(params, "randomSeed")),
     mute: params.get("mute") === "1",
+    level1TestMode: params.get("level-1-test-mode") === "true",
     mapFix: params.get(MAP_FIX_FLAG) === "1",
     scenario: params.get("scenario") || null,
     map: params.get("map") || null,

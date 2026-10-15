@@ -1,2 +1,2 @@
-import { Game } from "../game/Game.tsx";
+import { Game } from "../game/game.tsx";
 export function Content() { return <Game />; }

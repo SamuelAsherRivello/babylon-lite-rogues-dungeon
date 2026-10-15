@@ -25,12 +25,12 @@ test('keeps the developer aspect override behind the development build flag', as
   const app = await readFile(new URL('../src/ui/App.tsx', import.meta.url), 'utf8');
   assert.match(app, /platform === "pc" && import\.meta\.env\.DEV/);
   assert.match(app, /layoutForPlatform\(platform, canOverride \? developerAspect : null\)/);
-  const game = await readFile(new URL('../src/game/Game.tsx', import.meta.url), 'utf8');
+  const [game, gameScreen] = await Promise.all(['../src/game/game.tsx', '../src/game/screens/game-screen.tsx'].map((path) => readFile(new URL(path, import.meta.url), 'utf8')));
   assert.match(game, /canOverride && orientation === "portrait"/);
   assert.match(game, /setDeveloperAspect\("landscape"\)/);
-  assert.match(game, /className="command_desk" data-orientation=\{orientation\}/);
+  assert.match(gameScreen, /className="game-screen" data-orientation=\{orientation\}/);
   const css = await readFile(new URL('../src/ui/style.css', import.meta.url), 'utf8');
-  assert.match(css, /\.command_desk\[data-orientation="portrait"\]/);
+  assert.match(css, /\.game-screen\[data-orientation="portrait"\]/);
   assert.doesNotMatch(css, /@media\s*\(max-aspect-ratio|@container\s*\(max-aspect-ratio/);
 });
 test('removes fitted gutters while the browser surface is fullscreen', async () => {
@@ -40,46 +40,51 @@ test('removes fitted gutters while the browser surface is fullscreen', async () 
   assert.doesNotMatch(surface, /size\.height > size\.width/);
 });
 test('uses a command desk and removes template corner units', async () => {
-  const [game, controlsArea, app, css] = await Promise.all(['src/game/Game.tsx', 'src/ui/ControlsArea.tsx', 'src/ui/App.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
-  assert.match(game, /PrimaryInfoPanel/); assert.match(game, /SecondaryInfoPanel/); assert.match(game, /Choose Your Descent/); assert.match(game, /Dev Settings/);
-  assert.match(game, /className="titlebar_left"/); assert.match(game, /className="titlebar_right"/); assert.match(game, /className="titlebar_identity"/); assert.match(game, /className="titlebar_progress"/); assert.match(game, /World: \{campaign\.world === "One" \? 1 : campaign\.world\}/);
-  assert.match(game, /aria-label="Time">⏱️<\/span>/); assert.match(game, /data-ui-counter-icon="gold" role="img" aria-label="Gold">🪙<\/span><span className="titlebar_counter_value">\{counters\.gold\}/); assert.match(game, /data-ui-counter-icon="key" role="img" aria-label="Keys">🔑<\/span><span className="titlebar_counter_value">\{String\(counters\.keys\)/);
-  assert.doesNotMatch(game, /titlebar_icon_group/); assert.doesNotMatch(css, /titlebar_icon_group/);
-  assert.match(game, /className="titlebar_identity">Rogue's Dungeon<\/span>/);
-  assert.doesNotMatch(game, /Dungeon Roguelite/);
-  assert.match(game, /className="titlebar_utility"/); assert.match(css, /\.titlebar_utility \{[^}]*align-items:center[^}]*padding:0 \.35em/);
-  assert.match(game, /Clear Local Storage/); assert.match(game, /clearRoguesDungeonStorage\(localStorage\)/); assert.match(game, /window\.location\.reload\(\)/);
-  assert.match(css, /\.titlebar \.titlebar_select_utility \{ width:9\.5em; flex:0 0 9\.5em/); assert.match(css, /\.titlebar \.titlebar_select_utility select \{ width:7\.4em/);
-  assert.match(game, /const selectPreference = \(event: SyntheticEvent<HTMLElement>, preference: Partial<Preferences>\) => \{ setPreference\(preference\); event\.currentTarget\.blur\(\); \}/);
-  assert.match(game, /keyboardControlRows/); assert.match(game, /collapsedKeyboardGroups/); assert.match(controlsArea, /aria-label="Keyboard controls"/); assert.match(game, /dispatch\(\{ type: "wait" \}\)/); assert.match(game, /Quick 1/); assert.match(game, /Quick 2/); assert.match(game, />Wait<\/button>/); assert.doesNotMatch(game, /Sprint:/); assert.doesNotMatch(game, /Sneak:/); assert.doesNotMatch(game, /\[1, 2, 3, 4\]/); assert.match(game, /<InputKey key=\{key\}/); assert.match(css, /\.mobile_actions \{ display:grid; grid-template-columns:repeat\(3,1fr\)/); assert.match(css, /\.keyboard_tray_keys \{[^}]*grid-template-columns:repeat\(3,2\.25rem\)/);
-  assert.match(game, /<option value="deadzone">Deadzone<\/option>/);
-  assert.doesNotMatch(app, /AppCorner/); assert.match(css, /mobile_controls/);
+  const [game, controlsArea, app, css, settingsWindow, mobileControls, titleBar, informationPanels] = await Promise.all(['src/game/game.tsx', 'src/ui/ControlsArea.tsx', 'src/ui/App.tsx', 'src/ui/style.css', 'src/game/windows/settings-window.tsx', 'src/game/controls/mobile-controls.tsx', 'src/game/panels/title-bar.tsx', 'src/game/panels/information-panels.tsx'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
+  assert.match(informationPanels, /PrimaryInfoPanel/); assert.match(informationPanels, /SecondaryInfoPanel/); assert.match(game, /Choose Your Descent/); assert.match(game, /Dev Settings/);
+  assert.match(titleBar, /className="title-bar__left"/); assert.match(titleBar, /className="title-bar__right"/); assert.match(titleBar, /className="title-bar__identity"/); assert.match(titleBar, /className="title-bar__progress"/); assert.match(titleBar, /World: \{campaign\.world === "One" \? 1 : campaign\.world\}/);
+  assert.match(titleBar, /aria-label="Time">⏱️<\/span>/); assert.match(titleBar, /data-ui-counter-icon="gold" role="img" aria-label="Gold">🪙<\/span><span className="title-bar__counter-value">\{counters\.gold\}/); assert.match(titleBar, /data-ui-counter-icon="key" role="img" aria-label="Keys">🔑<\/span><span className="title-bar__counter-value">\{String\(counters\.keys\)/);
+  assert.doesNotMatch(titleBar, /titlebar_icon_group/); assert.doesNotMatch(css, /titlebar_icon_group/);
+  assert.match(titleBar, /className="title-bar__identity">Rogue's Dungeon<\/span>/);
+  assert.doesNotMatch(titleBar, /Dungeon Roguelite/);
+  assert.match(titleBar, /className="title-bar__utility"/); assert.match(css, /\.title-bar__utility \{[^}]*align-items:center[^}]*padding:0 \.35em/);
+  assert.match(settingsWindow, /Clear Local Storage/); assert.match(game, /clearRoguesDungeonStorage\(localStorage\)/); assert.match(game, /window\.location\.reload\(\)/);
+  assert.match(css, /\.title-bar \.title-bar__select-utility \{ width:9\.5em; flex:0 0 9\.5em/); assert.match(css, /\.title-bar \.title-bar__select-utility select \{ width:7\.4em/);
+  assert.match(titleBar, /const selectPreference = \(event: SyntheticEvent<HTMLElement>, preference: Partial<Preferences>\) => \{/);
+  assert.match(game, /keyboardControlRows/); assert.match(game, /collapsedKeyboardGroups/); assert.match(controlsArea, /aria-label="Keyboard controls"/); assert.match(mobileControls, /dispatch\(\{ type: "wait" \}\)/); assert.match(mobileControls, /Quick 1/); assert.match(mobileControls, /Quick 2/); assert.match(mobileControls, />Wait<\/button>/); assert.doesNotMatch(mobileControls, /Sprint:/); assert.doesNotMatch(mobileControls, /Sneak:/); assert.doesNotMatch(mobileControls, /\[1, 2, 3, 4\]/); assert.match(game, /<InputKey key=\{key\}/); assert.match(css, /\.mobile-controls__actions \{ display:grid; grid-template-columns:repeat\(3,1fr\)/); assert.match(css, /\.keyboard_tray_keys \{[^}]*grid-template-columns:repeat\(3,2\.25rem\)/);
+  assert.match(titleBar, /<option value="deadzone">Deadzone<\/option>/);
+  assert.doesNotMatch(app, /AppCorner/); assert.match(css, /mobile-controls/);
   assert.match(css, /grid-template-rows:4% 92% 4%/); assert.match(css, /grid-template-rows:4% 46% 4% 46%/);
   assert.match(css, /grid-template-columns:minmax\(0,56%\) minmax\(0,44%\)/);
-  assert.match(css, /\.titlebar_identity \{[^}]*background:#1a1720/); assert.match(css, /\.titlebar_progress \{[^}]*justify-content:center/);
+  assert.match(css, /\.title-bar__identity \{[^}]*background:#1a1720/); assert.match(css, /\.title-bar__progress \{[^}]*justify-content:center/);
   assert.match(css, /align-items:center/);
 });
+test('renders the public My First Quest state in the Quest card', async () => {
+  const [panel, css] = await Promise.all(['src/game/panels/information-panels.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
+  assert.match(panel, /currentQuest\(campaign\)/); assert.match(panel, /quest\.title/); assert.match(panel, /quest\.items\.map/); assert.match(panel, /quest\.activeItemId === item\.id/);
+  assert.match(panel, /quest-layout__item--complete/); assert.match(css, /quest-layout__item--complete[^\n]*text-decoration:line-through/);
+});
 test('hands pickups from the rendered Babylon projection into their destination UI layer', async () => {
-  const [game, renderer, css] = await Promise.all(['src/game/Game.tsx', 'src/systems/rendering/babylon-render-system.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
+  const [game, renderer, css] = await Promise.all(['src/game/game.tsx', 'src/systems/rendering/babylon-render-system.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
   assert.match(renderer, /renderedProjectionRef/); assert.match(renderer, /renderedProjectionRef\.current = \{ rect, center: cameraCenter, tileCssSize: cellSizeAt\(rect\) \}/);
-  assert.match(renderer, /flight\.destination === "counter" \? "\.command_desk" : "\.desk_middle"/); assert.match(renderer, /destinationLayer\.append\(transfer\)/);
-  assert.match(css, /width 500ms/); assert.match(renderer, /window\.setTimeout\(\(\) => \{ transfer\.remove\(\);/);
+  assert.match(renderer, /flight\.destination === "counter" \? "\.game-screen" : "\.game-screen__middle"/); assert.match(renderer, /destinationLayer\.append\(transfer\)/);
+  assert.match(css, /width 500ms/); assert.match(css, /animation:world-view-ui-animation-flight 750ms/); assert.match(css, /0% \{ opacity:0; transform:translate\(-50%,-50%\) scale\(1\); \} 33\.333% \{ opacity:1; transform:translate\(-50%,-50%\) scale\(1\.25\); \} 66\.667% \{ opacity:1; transform:translate\(-50%,-50%\) scale\(1\); \} 100% \{ opacity:0; transform:translate\(-50%,-50%\) scale\(0\); \}/); assert.match(renderer, /window\.setTimeout\(\(\) => \{ transfer\.remove\(\);/);
   assert.match(game, /data-ui-counter-icon/); assert.match(game, /destination = entity\.kind === "gold" \|\| entity\.kind === "key" \? "counter" : "row"/);
   assert.match(css, /z-index:10000/);
 });
 test('returns to the saved-game menu when a player death event is committed', async () => {
-  const game = await readFile(new URL('../src/game/Game.tsx', import.meta.url), 'utf8');
+  const game = await readFile(new URL('../src/game/game.tsx', import.meta.url), 'utf8');
   assert.match(game, /event\.type === "player\.died"/); assert.match(game, /returnToMainMenu\(\); return;/);
 });
 
 test('uses randomSeed to seed only a newly selected save slot', async () => {
-  const game = await readFile(new URL('../src/game/Game.tsx', import.meta.url), 'utf8');
+  const game = await readFile(new URL('../src/game/game.tsx', import.meta.url), 'utf8');
   assert.match(game, /parseGameUrlOptions\(window\.location\.search\)/);
-  assert.match(game, /existing \?\? createCampaign\(randomSeed \?\? undefined, urlOptions\.level, urlOptions\.level\)/);
+  assert.match(game, /existing \?\? createCampaign\(randomSeed \?\? undefined, urlOptions\.level, urlOptions\.level, \{ level1TestMode: urlOptions\.level1TestMode \}\)/);
   assert.match(game, /New Game · Seed \$\{randomSeed\}/);
 });
 test('supports deterministic direct-slot map-fix URLs', async () => {
-  const game = await readFile(new URL('../src/game/Game.tsx', import.meta.url), 'utf8');
+  const game = await readFile(new URL('../src/game/game.tsx', import.meta.url), 'utf8');
   assert.match(game, /parseGameUrlOptions\(window\.location\.search\)/);
   assert.match(game, /urlOptions\.slot/);
   assert.match(game, /urlOptions\.mapFix/);
@@ -95,13 +100,13 @@ test('derives sparse dungeon terrain from the verified Wang mapping', async () =
   assert.match(wang, /DUNGEON_WANG_INTERIOR_TILE = 13/);
 });
 test('exposes independent persisted SFX and Music controls in Settings', async () => {
-  const game = await readFile(new URL('../src/game/Game.tsx', import.meta.url), 'utf8');
+  const [game, settingsWindow] = await Promise.all(['../src/game/game.tsx', '../src/game/windows/settings-window.tsx'].map((path) => readFile(new URL(path, import.meta.url), 'utf8')));
   const saves = await readFile(new URL('../src/systems/persistence/save-system.ts', import.meta.url), 'utf8');
-  assert.match(game, /aria-label="SFX volume"/); assert.match(game, /aria-label="Music volume"/); assert.match(game, /Mute All/);
+  assert.match(settingsWindow, /aria-label="SFX volume"/); assert.match(settingsWindow, /aria-label="Music volume"/); assert.match(settingsWindow, /Mute All/);
   assert.match(game, /mutedByUrl=\{audio\.hardMuted\}/); assert.match(saves, /sfxVolume/); assert.match(saves, /musicVolume/);
 });
 test('uses the inventory grabber as a cue while the whole row is draggable', async () => {
-  const game = await readFile(new URL('../src/game/Game.tsx', import.meta.url), 'utf8');
+  const game = await readFile(new URL('../src/game/game.tsx', import.meta.url), 'utf8');
   assert.match(game, /function SlotItem/);
   assert.match(game, /<SlotItem key=\{item\.id\} type="inventory"/);
   assert.match(game, /"data-drag-kind": "inventory", "data-drag-id": item\.id/);
@@ -111,18 +116,18 @@ test('uses the inventory grabber as a cue while the whole row is draggable', asy
   assert.match(css, /\.slot_item\[data-drag-kind\]\{cursor:grab/);
 });
 test('makes equipment rows draggable and droppable everywhere', async () => {
-  const game = await readFile(new URL('../src/game/Game.tsx', import.meta.url), 'utf8');
+  const game = await readFile(new URL('../src/game/game.tsx', import.meta.url), 'utf8');
   assert.match(game, /function EquipmentItem/);
   assert.match(game, /"data-drag-kind": "slot", "data-drag-id": item\.id/);
   assert.match(game, /dropTarget=\{\{ "data-drop-group": group, "data-drop-index": index \}\}/);
   assert.doesNotMatch(game, /dragWholeRow/);
 });
 test('uses SlotItem for vertically aligned abilities and equipment', async () => {
-  const [game, css] = await Promise.all(['src/game/Game.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
+  const [game, informationPanels, css] = await Promise.all(['src/game/game.tsx', 'src/game/panels/information-panels.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
   assert.match(game, /<SlotItem type="ability" slotType="ability" number=\{index\}/);
   assert.match(game, /slotType="ability"/); assert.match(game, /slotType="quickslot"/); assert.match(game, /slotType="equipment" slotSubtype=\{group\}/);
   assert.match(game, /accentColor="#c0aaff"/);
-  assert.match(game, /Card title="Equipment"/);
+  assert.match(informationPanels, /GameCard title="Equipment"/);
   assert.match(game, /<EquipmentItem key=\{index\}/);
   assert.match(css, /\.slot_item \{[^}]*align-items:center/);
   assert.match(css, /\.slot_item_number,\.slot_item_icon \{ color:var\(--slot-accent-color,#c6b994\)/);
@@ -130,21 +135,21 @@ test('uses SlotItem for vertically aligned abilities and equipment', async () =>
 });
 
 test('limits ability presentation and mobile controls to three positions', async () => {
-  const [game, css] = await Promise.all(['src/game/Game.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
+  const [game, mobileControls, css] = await Promise.all(['src/game/game.tsx', 'src/game/controls/mobile-controls.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
   assert.match(game, /campaign\.player\.abilities\.slice\(0, 3\)/);
-  assert.match(game, /\{\[0, 1, 2\]\.map/);
-  assert.doesNotMatch(game, /\{\[0, 1, 2, 3\]\.map/);
-  assert.match(css, /\.mobile_abilities \{ display:grid; grid-template-columns:repeat\(3,1fr\)/);
+  assert.match(mobileControls, /\{\[0, 1, 2\]\.map/);
+  assert.doesNotMatch(mobileControls, /\{\[0, 1, 2, 3\]\.map/);
+  assert.match(css, /\.mobile-controls__abilities \{ display:grid; grid-template-columns:repeat\(3,1fr\)/);
 });
 test('centers plus markers for empty equipment and ability slots', async () => {
-  const [game, css] = await Promise.all(['src/game/Game.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
+  const [game, css] = await Promise.all(['src/game/game.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
   assert.match(game, /aria-label=\{type === "ability" \? "Empty ability slot" : type === "quick" \? "Empty quick slot" : type === "inventory" \? "Empty inventory slot" : "Empty equipment slot"\}>\+<\/span>/);
   assert.match(css, /\.slot_item \{ position:relative;/);
   assert.match(css, /\.slot_item \.empty_slot\{position:absolute;left:50%;transform:translateX\(-50%\);display:grid;place-items:center/);
 });
 test('renders UI tooltips above every content-layer panel', async () => {
   const css = await readFile(new URL('../src/ui/style.css', import.meta.url), 'utf8');
-  assert.match(css, /\.tab-control-placement \{ position:absolute; z-index:1;[^}]*pointer-events:none; \}/);
+  assert.match(css, /\.game-card__tab-placement \{ position:absolute; z-index:1;[^}]*pointer-events:none; \}/);
   assert.match(css, /#ui_layer \{[^}]*z-index:\s*2147483647;/);
   assert.match(css, /\.ui_tooltip \{ position:absolute; z-index:10000;/);
 });
@@ -154,7 +159,7 @@ test('matches inventory row spacing to the abilities list', async () => {
   assert.match(css, /\.inventory_scroll \{ display:grid; align-content:start; gap:\.18rem; \}/);
 });
 test('fills unused inventory capacity with empty plus slots', async () => {
-  const game = await readFile(new URL('../src/game/Game.tsx', import.meta.url), 'utf8');
+  const game = await readFile(new URL('../src/game/game.tsx', import.meta.url), 'utf8');
   assert.match(game, /const emptySlots = Math\.max\(0, campaign\.player\.inventoryCapacity - campaign\.player\.inventory\.length\)/);
   assert.match(game, /Array\.from\(\{ length: emptySlots \}/);
   assert.match(game, /data-drop-inventory-slot/);
@@ -168,30 +173,30 @@ test('uses the shared card inset for log, equipment, and inventory scrollbars', 
   assert.match(css, /\.log_scroll::-webkit-scrollbar,\.slot_scroll::-webkit-scrollbar,\.inventory_scroll::-webkit-scrollbar/);
 });
 test('renders transient item drag feedback without intercepting drops', async () => {
-  const [game, css] = await Promise.all(['src/game/Game.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
+  const [game, dragPreview, css] = await Promise.all(['src/game/game.tsx', 'src/game/controls/item-drag-preview.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
   assert.match(game, /describeInventoryDrop/); assert.match(game, /setDragPresentation\(\{ source: current\.source/);
-  assert.match(game, /function ItemDragPreview/); assert.match(game, /drag\.source\.kind === "slot" \? "equipment" : drag\.source\.kind === "quick-slot" \? "quick" : "inventory"/); assert.match(game, /<SlotItem type="ability" number=\{drag\.source\.index\}/); assert.match(game, /drag_departure/); assert.match(game, /drag_landing/);
+  assert.match(dragPreview, /export function ItemDragPreview/); assert.match(dragPreview, /drag\.source\.kind === "slot" \? "equipment" : drag\.source\.kind === "quick-slot" \? "quick" : "inventory"/); assert.match(dragPreview, /<SlotItem type="ability" number=\{drag\.source\.index\}/); assert.match(game, /drag_departure/); assert.match(game, /drag_landing/);
   assert.match(game, /Math\.hypot\(event\.clientX - current\.startX, event\.clientY - current\.startY\) < 6/);
   assert.match(game, /cancelPointerDrag = useCallback\(\(\) => \{ pointerDragRef\.current = null; setPreview\(null\); setDragPresentation\(null\); \}/);
   assert.match(game, /window\.addEventListener\("pointercancel", pointerCancel\)/);
-  assert.match(css, /\.item_drag_preview\{[^}]*pointer-events:none/); assert.match(css, /\.item_drag_preview\{[^}]*width:min\(11rem/); assert.match(css, /\.drag_departure/); assert.match(css, /\.drag_landing/);
+  assert.match(css, /\.item-drag-preview\{[^}]*pointer-events:none/); assert.match(css, /\.item-drag-preview\{[^}]*width:min\(11rem/); assert.match(css, /\.drag_departure/); assert.match(css, /\.drag_landing/);
 });
 test('dims keyboard inputs while their ability or quick slot is being dragged', async () => {
-  const [game, css] = await Promise.all(['src/game/Game.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
-  assert.match(game, /drag\?\.source\.kind === "ability"/); assert.match(game, /drag\?\.source\.kind === "quick-slot"/); assert.match(game, /<StatusBar[^>]*drag=\{dragPresentation\}/);
+  const [game, css] = await Promise.all(['src/game/game.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
+  assert.match(game, /drag\?\.source\.kind === "ability"/); assert.match(game, /drag\?\.source\.kind === "quick-slot"/); assert.match(game, /<StatusControls[^>]*drag=\{dragPresentation\}/);
   assert.match(css, /\.input-key--unavailable \{ --input-key-color:var\(--slot-disabled-color\)/);
 });
 
 test('renders the Stealth stat and level-up chooser from game-rule state', async () => {
-  const game = await readFile(new URL('../src/game/Game.tsx', import.meta.url), 'utf8');
+  const [game, levelUpWindow] = await Promise.all(['../src/game/game.tsx', '../src/game/windows/level-up-window.tsx'].map((path) => readFile(new URL(path, import.meta.url), 'utf8')));
   assert.match(game, /\["vitality", "strength", "luck", "recovery", "stealth"\]/);
-  assert.match(game, /export function LevelUpChooser/);
+  assert.match(levelUpWindow, /export function LevelUpWindow/);
   assert.match(game, /choose-upgrade/);
-  assert.match(game, /Level \{pending\.level\}: Choose a Stat/);
+  assert.match(levelUpWindow, /Level \{pending\.level\}: Choose a Stat/);
 });
 
 test('uses delta values to pulse only when an attribute turns red or green', async () => {
-  const [game, css] = await Promise.all(['src/game/Game.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
+  const [game, css] = await Promise.all(['src/game/game.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
   assert.match(game, /export function DeltaValue/);
   assert.match(game, /if \(toneChanged && tone\) setPulseVersion/);
   assert.match(game, /<DeltaValue value=\{value\} tone=\{tone\}/);

@@ -10,7 +10,7 @@ http://localhost:5173/babylon-lite-rogues-dungeon/?mute=1
 
 The query override is checked before playback and silences both buses for the page session even if saved preferences are audible. It does not erase saved player settings. Browsers may wait for a user gesture before allowing music to start.
 
-When the main menu opens, the audio manager begins loading every known music and SFX asset in the background. Gameplay never waits for this work. Until every asset has reached a playable state or reported an error, the manager drops playback requests rather than leaving them pending. Once the catalog has settled, later input can start music and game events can play their cues from the warmed browser cache.
+When the main menu opens, the audio manager begins loading every known music and SFX asset in the background. Gameplay never waits for this work. Until every asset has reached a playable state or reported an error, the manager drops playback requests rather than leaving them pending. Once the catalog has settled, later input plays from retained, decoded audio elements; each SFX has a two-element pool so rapid matching cues do not need a cold element.
 
 ## Diegetic and Non-diegetic Cues
 
@@ -21,13 +21,18 @@ When the main menu opens, the audio manager begins loading every known music and
 | Diegetic | Enemy hits the player | `sfx/enemy_hit.ogg` | `sfx100v2_hit_01.ogg` | Muted impact |
 | Diegetic | Enemy is defeated | `sfx/enemy_fall.ogg` | `sfx100v2_hit_02.ogg` | Short defeat cue |
 | Diegetic | Potion is collected | `sfx/potion.ogg` | `sfx100v2_glass_01.ogg` | Small glass chime |
+| Non-diegetic | Any world pickup is collected | `sfx/pickup-click.wav` | `click.wav` | Immediate click before its UI flight; created by qubodup and sourced from [OpenGameArt](https://opengameart.org/content/click), CC0 |
+| Non-diegetic | A key pickup starts its UI flight | `sfx/key.ogg` | `sfx100v2_metal_01.ogg` | Immediate key credit confirmation |
+| Non-diegetic | A gold pickup starts its UI flight | `sfx/inventory.ogg` | `sfx100v2_items_02.ogg` | Immediate coin confirmation |
+| Non-diegetic | A Health or Mana pickup starts its UI flight | `sfx/collect.ogg` | `sfx100v2_glass_02.ogg` | Immediate potion confirmation |
+| Non-diegetic | An inventory-bound pickup starts its UI flight | `sfx/inventory.ogg` | `sfx100v2_items_02.ogg` | Immediate inventory confirmation |
 | Diegetic | Chest opens | `sfx/chest.ogg` | `sfx100v2_lock_open_01.ogg` | Brief latch sound |
 | Diegetic | Player enters stairs to descend | `sfx/stairs.ogg` | `sfx100v2_door_01.ogg` | Stone transition cue |
 | Non-diegetic | Compatible equipment drop is accepted | `sfx/ui_accept.ogg` | `sfx100v2_switch_01.ogg` | Quiet confirmation |
 | Non-diegetic | Equipment drop is rejected | `sfx/ui_reject.ogg` | `sfx100v2_switch_02.ogg` | Soft rejection tick |
 | Non-diegetic | Ability activation succeeds | `sfx/ability.ogg` | `sfx100v2_items_01.ogg` | Brief UI confirmation |
 
-The ten SFX are selected from rubberduck's **100 CC0 SFX #2** pack on [OpenGameArt](https://opengameart.org/content/100-cc0-sfx-2), licensed CC0. The archive is not shipped; only the listed files are included. Original entry names are recorded to make each selection traceable.
+Fourteen OGG SFX are selected from rubberduck's **100 CC0 SFX #2** pack on [OpenGameArt](https://opengameart.org/content/100-cc0-sfx-2), licensed CC0. The additional `pickup-click.wav` is the CC0 click by qubodup listed above. The source archives are not shipped; only the listed files are included. Original entry names are recorded to make each selection traceable.
 
 ## Music Tracks
 

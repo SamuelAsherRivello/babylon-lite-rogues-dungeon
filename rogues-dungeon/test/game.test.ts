@@ -19,6 +19,7 @@ import { DUNGEON_TILESET_SOURCE, DUNGEON_WANG_TILE_BY_MASK, compareTiledRepairLa
 import { createLevelContext, isWalkable, runLevelPasses } from '../src/systems/procedural/level-grid-system.ts';
 import { buildManualTileScenario, getManualTileScenario } from '../src/systems/procedural/manual-tile-scenarios.ts';
 import { TURN_PLAYBACK_DURATION_MS, TurnPresentationSystem } from '../src/systems/animation/turn-presentation-system.ts';
+import { createMyFirstQuest, currentQuest, projectQuestEvents } from '../src/systems/quests/quest-progression-system.ts';
 
 function present<T>(value: T): NonNullable<T> { assert.ok(value != null, 'expected fixture value to exist'); return value; }
 // These tests exercise runtime normalization of old enemies. Do not add defaults here:
@@ -30,6 +31,24 @@ function transaction(value: ReturnType<ReturnType<typeof createGameSession>['dis
 // Preserve the map-only, incomplete attributes accepted by the compatibility adapter.
 function legacyMapCampaign(value: unknown): Campaign { return value as Campaign; }
 class MemoryStorage { values = new Map<string, string>(); get length() { return this.values.size; } key(index: number) { return [...this.values.keys()][index] ?? null; } getItem(key: string) { return this.values.get(key) ?? null; } setItem(key: string, value: unknown) { this.values.set(key, String(value)); } removeItem(key: string) { this.values.delete(key); } }
+
+test('My First Quest completes from generic events in any order and advances only when active', () => {
+  const campaign = createCampaign(701);
+  assert.deepEqual(currentQuest(campaign), createMyFirstQuest());
+  projectQuestEvents(campaign, [{ type: 'item.collected', facts: { destination: 'gold' }, gameTime: 0, sequence: 1 }]);
+  assert.equal(currentQuest(campaign).items[2].complete, true); assert.equal(currentQuest(campaign).activeItemId, 'walk-through-stairs');
+  projectQuestEvents(campaign, [{ type: 'realm.entered', facts: {}, gameTime: 1, sequence: 1 }]);
+  assert.equal(currentQuest(campaign).activeItemId, 'collect-health-potion');
+  projectQuestEvents(campaign, [{ type: 'item.collected', facts: { resource: 'health', name: 'Health Potion' }, gameTime: 2, sequence: 1 }]);
+  assert.deepEqual(currentQuest(campaign).items.map((item) => item.complete), [true, true, true]); assert.equal(currentQuest(campaign).activeItemId, null);
+});
+
+test('quest persistence initializes old saves and retains completed state', () => {
+  const storage = new MemoryStorage(); const campaign = createCampaign(702); projectQuestEvents(campaign, [{ type: 'realm.entered', facts: {}, gameTime: 1, sequence: 1 }]);
+  writeSlot(storage, '1', campaign); assert.equal(present(readSlot(storage, '1')).quest?.activeItemId, 'collect-health-potion');
+  const old = createCampaign(703); Reflect.deleteProperty(old, 'quest'); storage.setItem('rogues-dungeon.slot.2', JSON.stringify(old));
+  assert.equal(present(readSlot(storage, '2')).quest?.title, 'My First Quest');
+});
 
 test('level passes enforce scopes and protected semantic cells', () => {
   const context = createLevelContext({ width: 4, height: 4 });
@@ -50,10 +69,11 @@ test('reads a validated randomSeed URL parameter for reproducible campaigns', ()
   for (const search of ['', '?randomSeed=', '?randomSeed=-1', '?randomSeed=1.5', '?randomSeed=4294967296', '?randomSeed=abc']) assert.equal(randomSeedFromSearch(search), null);
 });
 
-test('parses deterministic world, level, slot, seed, and map-fix URL options', () => {
-  assert.deepEqual(parseGameUrlOptions('?world=2&level=3&slot=2&seed=7&mute=1&debug-fix-map-autotiled=1&scenario=corridor-joins'), { world: 2, level: 3, slot: '2', seed: 7, mute: true, mapFix: true, scenario: 'corridor-joins', map: null });
+test('parses deterministic world, level, slot, seed, map-fix, and level-one test URL options', () => {
+  assert.deepEqual(parseGameUrlOptions('?world=2&level=3&slot=2&seed=7&mute=1&level-1-test-mode=true&debug-fix-map-autotiled=1&scenario=corridor-joins'), { world: 2, level: 3, slot: '2', seed: 7, mute: true, level1TestMode: true, mapFix: true, scenario: 'corridor-joins', map: null });
   assert.equal(parseGameUrlOptions('?slot=4').slot, null);
   assert.equal(parseGameUrlOptions('?seed=-1').seed, null);
+  assert.equal(parseGameUrlOptions('?level-1-test-mode=1').level1TestMode, false);
   assert.equal(parseGameUrlOptions('?randomSeed=9').seed, 9);
 });
 
@@ -89,40 +109,52 @@ test('reconstructs deterministic floors and round-trips Tiled repair maps', () =
   assert.ok(findCardinalPath(repaired, repaired.start, { x: exit.x, y: exit.y }));
 });
 
-test('places the forward stair on the player right within ten cells of the start', () => {
+test('places level-one test-mode stairs and starter entities beside the start only', () => {
   for (const seed of [1, 77, 13579, 9001]) {
-    const floor = generateFloor(1, seed);
+    const floor = generateFloor(1, seed, 1, { level1TestMode: true });
     const stairs = floor.entities.filter((entity) => entity.kind === 'stairs');
     assert.equal(stairs.length, 1);
     assert.deepEqual(stairs[0], { id: 'stairs-forward', kind: 'stairs', direction: 'forward', name: 'Stairs up', x: floor.start.x + 3, y: floor.start.y });
     assert.ok(Math.hypot(stairs[0].x - floor.start.x, stairs[0].y - floor.start.y) <= STAIRS_MAX_DISTANCE_FROM_START);
+    assert.ok(floor.entities.some((entity) => entity.id === 'health-potion' && entity.kind === 'potion' && entity.resource === 'health'));
+    assert.ok(floor.entities.some((entity) => entity.id === 'mana-potion' && entity.kind === 'potion' && entity.resource === 'mana'));
+    assert.ok(floor.entities.some((entity) => entity.id === 'starter-key' && entity.kind === 'key'));
+    const chest = floor.entities.find((entity) => entity.id === 'test-chest');
+    assert.deepEqual(chest && { kind: chest.kind, opened: chest.kind === 'chest' ? chest.opened : undefined }, { kind: 'chest', opened: false });
+    assert.ok(chest && Math.max(Math.abs(chest.x - stairs[0].x), Math.abs(chest.y - stairs[0].y)) === 1);
+    assert.ok(floor.entities.some((entity) => entity.id === 'starter-gold' && entity.kind === 'gold'));
+    const testEnemies = floor.entities.filter((entity): entity is Enemy => entity.kind === 'enemy' && entity.id.startsWith('test-'));
+    assert.deepEqual(testEnemies.map((entity) => entity.name).sort(), ['Rat', 'Skeleton']);
+    assert.ok(testEnemies.every((entity) => Math.hypot(entity.x - floor.start.x, entity.y - floor.start.y) <= 10));
   }
 });
 
 test('normalizes saved floors to directional stairs at the start', () => {
-  const floor = generateFloor(1, 77);
+  const floor = generateFloor(1, 77, 1, { level1TestMode: true });
   floor.entities.push({ id: 'extra-stairs', kind: 'stairs', x: floor.start.x + 2, y: floor.start.y });
   const normalized = ensureNearbyStairs(floor);
   const stairs = normalized.entities.filter((entity) => entity.kind === 'stairs');
   assert.deepEqual(stairs, [{ id: 'stairs-forward', kind: 'stairs', direction: 'forward', name: 'Stairs up', x: floor.start.x + 3, y: floor.start.y }]);
 });
 
-test('places a return stair on the left and a forward stair on the right after level one', () => {
+test('places a return stair near the start and leaves the forward stair distant after level one', () => {
   const floor = generateFloor(2, 77);
-  assert.deepEqual(floor.entities.filter((entity) => entity.kind === 'stairs'), [
-    { id: 'stairs-back', kind: 'stairs', direction: 'back', name: 'Stairs down', x: floor.start.x - 3, y: floor.start.y },
-    { id: 'stairs-forward', kind: 'stairs', direction: 'forward', name: 'Stairs up', x: floor.start.x + 3, y: floor.start.y },
-  ]);
+  assert.deepEqual(floor.entities.find((entity) => entity.id === 'stairs-back'), { id: 'stairs-back', kind: 'stairs', direction: 'back', name: 'Stairs down', x: floor.start.x - 3, y: floor.start.y });
+  const forward = present(floor.entities.find((entity) => entity.id === 'stairs-forward'));
+  assert.ok(Math.hypot(forward.x - floor.start.x, forward.y - floor.start.y) >= 20);
+  assert.equal(floor.entities.some((entity) => entity.id === 'test-rat' || entity.id === 'test-skeleton'), false);
 });
 
 test('linked stairs return to the previously visited floor', () => {
-  let state = createCampaign(17);
+  let state = createCampaign(17, 1, 1, { level1TestMode: true });
   for (let step = 0; step < 3; step++) state = applyAction(state, { type: 'move', direction: 'e' }).state;
   assert.equal(state.floor.level, 2);
+  const returnStair = state.floor.entities.find((entity) => entity.kind === 'stairs' && entity.direction === 'back')!;
+  assert.deepEqual({ x: state.player.x, y: state.player.y }, { x: returnStair.x + 1, y: returnStair.y });
   const levelOne = structuredClone(state.floors?.['1']);
-  for (let step = 0; step < 3; step++) state = applyAction(state, { type: 'move', direction: 'w' }).state;
+  state = applyAction(state, { type: 'move', direction: 'w' }).state;
   assert.equal(state.floor.level, 1);
-  assert.deepEqual(state.floor.entities, levelOne?.entities);
+  assert.deepEqual(state.floor.entities.map(({ id, x, y }) => ({ id, x, y })), levelOne?.entities.map(({ id, x, y }) => ({ id, x, y })));
   assert.deepEqual(state.floor.map, levelOne?.map);
 });
 
@@ -193,7 +225,7 @@ test('places seeded dungeon objects on unique walkable cells while preserving th
       positions.add(key);
     }
     assert.ok(findCardinalPath(floor, floor.start, stairs), `${seed}: exit must remain reachable`);
-    assert.ok(Math.hypot(stairs.x - floor.start.x, stairs.y - floor.start.y) <= 10, `${seed}: stairs must stay within 10 grid cells of the start for testing`);
+    assert.ok(Math.hypot(stairs.x - floor.start.x, stairs.y - floor.start.y) >= 20, `${seed}: normal exits must stay away from the start`);
     assert.deepEqual(floor.generation?.passes?.map(({ id }) => id), ['structured-dungeon', 'reserve-semantic-cells', 'place-dungeon-objects']);
     assert.equal(floor.generation?.passes?.at(-1)?.diagnostics, 0);
   }
@@ -895,7 +927,11 @@ test('turn presentation orders visible enemies, skips offscreen movement, and fl
   assert.equal(plan.enemies[0].endAt, TURN_PLAYBACK_DURATION_MS / 2);
   assert.equal(plan.enemies[1].endAt, TURN_PLAYBACK_DURATION_MS);
   assert.deepEqual(presentation.positionOf('offscreen', offscreenCurrent), { x: offscreenCurrent.x, y: offscreenCurrent.y });
-  assert.equal(presentation.sample(TURN_PLAYBACK_DURATION_MS / 4), true);
+  assert.equal(presentation.sample(0), true);
+  assert.deepEqual(presentation.positionOf('first', firstCurrent), { x: firstCurrent.x, y: firstCurrent.y });
+  assert.deepEqual(presentation.positionOf('second', secondCurrent), { x: second.x, y: second.y });
+  assert.equal(presentation.sample(TURN_PLAYBACK_DURATION_MS / 2), true);
+  assert.deepEqual(presentation.positionOf('second', secondCurrent), { x: secondCurrent.x, y: secondCurrent.y });
   presentation.flush();
   assert.equal(presentation.isActive, false);
   assert.deepEqual(presentation.positionOf('first', firstCurrent), { x: firstCurrent.x, y: firstCurrent.y });
@@ -903,6 +939,12 @@ test('turn presentation orders visible enemies, skips offscreen movement, and fl
   assert.equal(reentered.duration, 0);
   assert.ok(presentation.rankOf('first') < presentation.rankOf('second'));
   assert.ok(presentation.rankOf('second') < presentation.rankOf('offscreen'));
+  const removed = structuredClone(current); removed.floor.entities = removed.floor.entities.filter((entity) => entity.id !== 'offscreen');
+  presentation.begin(current, removed, new Set(['first', 'second']), TURN_PLAYBACK_DURATION_MS);
+  assert.equal(presentation.rankOf('offscreen'), Number.MAX_SAFE_INTEGER);
+  const nextFloor = structuredClone(removed); nextFloor.floor.seed++;
+  presentation.begin(removed, nextFloor, new Set(['second', 'first']), TURN_PLAYBACK_DURATION_MS);
+  assert.ok(presentation.rankOf('first') < presentation.rankOf('second'));
 });
 
 test('integrates collect, equipment preview and reorder, ability, potion, descent, and death events', () => {
