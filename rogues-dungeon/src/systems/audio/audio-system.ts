@@ -1,5 +1,13 @@
 import type { GameEvent, Preferences } from "../../game/types.ts";
-export interface AudioHandle { preload?: string; volume: number; loop: boolean; play(): Promise<void> | void }
+export interface AudioHandle {
+  preload?: string;
+  volume: number;
+  loop: boolean;
+  play(): Promise<void> | void;
+  load?(): void;
+  addEventListener?(type: "canplay" | "error", listener: () => void, options?: { once?: boolean }): void;
+  removeEventListener?(type: "canplay" | "error", listener: () => void): void;
+}
 const baseUrl = import.meta.env?.BASE_URL ?? "/";
 
 export const AUDIO_ASSETS = Object.freeze({
@@ -34,12 +42,33 @@ const eventCues: Readonly<Partial<Record<string, keyof typeof AUDIO_ASSETS.sfx>>
 function readVolume(value: unknown, fallback: number) { return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 100 ? value : fallback; }
 function muteFromSearch(search: string) { return new URLSearchParams(search).get("mute") === "1"; }
 function ignoreRejectedPlay(result: Promise<void> | void) { if (result && typeof result.catch === "function") result.catch(() => {}); }
+function warmAudio(audio: AudioHandle) {
+  audio.preload = "auto";
+  const addListener = audio.addEventListener;
+  const removeListener = audio.removeEventListener;
+  if (!addListener || !removeListener) {
+    audio.load?.();
+    return Promise.resolve();
+  }
+  return new Promise<void>((resolve) => {
+    const finish = () => {
+      removeListener.call(audio, "canplay", finish);
+      removeListener.call(audio, "error", finish);
+      resolve();
+    };
+    addListener.call(audio, "canplay", finish, { once: true });
+    addListener.call(audio, "error", finish, { once: true });
+    audio.load?.();
+  });
+}
 
 export function createAudioManager({ search = "", createAudio = (src) => new Audio(src), random = Math.random }: { search?: string; createAudio?: (src: string) => AudioHandle; random?: () => number } = {}) {
   const hardMuted = muteFromSearch(search);
   let preferences = { sfxVolume: 80, musicVolume: 20, muteAll: false };
   let musicAudio: AudioHandle | null = null;
   let lastFootstepAt = -Infinity;
+  let warmupComplete = hardMuted;
+  let warmup: Promise<void> | null = null;
 
   const busMuted = (bus: "sfx" | "music") => hardMuted || preferences.muteAll || preferences[`${bus}Volume`] === 0;
   const setPreferences = (value: Partial<Pick<Preferences, "sfxVolume" | "musicVolume" | "muteAll">> = {}) => {
@@ -51,9 +80,17 @@ export function createAudioManager({ search = "", createAudio = (src) => new Aud
     if (musicAudio) musicAudio.volume = busMuted("music") ? 0 : preferences.musicVolume / 100;
   };
 
+  const prewarm = () => {
+    if (warmup) return warmup;
+    if (hardMuted) return Promise.resolve();
+    const handles = [...AUDIO_ASSETS.music, ...Object.values(AUDIO_ASSETS.sfx)].map((src) => createAudio(src));
+    warmup = Promise.all(handles.map(warmAudio)).then(() => { warmupComplete = true; });
+    return warmup;
+  };
+
   const playCue = (cue: keyof typeof AUDIO_ASSETS.sfx, now = Date.now()) => {
     const src = AUDIO_ASSETS.sfx[cue];
-    if (!src || busMuted("sfx")) return false;
+    if (!src || !warmupComplete || busMuted("sfx")) return false;
     if (cue === "footstep") {
       if (now - lastFootstepAt < 140) return false;
       lastFootstepAt = now;
@@ -76,7 +113,7 @@ export function createAudioManager({ search = "", createAudio = (src) => new Aud
   };
 
   const startMusic = () => {
-    if (busMuted("music")) return false;
+    if (!warmupComplete || busMuted("music")) return false;
     if (musicAudio) return true;
     const tracks = AUDIO_ASSETS.music;
     const index = Math.min(tracks.length - 1, Math.max(0, Math.floor(random() * tracks.length)));
@@ -92,6 +129,8 @@ export function createAudioManager({ search = "", createAudio = (src) => new Aud
 
   return Object.freeze({
     hardMuted,
+    prewarm,
+    isPrewarmed: () => warmupComplete,
     setPreferences,
     startMusic,
     playCue,

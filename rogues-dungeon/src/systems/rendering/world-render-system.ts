@@ -57,7 +57,7 @@ export const WorldRender = Object.freeze({
     const computed = getWangTerrain(grid, tileSize);
     const { terrain, walls, diagnostics, wallDiagnostics } = groundTiles || wallTiles ? applyTiledFrames(computed, grid, groundTiles, wallTiles, tileSize) : computed;
     const actors = entities.filter((entry) => entry.kind === "enemy").map((entry) => ({ id: entry.id, kind: entry.name === "Skeleton" ? "skeleton" : "rat", heading: entry.heading ?? "e", x: entry.x, y: entry.y, worldX: entry.x * tileSize + tileSize / 2, worldY: entry.y * tileSize + tileSize / 2 }));
-    const objects = entities.filter((entry) => ["item", "potion", "key", "gold", "chest", "stairs", "discovery"].includes(entry.kind)).map((entry) => ({ id: entry.id, kind: entry.kind, resource: entry.kind === "potion" ? entry.resource : null, x: entry.x, y: entry.y, worldX: entry.x * tileSize + tileSize / 2, worldY: entry.y * tileSize + tileSize / 2 }));
+    const objects = entities.filter((entry) => ["item", "potion", "key", "gold", "chest", "stairs", "discovery"].includes(entry.kind)).map((entry) => ({ id: entry.id, kind: entry.kind, direction: entry.kind === "stairs" ? entry.direction : undefined, resource: entry.kind === "potion" ? entry.resource : null, x: entry.x, y: entry.y, worldX: entry.x * tileSize + tileSize / 2, worldY: entry.y * tileSize + tileSize / 2 }));
     return { view, detail, tileSize, width: grid[0]?.length ?? 0, height: grid.length, terrain, grounds: terrain, walls, diagnostics, wallDiagnostics, actors, objects, markers: { player: { x: player.x, y: player.y }, exit: objects.find((entry) => entry.kind === "stairs") ?? null } };
   },
 });

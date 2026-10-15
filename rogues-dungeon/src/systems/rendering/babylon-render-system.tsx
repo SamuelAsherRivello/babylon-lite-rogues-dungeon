@@ -16,7 +16,7 @@ import { findWorldTooltipPosition } from "../../content/world/tooltip-placement.
 import { resourceNames } from "../procedural/world-procedural-system.ts";
 import { isWalkable } from "../procedural/level-grid-system.ts";
 import { createHeroWarriorAnimationEntity, heroWarriorIdleAnimationForHeading } from "../../content/characters/hero-warrior/hero-warrior-animation.ts";
-import { loadHeroWarriorAtlasFrame } from "../../content/characters/hero-warrior/hero-warrior-atlas.ts";
+import { loadSpriteAtlasFrame } from "../../content/characters/hero-warrior/hero-warrior-atlas.ts";
 import { particleBoundsAt, particleBoundsAtTile, particleExpired, particleFrameUrl, type ParticleEffect } from "../animation/particle-effects-system.ts";
 import { UiIrisTransition, type UiIrisPhase } from "../../ui/ui-transition-system.tsx";
 import { sortGridRenderEntries } from "./grid-render-order-system.ts";
@@ -27,7 +27,10 @@ const texturePaths = {
   rat: `${import.meta.env.BASE_URL}assets/art/vendors/dungeons-and-pixels-v1.4/enemies/rat/frames/idle/00.png`,
   skeleton: `${import.meta.env.BASE_URL}assets/art/vendors/dungeons-and-pixels-v1.4/enemies/skeleton-warrior/frames/idle/down/00.png`,
   items: `${import.meta.env.BASE_URL}assets/art/vendors/dungeons-and-pixels-v1.4/tilesets/items-static.png`,
+  goldCoin: `${import.meta.env.BASE_URL}assets/art/vendors/dungeons-and-pixels-v1.4/items/animated/gold-coin.png`,
 };
+
+const goldCoinFramePaths = Array.from({ length: 4 }, (_, index) => `${import.meta.env.BASE_URL}assets/art/vendors/dungeons-and-pixels-v1.4/items/animated/frames/gold-coin/${String(index).padStart(2, "0")}.png`);
 
 const clear = { r: 0.06, g: 0.05, b: 0.09, a: 1 };
 let sharedEnginePromise: Promise<SharedEngine> | null = null;
@@ -92,7 +95,8 @@ function releaseSharedTexture(path: string) {
 /** A visual transfer from a world cell to the UI element that receives it. */
 export interface GameViewToUiAnimation extends Position {
   id: string;
-  icon: string;
+  kind: "item" | "potion" | "key" | "gold" | "chest" | "discovery" | "enemy" | "stairs";
+  frame: number;
   target: string;
   destination: "row" | "counter";
 }
@@ -133,16 +137,19 @@ export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "ce
       if (launchedFlightsRef.current.has(flight.id)) continue;
       const { rect, center, tileCssSize } = projection;
       const origin = getWorldCellScreenCenter({ ...flight, center, viewportWidth: rect.width, viewportHeight: rect.height, tileCssSize });
-      const target = document.querySelector<HTMLElement>(flight.target); const destinationLayer = target?.closest<HTMLElement>(".desk_middle");
+      const target = document.querySelector<HTMLElement>(flight.target);
+      const destinationLayer = target?.closest<HTMLElement>(flight.destination === "counter" ? ".command_desk" : ".desk_middle");
       if (!target || !destinationLayer) continue;
       launchedFlightsRef.current.add(flight.id);
-      const transfer = document.createElement("span"); transfer.className = "game_view_ui_animation"; transfer.textContent = flight.icon; transfer.setAttribute("aria-hidden", "true");
+      const transfer = document.createElement("span"); transfer.className = "game_view_ui_animation"; transfer.setAttribute("aria-hidden", "true");
+      const goldCoin = flight.kind === "gold";
+      const image = document.createElement("img"); image.className = `game_view_ui_animation_sprite${goldCoin ? " game_view_ui_animation_sprite--gold" : ""}`; image.src = goldCoin ? texturePaths.goldCoin : texturePaths.items; image.alt = ""; if (!goldCoin) image.style.transform = `translate(${-100 * (flight.frame % 3) / 3}%, ${-100 * Math.floor(flight.frame / 3) / 3}%)`; transfer.append(image);
       Object.assign(transfer.style, { left: `${rect.left + origin.left}px`, top: `${rect.top + origin.top}px`, width: `${tileCssSize}px`, height: `${tileCssSize}px`, transform: "translate(-50%, -50%)" });
       destinationLayer.append(transfer);
       requestAnimationFrame(() => {
         const targetRect = target.getBoundingClientRect();
         const counter = flight.destination === "counter";
-        Object.assign(transfer.style, counter ? { left: `${targetRect.left + targetRect.width / 2}px`, top: `${targetRect.top + targetRect.height / 2}px`, width: `${Math.min(targetRect.width, targetRect.height)}px`, height: `${Math.min(targetRect.width, targetRect.height)}px`, transform: "translate(-50%, -50%)" } : { left: `${targetRect.left}px`, top: `${targetRect.top + targetRect.height / 2}px`, transform: "translate(0, -50%)" });
+        Object.assign(transfer.style, counter ? { left: `${targetRect.left + targetRect.width / 2}px`, top: `${targetRect.top + targetRect.height / 2}px`, width: `${Math.min(targetRect.width, targetRect.height)}px`, height: `${Math.min(targetRect.width, targetRect.height)}px`, transform: "translate(-50%, -50%)" } : { left: `${targetRect.left}px`, top: `${targetRect.top + targetRect.height / 2}px`, transform: "translate(-50%, -50%)" });
       });
       // The transfer reaches its target at 500ms, pauses for 500ms, then credits it.
       window.setTimeout(() => { transfer.remove(); launchedFlightsRef.current.delete(flight.id); onUiAnimationComplete?.(flight.id); }, 1000);
@@ -221,14 +228,17 @@ export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "ce
         for (const key of ["rat", "skeleton"]) actorAtlases[key] = createGridSpriteAtlas(textures[key], { cellWidthPx: 32, cellHeightPx: 32, columns: 1, rows: 1, pivot: [0.5, 0.5] });
         const itemAtlas = createGridSpriteAtlas(textures.items, { cellWidthPx: 32, cellHeightPx: 32, columns: 3, rows: 3, pivot: [0.5, 0.5] });
         const heroFramePaths = [...new Set(activeHeroAnimation.listAnimations().flatMap((animation) => animation.frames.map((frame) => frame.path)))];
-        const heroAtlas = minimap ? null : createSpriteAtlasFromFrames(engine, await Promise.all(heroFramePaths.map(loadHeroWarriorAtlasFrame)), { paddingPx: 1, sampling: "nearest" });
+        const heroAtlas = minimap ? null : createSpriteAtlasFromFrames(engine, await Promise.all(heroFramePaths.map(loadSpriteAtlasFrame)), { paddingPx: 1, sampling: "nearest" });
         if (heroAtlas) atlases.push(heroAtlas);
+        const goldCoinAtlas = createSpriteAtlasFromFrames(engine, await Promise.all(goldCoinFramePaths.map(loadSpriteAtlasFrame)), { paddingPx: 1, sampling: "nearest" });
+        atlases.push(goldCoinAtlas);
         const heroFrameIndexes = new Map(heroFramePaths.map((path, index) => [path, index]));
         const terrainLayer = createSprite2DLayer(tileAtlas, { pivot: [0.5, 0.5] });
         const wallLayer = createSprite2DLayer(tileAtlas, { pivot: [0.5, 0.5] });
         const debugLayer = createSprite2DLayer(debugAtlas, { pivot: [0.5, 0.5] });
         const actorLayers = Object.fromEntries(Object.entries(actorAtlases).map(([key, atlas]) => [key, createSprite2DLayer(atlas, { pivot: [0.5, 0.5] })]));
         const itemLayer = createSprite2DLayer(itemAtlas, { pivot: [0.5, 0.5] });
+        const goldCoinLayer = createSprite2DLayer(goldCoinAtlas, { pivot: [0.5, 0.5] });
         const stairLayer = createSprite2DLayer(tileAtlas, { pivot: [0.5, 0.5] });
         const playerLayer = heroAtlas ? createSprite2DLayer(heroAtlas, { pivot: [0.5, 1] }) : null;
         const playerSprite = playerLayer ? addSprite2D(playerLayer, { positionPx: [-10000, -10000], sizePx: [32, 48], frame: 0 }) : null;
@@ -239,8 +249,9 @@ export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "ce
         const actors: Record<string, Sprite2DHandle[]> = { rat: [], skeleton: [] };
         for (const key of Object.keys(actors)) for (let i = 0; i < 40; i++) actors[key].push(addSprite2D(actorLayers[key], { positionPx: [-10000,-10000], sizePx: [32,32], frame: 0 }));
         const items = Array.from({ length: 40 }, (_, i) => addSprite2D(itemLayer, { positionPx: [-10000,-10000], sizePx: [32,32], frame: i % 9 }));
+        const goldCoins = Array.from({ length: 40 }, () => addSprite2D(goldCoinLayer, { positionPx: [-10000,-10000], sizePx: [32,32], frame: 0 }));
         const stairs = Array.from({ length: 4 }, () => addSprite2D(stairLayer, { positionPx: [-10000,-10000], sizePx: [32,32], frame: DUNGEON_STAIR_UP_FRAME }));
-        const viewLayers = [terrainLayer, wallLayer, debugLayer, itemLayer, stairLayer, actorLayers.rat, actorLayers.skeleton, ...(playerLayer ? [playerLayer] : [])];
+        const viewLayers = [terrainLayer, wallLayer, debugLayer, itemLayer, goldCoinLayer, stairLayer, actorLayers.rat, actorLayers.skeleton, ...(playerLayer ? [playerLayer] : [])];
         renderer = createSpriteRenderer(surface, { layers: viewLayers, clear: true, clearValue: clear });
         registerSpriteRenderer(renderer);
         const draw = () => {
@@ -277,10 +288,13 @@ export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "ce
           if (playerSprite) updateSprite2D(playerSprite, { positionPx: [state.player.x * 32 + 16, state.player.y * 32 + 32], sizePx: [activeHeroFrame.widthPx, activeHeroFrame.heightPx], frame: heroFrameIndexes.get(activeHeroFrame.path) ?? 0, flipX: state.player.heading === "w" });
           const byKind: Record<string, typeof world.actors> = { rat: world.actors.filter((actor) => actor.kind === "rat"), skeleton: world.actors.filter((actor) => actor.kind === "skeleton") };
           for (const key of Object.keys(actors)) actors[key].forEach((sprite, i) => { const actor = byKind[key][i]; updateSprite2D(sprite, { positionPx: actor ? [actor.worldX, actor.worldY] : [-10000,-10000], flipX: actor?.heading === "w" }); });
-          const itemObjects = world.objects.filter((entity) => entity.kind !== "stairs");
+          const itemObjects = world.objects.filter((entity) => entity.kind !== "stairs" && entity.kind !== "gold");
+          const goldObjects = world.objects.filter((entity) => entity.kind === "gold");
           const stairObjects = world.objects.filter((entity) => entity.kind === "stairs");
           items.forEach((sprite, i) => { const entity = itemObjects[i]; updateSprite2D(sprite, { frame: itemSpriteFrame(entity?.kind, entity?.resource), positionPx: entity ? [entity.worldX, entity.worldY] : [-10000,-10000] }); });
-          stairs.forEach((sprite, i) => { const entity = stairObjects[i]; updateSprite2D(sprite, { frame: DUNGEON_STAIR_UP_FRAME, positionPx: entity ? [entity.worldX, entity.worldY] : [-10000,-10000] }); });
+          const goldCoinFrame = Math.floor(performance.now() / 120) % goldCoinFramePaths.length;
+          goldCoins.forEach((sprite, i) => { const entity = goldObjects[i]; updateSprite2D(sprite, { frame: goldCoinFrame, positionPx: entity ? [entity.worldX, entity.worldY] : [-10000,-10000] }); });
+          stairs.forEach((sprite, i) => { const entity = stairObjects[i]; updateSprite2D(sprite, { frame: DUNGEON_STAIR_UP_FRAME, positionPx: entity ? [entity.worldX, entity.worldY] : [-10000,-10000], flipY: entity?.direction === "back" }); });
         };
         let animationStarted = false;
         const activate = () => {

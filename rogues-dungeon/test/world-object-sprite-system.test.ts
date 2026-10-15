@@ -8,6 +8,7 @@ test("maps the exit stair to the verified dungeon tileset stair frame", () => {
 
 test("keeps non-stair objects on the item sprite sheet", () => {
   assert.equal(itemSpriteFrame("chest"), 0);
+  assert.equal(itemSpriteFrame("key"), 5);
   assert.equal(itemSpriteFrame("potion", "health"), 6);
   assert.equal(itemSpriteFrame("potion", "mana"), 7);
 });

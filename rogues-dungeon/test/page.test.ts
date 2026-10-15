@@ -51,7 +51,7 @@ test('uses a command desk and removes template corner units', async () => {
   assert.match(game, /Clear Local Storage/); assert.match(game, /clearRoguesDungeonStorage\(localStorage\)/); assert.match(game, /window\.location\.reload\(\)/);
   assert.match(css, /\.titlebar \.titlebar_select_utility \{ width:9\.5em; flex:0 0 9\.5em/); assert.match(css, /\.titlebar \.titlebar_select_utility select \{ width:7\.4em/);
   assert.match(game, /const selectPreference = \(event: SyntheticEvent<HTMLElement>, preference: Partial<Preferences>\) => \{ setPreference\(preference\); event\.currentTarget\.blur\(\); \}/);
-  assert.match(game, /keyboardControlRows/); assert.match(game, /collapsedKeyboardGroups/); assert.match(controlsArea, /aria-label="Keyboard controls"/); assert.match(game, /console\.info\(`\[keyboard-controls\]/); assert.doesNotMatch(game, /Sprint:/); assert.doesNotMatch(game, /Sneak:/); assert.doesNotMatch(game, /\[1, 2, 3, 4\]/); assert.match(game, /<InputKey key=\{key\}/); assert.match(css, /\.keyboard_tray_keys \{[^}]*grid-template-columns:repeat\(3,2\.25rem\)/);
+  assert.match(game, /keyboardControlRows/); assert.match(game, /collapsedKeyboardGroups/); assert.match(controlsArea, /aria-label="Keyboard controls"/); assert.match(game, /dispatch\(\{ type: "wait" \}\)/); assert.match(game, /Quick 1/); assert.match(game, /Quick 2/); assert.match(game, />Wait<\/button>/); assert.doesNotMatch(game, /Sprint:/); assert.doesNotMatch(game, /Sneak:/); assert.doesNotMatch(game, /\[1, 2, 3, 4\]/); assert.match(game, /<InputKey key=\{key\}/); assert.match(css, /\.mobile_actions \{ display:grid; grid-template-columns:repeat\(3,1fr\)/); assert.match(css, /\.keyboard_tray_keys \{[^}]*grid-template-columns:repeat\(3,2\.25rem\)/);
   assert.match(game, /<option value="deadzone">Deadzone<\/option>/);
   assert.doesNotMatch(app, /AppCorner/); assert.match(css, /mobile_controls/);
   assert.match(css, /grid-template-rows:4% 92% 4%/); assert.match(css, /grid-template-rows:4% 46% 4% 46%/);
@@ -62,7 +62,7 @@ test('uses a command desk and removes template corner units', async () => {
 test('hands pickups from the rendered Babylon projection into their destination UI layer', async () => {
   const [game, renderer, css] = await Promise.all(['src/game/Game.tsx', 'src/systems/rendering/babylon-render-system.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
   assert.match(renderer, /renderedProjectionRef/); assert.match(renderer, /renderedProjectionRef\.current = \{ rect, center: cameraCenter, tileCssSize: cellSizeAt\(rect\) \}/);
-  assert.match(renderer, /target\?\.closest<HTMLElement>\("\.desk_middle"\)/); assert.match(renderer, /destinationLayer\.append\(transfer\)/);
+  assert.match(renderer, /flight\.destination === "counter" \? "\.command_desk" : "\.desk_middle"/); assert.match(renderer, /destinationLayer\.append\(transfer\)/);
   assert.match(css, /width 500ms/); assert.match(renderer, /window\.setTimeout\(\(\) => \{ transfer\.remove\(\);/);
   assert.match(game, /data-ui-counter-icon/); assert.match(game, /destination = entity\.kind === "gold" \|\| entity\.kind === "key" \? "counter" : "row"/);
   assert.match(css, /z-index:10000/);
@@ -142,9 +142,10 @@ test('centers plus markers for empty equipment and ability slots', async () => {
   assert.match(css, /\.slot_item \{ position:relative;/);
   assert.match(css, /\.slot_item \.empty_slot\{position:absolute;left:50%;transform:translateX\(-50%\);display:grid;place-items:center/);
 });
-test('keeps panel tabs at the parent content depth beneath UI tooltips', async () => {
+test('renders UI tooltips above every content-layer panel', async () => {
   const css = await readFile(new URL('../src/ui/style.css', import.meta.url), 'utf8');
-  assert.match(css, /\.tab-control-placement \{ position:absolute; z-index:0;[^}]*pointer-events:none; \}/);
+  assert.match(css, /\.tab-control-placement \{ position:absolute; z-index:1;[^}]*pointer-events:none; \}/);
+  assert.match(css, /#ui_layer \{[^}]*z-index:\s*2147483647;/);
   assert.match(css, /\.ui_tooltip \{ position:absolute; z-index:10000;/);
 });
 test('matches inventory row spacing to the abilities list', async () => {

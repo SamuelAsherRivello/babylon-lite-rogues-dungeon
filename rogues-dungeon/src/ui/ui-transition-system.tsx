@@ -5,6 +5,7 @@ export type UiAnimationKind = "status-controls" | "status-summary" | "info-prima
 
 export interface UiMotion {
   x?: number;
+  xOffsetRem?: number;
   y?: number;
   opacity?: number;
   depth?: number;
@@ -15,6 +16,7 @@ export interface UiMotion {
 
 interface CompletedUiMotion {
   x: number;
+  xOffsetRem?: number;
   y: number;
   opacity: number;
   depth: number;
@@ -30,8 +32,8 @@ export const defaultIrisTransition = Object.freeze({ durationMs: 350 });
 
 const uiTweenSystem = new TweenAnimationSystem();
 const reduceMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
-const complete = (motion: UiMotion): CompletedUiMotion => ({ x: motion.x ?? 0, y: motion.y ?? 0, opacity: motion.opacity ?? 1, depth: motion.depth ?? 0, leftPercent: motion.leftPercent, leftOffsetRem: motion.leftOffsetRem, widthPercent: motion.widthPercent });
-const toStyle = (motion: CompletedUiMotion): UiMotionStyle => ({ transform: `translate3d(${motion.x}%, ${motion.y}%, 0)`, opacity: motion.opacity, zIndex: motion.depth, ...(motion.leftPercent === undefined ? {} : { left: `calc(${motion.leftPercent}% + ${motion.leftOffsetRem ?? 0}rem)` }), ...(motion.widthPercent === undefined ? {} : { width: `${motion.widthPercent}%` }) });
+const complete = (motion: UiMotion): CompletedUiMotion => ({ x: motion.x ?? 0, xOffsetRem: motion.xOffsetRem, y: motion.y ?? 0, opacity: motion.opacity ?? 1, depth: motion.depth ?? 0, leftPercent: motion.leftPercent, leftOffsetRem: motion.leftOffsetRem, widthPercent: motion.widthPercent });
+const toStyle = (motion: CompletedUiMotion): UiMotionStyle => ({ transform: `translate3d(calc(${motion.x}% + ${motion.xOffsetRem ?? 0}rem), ${motion.y}%, 0)`, opacity: motion.opacity, zIndex: motion.depth, ...(motion.leftPercent === undefined ? {} : { left: `calc(${motion.leftPercent}% + ${motion.leftOffsetRem ?? 0}rem)` }), ...(motion.widthPercent === undefined ? {} : { width: `${motion.widthPercent}%` }) });
 
 /**
  * Applies tweening to the vocabulary shared by the in-viewport UI: horizontal
@@ -43,7 +45,7 @@ export function useUiMotion(_kind: UiAnimationKind, target: UiMotion, duration =
   const current = useRef(targetMotion);
   const cancel = useRef<(() => void) | null>(null);
   const [style, setStyle] = useState(() => toStyle(targetMotion));
-  const targetKey = `${targetMotion.x},${targetMotion.y},${targetMotion.opacity},${targetMotion.depth},${targetMotion.leftPercent},${targetMotion.leftOffsetRem},${targetMotion.widthPercent}`;
+  const targetKey = `${targetMotion.x},${targetMotion.xOffsetRem},${targetMotion.y},${targetMotion.opacity},${targetMotion.depth},${targetMotion.leftPercent},${targetMotion.leftOffsetRem},${targetMotion.widthPercent}`;
 
   useEffect(() => {
     const next = complete(target);
@@ -65,6 +67,7 @@ export function useUiMotion(_kind: UiAnimationKind, target: UiMotion, duration =
       onUpdate(progress) {
         const value: CompletedUiMotion = {
           x: from.x + (next.x - from.x) * progress,
+          xOffsetRem: next.xOffsetRem === undefined ? undefined : (from.xOffsetRem ?? next.xOffsetRem) + (next.xOffsetRem - (from.xOffsetRem ?? next.xOffsetRem)) * progress,
           y: from.y + (next.y - from.y) * progress,
           opacity: from.opacity + (next.opacity - from.opacity) * progress,
           depth: next.depth,

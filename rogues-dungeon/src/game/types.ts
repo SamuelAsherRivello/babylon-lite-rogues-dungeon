@@ -24,7 +24,8 @@ export interface Enemy extends Position {
 export type Entity = Enemy
   | (Position & { id: string; kind: "potion"; resource: "health" | "mana"; name?: string })
   | (Position & { id: string; kind: "key" | "gold"; amount?: number; name?: string })
-  | (Position & { id: string; kind: "stairs" | "discovery"; name?: string })
+  | (Position & { id: string; kind: "stairs"; direction?: "forward" | "back"; name?: string })
+  | (Position & { id: string; kind: "discovery"; name?: string })
   | (Position & { id: string; kind: "chest"; opened?: boolean })
   | (Position & { id: string; kind: "item"; item: Item });
 export interface Floor {
@@ -36,6 +37,8 @@ export interface Floor {
 }
 export interface Campaign {
   version: number; world: string; realm: string; floor: Floor;
+  /** Previously visited floors, keyed by level, so a return stair restores its dungeon. */
+  floors?: Record<string, Floor>;
   progression: { attributes: Attributes; level: number; xp: number; nextXp: number; totalKills: number; difficulty: number; pendingUpgrades: { level: number; options: AttributeName[] }[] };
   player: Position & { resources: Resources; equipment: Equipment; inventory: Item[]; inventoryCapacity: number; abilities: (AbilityId | null)[]; quickSlots?: [QuickSlot | null, QuickSlot | null]; sneaking: boolean; heading?: CharacterHeading };
   starterConsumablesSeeded?: boolean;
@@ -46,6 +49,7 @@ export interface StorageAccess { getItem(key: string): string | null; setItem(ke
 export interface StorageCollection extends StorageAccess { length: number; key(index: number): string | null }
 export type Action =
   | { type: "move"; direction: string }
+  | { type: "wait" }
   | { type: "toggle-sneak" }
   | { type: "choose-upgrade"; stat: AttributeName }
   | { type: "ability"; index: number }

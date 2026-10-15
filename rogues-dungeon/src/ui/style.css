@@ -108,22 +108,15 @@ body {
 .titlebar .titlebar_select_utility select { width:7.4em; max-width:none; box-sizing:border-box; }
 .desk_middle { position:relative; min-height:0; }
 .game_view { position:absolute; inset:0 auto 0 0; display:flex; min-width:0; min-height:0; }
-.tab-control-placement { position:absolute; z-index:0; width:.55rem; height:4rem; pointer-events:none; }
-.tab-control-placement--abilities { top:.75rem; left:calc(56% - .2rem); }
-.tab-control-placement--minimap { top:calc(.75rem + 16.5% - 3.25rem); left:calc(78% - .2rem); }
+.tab-control-placement { position:absolute; z-index:1; right:100%; width:.55rem; height:4rem; pointer-events:none; }
 .tab-control-placement .tab-control { top:50%; left:50%; transform:translate(-50%,-50%) rotate(-90deg); }
 .desktop_info { display:grid; grid-template-columns:1fr 1fr; min-width:0; min-height:0; }
-.desktop_info { position:absolute; inset:0 0 0 56%; display:block; overflow:hidden; }
-.desktop_info .info_panel { position:absolute; inset:0 auto 0 0; width:50%; box-sizing:border-box; pointer-events:auto; will-change:transform,opacity; }
+.desktop_info { position:absolute; inset:0 0 0 56%; display:block; overflow:visible; }
+.desktop_info .info_panel { position:absolute; inset:0 auto 0 0; width:50%; box-sizing:border-box; overflow:visible; pointer-events:auto; will-change:transform,opacity; }
 .desktop_info .info_panel[aria-hidden="true"] { pointer-events:none; }
 .desk_middle[data-secondary-open="false"] .desktop_info > .primary { grid-column:2; }
 .desk_middle[data-primary-open="false"] .desktop_info > .secondary { grid-column:2; }
-.desk_middle[data-primary-open="true"][data-secondary-open="false"] .tab-control-placement--abilities,
-.desk_middle[data-primary-open="true"][data-secondary-open="false"] .tab-control-placement--minimap,
-.desk_middle[data-primary-open="false"][data-secondary-open="true"] .tab-control-placement--abilities { left:calc(78% - .2rem); }
-.desk_middle[data-primary-open="false"][data-secondary-open="false"] .tab-control-placement--abilities,
-.desk_middle[data-primary-open="false"][data-secondary-open="false"] .tab-control-placement--minimap { left:calc(100% - .55rem); }
-.info_panel { padding:.75rem .35rem .35rem; display:flex; min-width:0; min-height:0; flex-direction:column; gap:.35rem; overflow:hidden; }
+.info_panel { padding:.75rem .35rem .35rem; display:flex; min-width:0; min-height:0; flex-direction:column; gap:.35rem; overflow:visible; }
 .info_panel[hidden] { display:none !important; }
 .secondary { border-right:0; }
 .desk_card { position:relative; min-width:0; border:1px solid #65583e; padding:.55rem .35rem .35rem; box-sizing:border-box; background:#17141b; }
@@ -163,7 +156,10 @@ body {
 .babylon_world_canvas { width:100%; height:100%; display:block; image-rendering:pixelated; }
 .world_floating_text { position:absolute; z-index:2; pointer-events:none; transform:translate(-50%,-100%); font:700 14px/1 ui-monospace,monospace; text-shadow:1px 1px 0 #100e17,-1px -1px 0 #100e17,1px -1px 0 #100e17,-1px 1px 0 #100e17; animation:world_floating_text 900ms ease-out forwards; --world-floating-travel:11px; white-space:nowrap; }
 .world_particle,.world_character { position:absolute; pointer-events:none; image-rendering:pixelated; }
-.game_view_ui_animation { position:fixed; z-index:10000; display:grid; place-items:center; color:#fff4bb; font-size:clamp(.75rem,2vw,1.25rem); line-height:1; pointer-events:none; text-shadow:1px 1px #100e17,-1px -1px #100e17; transition:left 500ms cubic-bezier(.22,.61,.36,1),top 500ms cubic-bezier(.22,.61,.36,1),width 500ms cubic-bezier(.22,.61,.36,1),height 500ms cubic-bezier(.22,.61,.36,1),transform 500ms cubic-bezier(.22,.61,.36,1); }
+.game_view_ui_animation { position:fixed; z-index:10000; overflow:hidden; pointer-events:none; transition:left 500ms cubic-bezier(.22,.61,.36,1),top 500ms cubic-bezier(.22,.61,.36,1),width 500ms cubic-bezier(.22,.61,.36,1),height 500ms cubic-bezier(.22,.61,.36,1),transform 500ms cubic-bezier(.22,.61,.36,1); }
+.game_view_ui_animation_sprite { display:block; width:300%; height:300%; max-width:none; image-rendering:pixelated; }
+.game_view_ui_animation_sprite--gold { width:400%; height:100%; animation:game_view_ui_animation_gold 480ms steps(4) infinite; }
+@keyframes game_view_ui_animation_gold { to { transform:translateX(-100%); } }
 .world_particle { transform:translate(-50%,-50%); }
 .world_floating_text--gain { color:#67e879; }
 .world_floating_text--loss { color:#ff625f; }
@@ -253,7 +249,7 @@ body {
 .command_desk[data-orientation="portrait"] .mobile_info .primary .desk_card { min-height:0; }
 .command_desk[data-orientation="portrait"] .mobile_info .resource { grid-template-columns:.7rem 1fr; }
 .command_desk[data-orientation="portrait"] .mobile_info .attribute_item,.command_desk[data-orientation="portrait"] .mobile_info .slot_item { font-size:.52rem; }
-.command_desk[data-orientation="portrait"] .mobile_controls { height:100%; display:grid; grid-template-rows:1fr auto auto; gap:.45rem; padding:.6rem; box-sizing:border-box; }
+.command_desk[data-orientation="portrait"] .mobile_controls { height:100%; display:grid; grid-template-rows:1fr auto auto auto; gap:.45rem; padding:.6rem; box-sizing:border-box; }
 .command_desk[data-orientation="portrait"] .arrow_controls { display:grid; place-content:center; grid-template-columns:repeat(3,2.3rem); grid-template-areas:". n ." "w . e" ". s ."; gap:.25rem; }
 .command_desk[data-orientation="portrait"] .arrow_controls button { height:2.1rem; border:1px solid #65583e; background:#211d24; color:#e8dec4; font:inherit; font-size:1.1rem; }
 .command_desk[data-orientation="portrait"] .arrow_controls button:nth-child(1) { grid-area:n; }
@@ -261,8 +257,9 @@ body {
 .command_desk[data-orientation="portrait"] .arrow_controls button:nth-child(3) { grid-area:s; }
 .command_desk[data-orientation="portrait"] .arrow_controls button:nth-child(4) { grid-area:e; }
 .command_desk[data-orientation="portrait"] .mobile_abilities { display:grid; grid-template-columns:repeat(3,1fr); gap:.25rem; }
-.command_desk[data-orientation="portrait"] .mobile_abilities button,.command_desk[data-orientation="portrait"] .sneak_button { border:1px solid #65583e; background:#211d24; color:#e8dec4; font:inherit; padding:.4rem; }
+.command_desk[data-orientation="portrait"] .mobile_abilities button,.command_desk[data-orientation="portrait"] .mobile_actions button,.command_desk[data-orientation="portrait"] .sneak_button { border:1px solid #65583e; background:#211d24; color:#e8dec4; font:inherit; padding:.4rem; }
 .command_desk[data-orientation="portrait"] .mobile_abilities button:disabled { color:#777; }
+.command_desk[data-orientation="portrait"] .mobile_actions { display:grid; grid-template-columns:repeat(3,1fr); gap:.25rem; }
 .command_desk[data-orientation="portrait"] .sneak_button { width:100%; }
 .gutter {
   position: absolute;
@@ -282,7 +279,7 @@ body {
   position: absolute;
   inset: 0;
   box-sizing: border-box;
-  z-index: 1;
+  z-index: 2147483647;
   pointer-events: none;
 }
 
@@ -295,6 +292,8 @@ body {
   background: rgb(0 0 0 / 18%);
   pointer-events: auto;
 }
+
+.dialog_backdrop--anchored { place-items:unset; }
 
 .dialog {
   display: flex;
@@ -309,6 +308,18 @@ body {
   border: 1px solid var(--border-color);
   box-shadow: 0 8px 24px rgb(0 0 0 / 25%);
 }
+
+.settings-window { width:clamp(15rem,29%,24rem); height:calc(63% + 2rem); max-width:none; max-height:none; }
+.settings-window--menu { color:#2e2117; background:linear-gradient(135deg,rgb(255 254 245 / 97%),rgb(226 214 180 / 96%)); border:3px solid #f9f5e7; outline:1px solid #4f321b; outline-offset:-8px; box-shadow:.55rem .65rem 1.5rem rgb(0 0 0 / 65%); }
+.dialog_backdrop--anchored .dialog { position:absolute; }
+.dialog--anchor-center { transform:translate(-50%,-50%); }
+.settings-window--menu .dialog_header { border-color:#604124; }
+.settings-window .dialog_body { overflow:visible; }
+.settings-window--menu .settings_actions button,.settings-window--menu .settings_actions a { border-color:#604124; background:rgb(255 251 232 / 80%); color:#2e2117; }
+.settings-window--menu .settings_actions span,.settings-window--menu .audio_slider,.settings-window--menu .audio_slider output,.settings-window--menu .audio_mute_notice { color:#442816; }
+.settings-window--menu .audio_settings { border-color:#604124; background:rgb(255 251 232 / 65%); }
+.settings-window--menu input { accent-color:#604124; }
+@media (max-width: 600px) { .settings-window { width:84%; height:calc(66% + 2rem); } }
 
 .dialog_header,
 .dialog_footer {

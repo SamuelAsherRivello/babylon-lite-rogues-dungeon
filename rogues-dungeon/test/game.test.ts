@@ -2,7 +2,7 @@ import type { ActionResult, Campaign, Enemy, Entity, Item, Direction } from '../
 import type { TileLayer } from '../src/systems/rendering/tile-map-system.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { applyAction, combatReadiness, createCampaign, createGameSession, effectiveAttributes, FLOOR_CENTER, FLOOR_HEIGHT, FLOOR_WIDTH, GAME_TUNING, generateFloor, headingFromMovement, levelUpOptions, previewEquipment, resourceState, upgradeCampaignResources } from '../src/systems/procedural/world-procedural-system.ts';
+import { applyAction, combatReadiness, createCampaign, createGameSession, effectiveAttributes, ensureNearbyStairs, FLOOR_CENTER, FLOOR_HEIGHT, FLOOR_WIDTH, GAME_TUNING, generateFloor, headingFromMovement, levelUpOptions, previewEquipment, resourceState, STAIRS_MAX_DISTANCE_FROM_START, upgradeCampaignResources } from '../src/systems/procedural/world-procedural-system.ts';
 import { projectLogEvents } from '../src/game/log-policy.ts';
 import { projectFloatingFeedback, removeFloatingFeedback } from '../src/game/floating-feedback.ts';
 import { getLatestMovement, getMovementKey, getMoveInitialDelay, getMoveRepeatDelay, getMoveScheduleDelay, SPRINT_INITIAL_DELAY, SPRINT_REPEAT_DELAY, WALK_INITIAL_DELAY, WALK_REPEAT_DELAY } from '../src/game/keyboard-input.ts';
@@ -18,6 +18,7 @@ import { parseGameUrlOptions } from '../src/game/url-options.ts';
 import { DUNGEON_TILESET_SOURCE, DUNGEON_WANG_TILE_BY_MASK, compareTiledRepairLayers, floorFromTiledRepairMap, serializeFloorToTiled, validateTiledRepairMap } from '../src/systems/rendering/tile-map-system.ts';
 import { createLevelContext, isWalkable, runLevelPasses } from '../src/systems/procedural/level-grid-system.ts';
 import { buildManualTileScenario, getManualTileScenario } from '../src/systems/procedural/manual-tile-scenarios.ts';
+import { TURN_PLAYBACK_DURATION_MS, TurnPresentationSystem } from '../src/systems/animation/turn-presentation-system.ts';
 
 function present<T>(value: T): NonNullable<T> { assert.ok(value != null, 'expected fixture value to exist'); return value; }
 // These tests exercise runtime normalization of old enemies. Do not add defaults here:
@@ -88,6 +89,43 @@ test('reconstructs deterministic floors and round-trips Tiled repair maps', () =
   assert.ok(findCardinalPath(repaired, repaired.start, { x: exit.x, y: exit.y }));
 });
 
+test('places the forward stair on the player right within ten cells of the start', () => {
+  for (const seed of [1, 77, 13579, 9001]) {
+    const floor = generateFloor(1, seed);
+    const stairs = floor.entities.filter((entity) => entity.kind === 'stairs');
+    assert.equal(stairs.length, 1);
+    assert.deepEqual(stairs[0], { id: 'stairs-forward', kind: 'stairs', direction: 'forward', name: 'Stairs up', x: floor.start.x + 3, y: floor.start.y });
+    assert.ok(Math.hypot(stairs[0].x - floor.start.x, stairs[0].y - floor.start.y) <= STAIRS_MAX_DISTANCE_FROM_START);
+  }
+});
+
+test('normalizes saved floors to directional stairs at the start', () => {
+  const floor = generateFloor(1, 77);
+  floor.entities.push({ id: 'extra-stairs', kind: 'stairs', x: floor.start.x + 2, y: floor.start.y });
+  const normalized = ensureNearbyStairs(floor);
+  const stairs = normalized.entities.filter((entity) => entity.kind === 'stairs');
+  assert.deepEqual(stairs, [{ id: 'stairs-forward', kind: 'stairs', direction: 'forward', name: 'Stairs up', x: floor.start.x + 3, y: floor.start.y }]);
+});
+
+test('places a return stair on the left and a forward stair on the right after level one', () => {
+  const floor = generateFloor(2, 77);
+  assert.deepEqual(floor.entities.filter((entity) => entity.kind === 'stairs'), [
+    { id: 'stairs-back', kind: 'stairs', direction: 'back', name: 'Stairs down', x: floor.start.x - 3, y: floor.start.y },
+    { id: 'stairs-forward', kind: 'stairs', direction: 'forward', name: 'Stairs up', x: floor.start.x + 3, y: floor.start.y },
+  ]);
+});
+
+test('linked stairs return to the previously visited floor', () => {
+  let state = createCampaign(17);
+  for (let step = 0; step < 3; step++) state = applyAction(state, { type: 'move', direction: 'e' }).state;
+  assert.equal(state.floor.level, 2);
+  const levelOne = structuredClone(state.floors?.['1']);
+  for (let step = 0; step < 3; step++) state = applyAction(state, { type: 'move', direction: 'w' }).state;
+  assert.equal(state.floor.level, 1);
+  assert.deepEqual(state.floor.entities, levelOne?.entities);
+  assert.deepEqual(state.floor.map, levelOne?.map);
+});
+
 test('rejects malformed Tiled repair maps without producing a floor', () => {
   const result = validateTiledRepairMap({ type: 'map', width: 2, height: 2 });
   assert.equal(result.valid, false);
@@ -155,6 +193,7 @@ test('places seeded dungeon objects on unique walkable cells while preserving th
       positions.add(key);
     }
     assert.ok(findCardinalPath(floor, floor.start, stairs), `${seed}: exit must remain reachable`);
+    assert.ok(Math.hypot(stairs.x - floor.start.x, stairs.y - floor.start.y) <= 10, `${seed}: stairs must stay within 10 grid cells of the start for testing`);
     assert.deepEqual(floor.generation?.passes?.map(({ id }) => id), ['structured-dungeon', 'reserve-semantic-cells', 'place-dungeon-objects']);
     assert.equal(floor.generation?.passes?.at(-1)?.diagnostics, 0);
   }
@@ -236,6 +275,17 @@ test('accepted move and equipment changes emit events and cost one time unit', (
   const equip = applyAction(move.state, { type: 'equip', itemId: item.id, group: 'weapons' as const, index: 1 });
   assert.equal(equip.state.floor.time, 2); assert.equal(equip.state.player.inventory.length, 0);
   assert.ok(equip.events.some((event) => event.type === 'equipment.changed'));
+});
+
+test('wait advances one turn without moving the player and resolves a due enemy action', () => {
+  const campaign = createCampaign(19); const { x, y } = campaign.player;
+  campaign.floor.map![y][x + 1] = 0;
+  campaign.floor.entities = [legacyEnemy({ id: 'waiting-enemy', kind: 'enemy', name: 'Waiting Enemy', x: x + 1, y, hp: 10, damage: 2, xp: 1, actionCooldown: 1, nextActionAt: 1 })];
+  const result = applyAction(campaign, { type: 'wait' });
+  assert.equal(result.accepted, true); assert.equal(result.ticks, 1); assert.equal(result.state.floor.time, 1);
+  assert.deepEqual({ x: result.state.player.x, y: result.state.player.y }, { x, y });
+  assert.ok(result.events.some((event) => event.type === 'time.advanced'));
+  assert.ok(result.events.some((event) => event.type === 'resource.changed' && event.facts.cause === 'enemy-attack'));
 });
 
 test('drag previews are pure and show equipment attribute changes before commit', () => {
@@ -830,6 +880,31 @@ test('enemies advance toward the player every second game frame while attacking 
   assert.equal(second.state.floor.time, 2); assert.equal(second.state.floor.entities[0].x, x + 3);
 });
 
+test('turn presentation orders visible enemies, skips offscreen movement, and flushes pending motion', () => {
+  const previous = createCampaign(72); const { x, y } = previous.player;
+  const first = legacyEnemy({ id: 'first', kind: 'enemy', name: 'First', x: x + 3, y, hp: 10, damage: 1, xp: 1 });
+  const second = legacyEnemy({ id: 'second', kind: 'enemy', name: 'Second', x: x + 4, y, hp: 10, damage: 1, xp: 1 });
+  const offscreen = legacyEnemy({ id: 'offscreen', kind: 'enemy', name: 'Offscreen', x: x + 20, y, hp: 10, damage: 1, xp: 1 });
+  previous.floor.entities = [first, second, offscreen];
+  const current = structuredClone(previous); const firstCurrent = current.floor.entities[0] as Enemy; const secondCurrent = current.floor.entities[1] as Enemy; const offscreenCurrent = current.floor.entities[2] as Enemy;
+  firstCurrent.x--; secondCurrent.x--; offscreenCurrent.x--;
+  const presentation = new TurnPresentationSystem();
+  const plan = presentation.begin(previous, current, new Set(['second', 'first']), 0);
+  assert.equal(plan.duration, TURN_PLAYBACK_DURATION_MS);
+  assert.deepEqual(plan.enemies.map((enemy) => enemy.id), ['first', 'second']);
+  assert.equal(plan.enemies[0].endAt, TURN_PLAYBACK_DURATION_MS / 2);
+  assert.equal(plan.enemies[1].endAt, TURN_PLAYBACK_DURATION_MS);
+  assert.deepEqual(presentation.positionOf('offscreen', offscreenCurrent), { x: offscreenCurrent.x, y: offscreenCurrent.y });
+  assert.equal(presentation.sample(TURN_PLAYBACK_DURATION_MS / 4), true);
+  presentation.flush();
+  assert.equal(presentation.isActive, false);
+  assert.deepEqual(presentation.positionOf('first', firstCurrent), { x: firstCurrent.x, y: firstCurrent.y });
+  const reentered = presentation.begin(current, current, new Set(['second', 'first', 'offscreen']), TURN_PLAYBACK_DURATION_MS);
+  assert.equal(reentered.duration, 0);
+  assert.ok(presentation.rankOf('first') < presentation.rankOf('second'));
+  assert.ok(presentation.rankOf('second') < presentation.rankOf('offscreen'));
+});
+
 test('integrates collect, equipment preview and reorder, ability, potion, descent, and death events', () => {
   let state = createCampaign(72); state.floor.entities = [];
   const open = (x: number, y: number) => { state.floor.map![y][x] = 0; };
@@ -857,6 +932,7 @@ test('integrates collect, equipment preview and reorder, ability, potion, descen
   state.floor.entities = [{ id: 'stairs', kind: 'stairs', x: sx, y: sy }];
   const descent = applyAction(state, { type: 'move', direction: 'e' }); state = descent.state;
   assert.ok(descent.events.some((event) => event.type === 'realm.entered'));
+  assert.ok(!descent.events.some((event) => event.type === 'item.collected'));
   assert.equal(state.floor.level, 2); assert.equal(state.progression.difficulty, 2);
   const oldTime = state.floor.time, oldX = state.player.x, oldY = state.player.y;
   open(oldX + 1, oldY); state.floor.entities = [legacyEnemy({ id: 'fatal', kind: 'enemy', name: 'Fatal Enemy', x: oldX, y: oldY, hp: 10, damage: 999, xp: 1, actionCooldown: 1, nextActionAt: oldTime + 1 })];

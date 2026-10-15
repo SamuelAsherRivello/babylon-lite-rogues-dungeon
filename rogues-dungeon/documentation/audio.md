@@ -10,6 +10,8 @@ http://localhost:5173/babylon-lite-rogues-dungeon/?mute=1
 
 The query override is checked before playback and silences both buses for the page session even if saved preferences are audible. It does not erase saved player settings. Browsers may wait for a user gesture before allowing music to start.
 
+When the main menu opens, the audio manager begins loading every known music and SFX asset in the background. Gameplay never waits for this work. Until every asset has reached a playable state or reported an error, the manager drops playback requests rather than leaving them pending. Once the catalog has settled, later input can start music and game events can play their cues from the warmed browser cache.
+
 ## Diegetic and Non-diegetic Cues
 
 | Type | Event | Asset | Source entry | Intent |

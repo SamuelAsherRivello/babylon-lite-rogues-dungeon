@@ -22,6 +22,22 @@ export const GAME_TUNING = Object.freeze({
   vitalityHealthBonus: 3, strengthOffenseBonus: 1, recoveryMoveBonus: 1,
   luckTierRanks: 2, stealthAwarenessRanks: 2,
 });
+export const STAIRS_MAX_DISTANCE_FROM_START = 10;
+
+function stairsAtStart(level: number, start: Position): Extract<Entity, { kind: "stairs" }>[] {
+  const forward = { id: "stairs-forward", kind: "stairs" as const, direction: "forward" as const, name: "Stairs up", x: start.x + 3, y: start.y };
+  return level > 1
+    ? [{ id: "stairs-back", kind: "stairs" as const, direction: "back" as const, name: "Stairs down", x: start.x - 3, y: start.y }, forward]
+    : [forward];
+}
+
+export function ensureNearbyStairs(floor: Floor) {
+  const level = floor.level ?? floor.depth ?? 1;
+  const expected = stairsAtStart(level, floor.start).filter((stair) => isWalkable(floor, stair.x, stair.y));
+  if (!expected.length) return floor;
+  floor.entities = [...(floor.entities ?? []).filter((entity) => entity.kind !== "stairs"), ...expected];
+  return floor;
+}
 const ATTACK_STAMINA_COST = GAME_TUNING.attackStaminaCost;
 
 export const directions = Object.freeze<Record<Direction, [number, number]>>({ n: [0, -1], s: [0, 1], w: [-1, 0], e: [1, 0] });
@@ -224,6 +240,7 @@ function enemyResources(enemy: Pick<Enemy, "hp" | "maxHp" | "damage" | "xp"> & {
 
 export function upgradeCampaignResources(campaign: Campaign) {
   ensureSemanticCells(campaign.floor);
+  campaign.floors ??= { [campaign.floor.level ?? campaign.floor.depth ?? 1]: structuredClone(campaign.floor) };
   ensureStarterConsumables(campaign);
   normalizeQuickSlots(campaign);
   normalizeStackableLocations(campaign);
@@ -243,6 +260,7 @@ export function upgradeCampaignResources(campaign: Campaign) {
     entity.heading = entity.heading ?? "e";
   }
   campaign.progression.pendingUpgrades = Array.isArray(campaign.progression.pendingUpgrades) ? campaign.progression.pendingUpgrades.filter((entry) => Array.isArray(entry?.options) && entry.options.length === 3) : [];
+  campaign.floors[String(campaign.floor.level ?? campaign.floor.depth ?? 1)] = structuredClone(campaign.floor);
   return campaign;
 }
 
@@ -260,21 +278,25 @@ export function generateFloor(level: number, seed = seedNow(), difficulty = leve
     connectRooms(map, previousSocket, nextSocket, corridorWidth);
     rooms.push(room);
   }
-  const start = { ...FLOOR_CENTER }; const exit = roomCenter(rooms.at(-1)!);
+  const start = { ...FLOOR_CENTER };
+  // The forward stair is on the player's right. Floors after the first also
+  // expose a return stair on the left, making the level connection explicit.
+  const stairs = stairsAtStart(level, start);
+  const exit = stairs.find((stair) => stair.direction === "forward")!;
   const context = createLevelContext({ worldId: "One", realmId: `Underground ${level}`, levelId: level, seed, width: FLOOR_WIDTH, height: FLOOR_HEIGHT, start, exit });
   runLevelPasses(context, [{ id: "structured-dungeon", run: (generation) => {
     for (let y = 0; y < FLOOR_HEIGHT; y++) for (let x = 0; x < FLOOR_WIDTH; x++) if (map[y][x] === 0) generation.writeCell(x, y, { walkable: true });
     return {};
   } }, { id: "reserve-semantic-cells", run: (generation) => {
     generation.reserveCell(start.x, start.y);
-    generation.reserveCell(exit.x, exit.y);
+    stairs.forEach((stair) => generation.reserveCell(stair.x, stair.y));
     return {};
   } }, { id: "place-dungeon-objects", run: (generation) => {
     // Placement is intentionally a later pass. Every object claims its cell
     // through one shared reservation map, so a seed cannot overlap actors,
     // chests, pickups, the start, or the exit.
     generation.reserveEntityCell(start.x, start.y);
-    generation.reserveEntityCell(exit.x, exit.y);
+    stairs.forEach((stair) => generation.reserveEntityCell(stair.x, stair.y));
     const candidates = shuffledWalkableCells(generation.cells, random);
     const route = new Set(structuralRoute(map, start, exit).map((cell) => `${cell.x},${cell.y}`));
     const claim = (cell: Position) => generation.occupiedCells.some((occupied) => occupied.x === cell.x && occupied.y === cell.y) || !isWalkable(generation, cell.x, cell.y) ? false : generation.reserveEntityCell(cell.x, cell.y);
@@ -328,7 +350,7 @@ export function generateFloor(level: number, seed = seedNow(), difficulty = leve
     for (let index = 1; index < manaCount; index++) addPickup("mana", index + 1);
     for (let index = 0; index < keyCount; index++) addCounterPickup("key", index + 1);
     for (let index = 0; index < goldCount; index++) addCounterPickup("gold", index + 1);
-    add({ id: "stairs", kind: "stairs", ...exit });
+    stairs.forEach(add);
     return {};
   } }]);
   const floor: Floor = { seed, width: FLOOR_WIDTH, height: FLOOR_HEIGHT, cells: context.cells, start, entities: context.entities, time: 0, level, generatorVersion: GENERATOR_VERSION, generation: { ...context.generation, passes: context.passes } };
@@ -357,7 +379,7 @@ export function resourceState(campaign: Campaign) {
 
 export function createCampaign(seed = seedNow(), difficulty = 1, level = 1): Campaign {
   const floor = generateFloor(level, seed, difficulty); const attributes = { health: GAME_TUNING.startingHealth, stamina: GAME_TUNING.startingStamina, offense: 0, defense: GAME_TUNING.innateDefense, mana: GAME_TUNING.startingMana, vitality: 0, strength: 0, luck: 0, recovery: 0, stealth: 0 };
-  const campaign: Campaign = { version: 3, world: "One", realm: `Underground ${floor.level}`, floor, progression: { attributes, level: 1, xp: 0, nextXp: GAME_TUNING.xpThreshold, totalKills: 0, difficulty, pendingUpgrades: [] }, player: { x: floor.start.x, y: floor.start.y, heading: "e", resources: createResourcesModel(), equipment: { weapons: [itemInstance(itemCatalog[3], "starter-stick"), null], armor: [null, null] }, inventory: [consumableInstance("health", "starter-health-potion"), consumableInstance("mana", "starter-mana-potion", 2)], inventoryCapacity: ITEM_CAPACITY, abilities: ["heal", "wand", null], quickSlots: [null, null], sneaking: false }, starterConsumablesSeeded: true, counters: { keys: 1, gold: 55 }, objective: "Find the exit", log: [] };
+  const campaign: Campaign = { version: 3, world: "One", realm: `Underground ${floor.level}`, floor, floors: { [floor.level]: structuredClone(floor) }, progression: { attributes, level: 1, xp: 0, nextXp: GAME_TUNING.xpThreshold, totalKills: 0, difficulty, pendingUpgrades: [] }, player: { x: floor.start.x, y: floor.start.y, heading: "e", resources: createResourcesModel(), equipment: { weapons: [itemInstance(itemCatalog[3], "starter-stick"), null], armor: [null, null] }, inventory: [consumableInstance("health", "starter-health-potion"), consumableInstance("mana", "starter-mana-potion", 2)], inventoryCapacity: ITEM_CAPACITY, abilities: ["heal", "wand", null], quickSlots: [null, null], sneaking: false }, starterConsumablesSeeded: true, counters: { keys: 1, gold: 55 }, objective: "Find the exit", log: [] };
   campaign.player.resources = playerResourcesFromCampaign(campaign, { health: GAME_TUNING.startingHealth, stamina: GAME_TUNING.startingStamina, mana: GAME_TUNING.startingMana });
   return campaign;
 }
@@ -417,13 +439,29 @@ export function applyAction(campaign: Campaign, action: Action): ActionResult {
     return { state, events, accepted: true, ticks: 0 };
   }
   if (action.type === "toggle-sneak") { state.player.sneaking = !state.player.sneaking; emit(events, "player.sneak.changed", { active: state.player.sneaking }, state); return { state, events, accepted: true, ticks: 0 }; }
+  if (action.type === "wait") { tick(state, events); return { state, events, accepted: true, ticks: 1 }; }
   if (action.type === "move") {
     const direction = directions[action.direction as Direction]; if (!direction) return reject("invalid-direction"); const [dx, dy] = direction; const x = state.player.x + dx; const y = state.player.y + dy; const entity = entityAt(state.floor.entities, x, y);
     if (!isWalkable(state.floor, x, y) && !entity) return reject("blocked");
     if (entity?.kind === "enemy") attack(state, events, entity); else {
       state.player.heading = action.direction as Direction;
       state.player.x = x; state.player.y = y; emit(events, "player.moved", { from: { x: campaign.player.x, y: campaign.player.y }, to: { x, y } }, state);
-      if (entity?.kind === "stairs") { const level = (state.floor.level ?? state.floor.depth ?? 1) + 1; const difficulty = (state.progression.difficulty ?? state.floor.depth ?? 1) + 1; const time = state.floor.time; state.progression.difficulty = difficulty; state.floor = generateFloor(level, seedNow(), difficulty); state.floor.time = time; state.realm = `Underground ${level}`; state.player.x = state.floor.start.x; state.player.y = state.floor.start.y; emit(events, "realm.entered", { realm: state.realm, level }, state); }
+      if (entity?.kind === "stairs") {
+        const currentLevel = state.floor.level ?? state.floor.depth ?? 1;
+        const level = entity.direction === "back" ? Math.max(1, currentLevel - 1) : currentLevel + 1;
+        const time = state.floor.time;
+        state.floors ??= {};
+        state.floors[String(currentLevel)] = structuredClone(state.floor);
+        const stored = state.floors[String(level)];
+        const difficulty = Math.max(state.progression.difficulty ?? 1, level);
+        state.progression.difficulty = difficulty;
+        state.floor = stored ? structuredClone(stored) : generateFloor(level, seedNow(), difficulty);
+        state.floor.time = time;
+        state.floors[String(level)] = structuredClone(state.floor);
+        state.realm = `Underground ${level}`;
+        state.player.x = state.floor.start.x; state.player.y = state.floor.start.y;
+        emit(events, "realm.entered", { realm: state.realm, level }, state);
+      }
       else if (entity?.kind === "potion") { const item = consumableInstance(entity.resource, entity.id); const quickIndex = state.player.quickSlots!.findIndex((slot) => slot?.item.consumableResource === entity.resource); const inventoryItem = state.player.inventory.find((entry) => isQuickSlottableItem(entry) && entry.consumableResource === entity.resource); if (quickIndex >= 0) { state.player.quickSlots![quickIndex]!.quantity += 1; state.floor.entities = state.floor.entities.filter((entry) => entry.id !== entity.id); emit(events, "item.collected", { itemId: item.id, item: item.name, name: item.name, resource: entity.resource, destination: { quickSlot: quickIndex }, quickSlot: quickIndex, quantity: state.player.quickSlots![quickIndex]!.quantity }, state); } else if (inventoryItem) { inventoryItem.quantity = (inventoryItem.quantity ?? 1) + 1; state.floor.entities = state.floor.entities.filter((entry) => entry.id !== entity.id); emit(events, "item.collected", { itemId: item.id, item: item.name, name: item.name, resource: entity.resource, destination: "inventory", quantity: inventoryItem.quantity }, state); } else if (state.player.inventory.length < state.player.inventoryCapacity) { state.player.inventory = orderedInventory([...state.player.inventory, item]); state.floor.entities = state.floor.entities.filter((entry) => entry.id !== entity.id); emit(events, "item.collected", { itemId: item.id, item: item.name, name: item.name, resource: entity.resource, destination: "inventory", quantity: 1 }, state); } else emit(events, "item.collection.rejected", { itemId: entity.id, name: entity.name ?? `${entity.resource} potion`, resource: entity.resource, reason: "inventory-full" }, state); }
       else if (entity?.kind === "item") { const item = normalizeItem(entity.item); const quickIndex = isQuickSlottableItem(item) ? state.player.quickSlots!.findIndex((slot) => slot?.item.consumableResource === item.consumableResource) : -1; const inventoryItem = isQuickSlottableItem(item) ? state.player.inventory.find((entry) => isQuickSlottableItem(entry) && entry.consumableResource === item.consumableResource) : null; if (quickIndex >= 0) { state.player.quickSlots![quickIndex]!.quantity += item.quantity ?? 1; state.floor.entities = state.floor.entities.filter((entry) => entry.id !== entity.id); emit(events, "item.collected", { itemId: item.id, name: item.name, destination: { quickSlot: quickIndex }, quickSlot: quickIndex, quantity: state.player.quickSlots![quickIndex]!.quantity }, state); } else if (inventoryItem) { inventoryItem.quantity = (inventoryItem.quantity ?? 1) + (item.quantity ?? 1); state.floor.entities = state.floor.entities.filter((entry) => entry.id !== entity.id); emit(events, "item.collected", { itemId: item.id, name: item.name, destination: "inventory", quantity: inventoryItem.quantity }, state); } else if (state.player.inventory.length < state.player.inventoryCapacity) { state.player.inventory = orderedInventory([...state.player.inventory, item]); state.floor.entities = state.floor.entities.filter((entry) => entry.id !== entity.id); emit(events, "item.collected", { itemId: item.id, name: item.name, destination: "inventory", quantity: item.quantity ?? 1 }, state); } else emit(events, "item.collection.rejected", { itemId: item.id, name: item.name, reason: "inventory-full" }, state); }
       else if (entity?.kind === "key" || entity?.kind === "gold") {

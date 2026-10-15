@@ -17,22 +17,32 @@ test('query mute prevents audio creation and stays authoritative over preference
   assert.equal(fake.made.length, 0);
 });
 
-test('ordinary preferences control independent buses and looping music', () => {
+test('prewarming loads the complete catalog before ordinary playback begins', async () => {
   const fake = recorder(); const audio = createAudioManager({ createAudio: fake.createAudio, random: () => 0 });
   audio.setPreferences({ sfxVolume: 35, musicVolume: 24, muteAll: false });
+  assert.equal(audio.playCue('accepted'), false);
+  const firstWarmup = audio.prewarm();
+  assert.equal(audio.isPrewarmed(), false);
+  assert.equal(audio.prewarm(), firstWarmup);
+  await firstWarmup;
+  assert.equal(audio.isPrewarmed(), true);
+  assert.deepEqual(fake.made.map(({ src }) => src), [...AUDIO_ASSETS.music, ...Object.values(AUDIO_ASSETS.sfx)]);
   assert.equal(audio.startMusic(), true);
-  assert.equal(fake.made[0].src, AUDIO_ASSETS.music[0]); assert.equal(fake.made[0].loop, true); assert.equal(fake.made[0].volume, 0.24);
-  assert.equal(audio.playCue('accepted'), true); assert.equal(fake.made[1].volume, 0.35);
+  const music = fake.made.at(-1)!;
+  assert.equal(music.src, AUDIO_ASSETS.music[0]); assert.equal(music.loop, true); assert.equal(music.volume, 0.24);
+  assert.equal(audio.playCue('accepted'), true); assert.equal(fake.made.at(-1)?.volume, 0.35);
   audio.setPreferences({ sfxVolume: 0, musicVolume: 47, muteAll: false });
-  assert.equal(fake.made[0].volume, 0.47); assert.equal(audio.isMuted('sfx'), true); assert.equal(audio.isMuted('music'), false);
+  assert.equal(music.volume, 0.47); assert.equal(audio.isMuted('sfx'), true); assert.equal(audio.isMuted('music'), false);
   assert.equal(audio.playCue('accepted'), false);
   audio.setPreferences({ sfxVolume: 80, musicVolume: 20, muteAll: true });
-  assert.equal(fake.made[0].volume, 0); assert.equal(audio.playCue('accepted'), false); assert.equal(audio.isMuted(), true);
+  assert.equal(music.volume, 0); assert.equal(audio.playCue('accepted'), false); assert.equal(audio.isMuted(), true);
 });
 
-test('committed simulation events map to one cue and rejected events stay quiet', () => {
+test('committed simulation events map to one cue and rejected events stay quiet', async () => {
   const fake = recorder(); const audio = createAudioManager({ createAudio: fake.createAudio });
   audio.setPreferences({ sfxVolume: 80, musicVolume: 20, muteAll: false });
+  await audio.prewarm();
+  const prewarmedCount = fake.made.length;
   audio.playEvents([
     { type: 'player.moved', outcome: 'committed', facts: {} },
     { type: 'combat.hit', outcome: 'committed', facts: {} },
@@ -45,23 +55,27 @@ test('committed simulation events map to one cue and rejected events stay quiet'
     { type: 'ability.used', outcome: 'committed', facts: {} },
     { type: 'combat.hit', outcome: 'rejected', facts: {} },
   ]);
-  assert.deepEqual(fake.made.map(({ src }) => src), [
+  assert.deepEqual(fake.made.slice(prewarmedCount).map(({ src }) => src), [
     AUDIO_ASSETS.sfx.footstep, AUDIO_ASSETS.sfx.weaponHit, AUDIO_ASSETS.sfx.enemyHit,
     AUDIO_ASSETS.sfx.enemyFall, AUDIO_ASSETS.sfx.potion, AUDIO_ASSETS.sfx.chest,
     AUDIO_ASSETS.sfx.stairs, AUDIO_ASSETS.sfx.ability,
   ]);
 });
 
-test('equipment drop feedback distinguishes accepted and rejected drops', () => {
+test('equipment drop feedback distinguishes accepted and rejected drops', async () => {
   const fake = recorder(); const audio = createAudioManager({ createAudio: fake.createAudio });
+  await audio.prewarm();
+  const prewarmedCount = fake.made.length;
   audio.playDropResult(true); audio.playDropResult(false);
-  assert.deepEqual(fake.made.map(({ src }) => src), [AUDIO_ASSETS.sfx.accepted, AUDIO_ASSETS.sfx.rejected]);
+  assert.deepEqual(fake.made.slice(prewarmedCount).map(({ src }) => src), [AUDIO_ASSETS.sfx.accepted, AUDIO_ASSETS.sfx.rejected]);
   const muted = createAudioManager({ search: '?mute=1', createAudio: fake.createAudio });
   assert.equal(muted.playDropResult(true), false);
 });
 
 test('footsteps are rate-limited and bundled audio assets exist', async () => {
   const fake = recorder(); const audio = createAudioManager({ createAudio: fake.createAudio });
+  assert.equal(audio.playCue('footstep', 900), false);
+  await audio.prewarm();
   assert.equal(audio.playCue('footstep', 1000), true); assert.equal(audio.playCue('footstep', 1100), false); assert.equal(audio.playCue('footstep', 1140), true);
   const root = new URL('../public/assets/audio/', import.meta.url);
   const docs = await readFile(new URL('../documentation/audio.md', import.meta.url), 'utf8');

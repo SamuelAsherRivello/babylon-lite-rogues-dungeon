@@ -14,4 +14,4 @@
 ## 3. Browser verification
 
 - [x] 3.1 Add nearby deterministic health, mana, key, and gold pickups for focused collection coverage; verify placement remains walkable and non-overlapping.
-- [ ] 3.2 Run a focused Edge Playwright check for Inventory, Quick Slot, Key, and Gold transfers across camera modes and Zoom levels; record evidence and run the applicable full typecheck/test suite.
+- [x] 3.2 Run a focused Edge Playwright check for Inventory, Quick Slot, Key, and Gold transfers across camera modes and Zoom levels; record evidence and run the applicable full typecheck/test suite.

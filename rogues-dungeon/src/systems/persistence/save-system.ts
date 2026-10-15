@@ -8,7 +8,7 @@ interface LegacyCampaign extends Omit<Campaign, "player" | "progression"> {
 }
 // Preserve the existing shallow save guards; normalization owns legacy fields.
 function candidate(value: unknown): Partial<Campaign> | null { return typeof value === "object" && value !== null ? value as Partial<Campaign> : null; }
-import { createCampaign, createResourcesModel, effectiveAttributes, FLOOR_HEIGHT, FLOOR_WIDTH, GENERATOR_VERSION, isResourcesModel, normalizeQuickSlots, normalizeStackableLocations, upgradeCampaignResources } from "../procedural/world-procedural-system.ts";
+import { createCampaign, createResourcesModel, effectiveAttributes, ensureNearbyStairs, FLOOR_HEIGHT, FLOOR_WIDTH, GENERATOR_VERSION, isResourcesModel, normalizeQuickSlots, normalizeStackableLocations, upgradeCampaignResources } from "../procedural/world-procedural-system.ts";
 import { gameZoomPresets } from "../../content/world/zoom.ts";
 import { createSemanticCells, ensureSemanticCells, semanticCellsFromMap } from "../procedural/level-grid-system.ts";
 
@@ -126,6 +126,7 @@ export function readSlot(storage: StorageAccess, slot: string | number) {
   if (!SLOT_IDS.includes(String(slot))) throw new Error("Unknown Saved Game.");
   const raw = storage.getItem(PREFIX + slot); if (!raw) return null;
   const original: unknown = JSON.parse(raw); const campaign = migrateCampaign(original); const originalVersion = candidate(original)?.version;
+  if (campaign?.floor?.generatorVersion === GENERATOR_VERSION) ensureNearbyStairs(campaign.floor);
   if (originalVersion === 3 && campaign?.floor?.generatorVersion !== GENERATOR_VERSION) {
     storage.removeItem(PREFIX + slot);
     return null;

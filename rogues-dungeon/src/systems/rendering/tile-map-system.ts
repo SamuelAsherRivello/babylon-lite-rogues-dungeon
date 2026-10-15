@@ -50,7 +50,7 @@ export function serializeFloorToTiled({ campaign, generatorVersion = GENERATOR_V
   const decorations = (floor.entities ?? []).filter((entity) => !pickups.includes(entity));
   const markers = [
     { id: 10001, name: "player", type: "player", x: campaign.player.x * TILED_TILE_SIZE, y: campaign.player.y * TILED_TILE_SIZE, width: TILED_TILE_SIZE, height: TILED_TILE_SIZE },
-    ...((floor.entities ?? []).filter((entity) => entity.kind === "stairs").map((entity, index) => ({ id: 10002 + index, name: "exit", type: "exit", x: entity.x * TILED_TILE_SIZE, y: entity.y * TILED_TILE_SIZE, width: TILED_TILE_SIZE, height: TILED_TILE_SIZE }))),
+    ...((floor.entities ?? []).filter((entity) => entity.kind === "stairs" && entity.direction !== "back").map((entity, index) => ({ id: 10002 + index, name: "exit", type: "exit", x: entity.x * TILED_TILE_SIZE, y: entity.y * TILED_TILE_SIZE, width: TILED_TILE_SIZE, height: TILED_TILE_SIZE }))),
   ];
   return {
     type: "map", version: "1.10", tiledversion: "1.10.2", orientation: "orthogonal", renderorder: "right-down",
