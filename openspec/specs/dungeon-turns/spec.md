@@ -18,7 +18,7 @@ Each run SHALL begin in a newly generated 100 by 100 tile dungeon floor with a t
 - **THEN** a new 100 by 100 procedural floor loads at the next depth with stronger or additional enemy types available
 
 ### Requirement: Advance one tactical turn per accepted grid action
-A legal player step, actionable bump interaction, or explicit wait action SHALL advance time by exactly one turn, and enemies SHALL act once during that turn. A mouse-selected destination with no legal cardinal route SHALL be rejected without moving the player, advancing time, or causing an enemy action.
+A legal player step, actionable bump interaction, or explicit wait action SHALL advance time by exactly one turn, and enemies SHALL act once during that turn. An accepted ability SHALL advance time and run its enemy phase exactly once when its presentation completes. A mouse-selected destination with no legal cardinal route SHALL be rejected without moving the player, advancing time, or causing an enemy action.
 
 #### Scenario: Walk into traversable space
 - **WHEN** the player makes one accepted grid move
@@ -31,6 +31,10 @@ A legal player step, actionable bump interaction, or explicit wait action SHALL 
 #### Scenario: Wait in place
 - **WHEN** the player presses X or the mobile Wait button outside editable controls, Settings, and a level-up choice
 - **THEN** the player stays in place, displayed time increases by one, and the normal enemy phase resolves once
+
+#### Scenario: Complete an accepted ability
+- **WHEN** Heal or Wand completes its presentation
+- **THEN** its effect resolves, displayed time increases by one, and enemies act once
 
 #### Scenario: Blocked terrain
 - **WHEN** the player attempts to move into an impassable cell with no actionable target

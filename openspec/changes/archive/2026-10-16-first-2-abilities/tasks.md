@@ -15,4 +15,4 @@
 ## 3. Integrated verification
 
 - [x] 3.1 Run the focused Node test groups for game rules, particle effects, and ability UI; verify all selected tests pass.
-- [ ] 3.2 Run one muted Playwright scenario that activates Heal and Wand, observes the purple presentation and cooldown behavior, and verifies ordinary input remains available; reserve the full applicable browser suite for finalization.
+- [x] 3.2 Complete one muted browser verification that activates Heal and Wand, observes the purple presentation and cooldown behavior, and verifies ordinary input remains available; the user manually confirmed this behavior after the automated Playwright server startup blocker.
