@@ -18,11 +18,12 @@ import { isWalkable } from "../procedural/level-grid-system.ts";
 import { createHeroWarriorAnimationEntity, heroWarriorIdleAnimationForHeading } from "../../content/characters/hero-warrior/hero-warrior-animation.ts";
 import { loadSpriteAtlasFrame } from "../../content/characters/hero-warrior/hero-warrior-atlas.ts";
 import { createEnemyIdleAnimationEntities, type EnemyIdleAnimationName } from "../../content/enemies/enemy-idle-animation.ts";
-import { particleBoundsAt, particleBoundsAtTile, particleExpired, particleFrame, particleFrameUrl, type ParticleEffect } from "../animation/particle-effects-system.ts";
+import { HEAL_PARTICLE_PLAYER_LAYER_OFFSET, particleBoundsAt, particleBoundsAtTile, particleExpired, particleFrame, particleFrameUrl, particlePosition, particleProgress, particleScale, type ParticleEffect } from "../animation/particle-effects-system.ts";
 import { UiIrisTransition, type UiIrisPhase } from "../../ui/ui-transition-system.tsx";
 import { sortGridRenderEntries } from "./grid-render-order-system.ts";
 import { DUNGEON_STAIR_UP_FRAME, itemSpriteFrame } from "./world-object-sprite-system.ts";
 import { TurnPresentationSystem } from "../animation/turn-presentation-system.ts";
+import { CameraAnimationSystem, PLAYER_TAKE_DAMAGE_ANIMATION } from "../animation/camera-animation-system.ts";
 import { trapFrameAt } from "../procedural/world-hazards-system.ts";
 
 const texturePaths = {
@@ -39,6 +40,7 @@ const trapFramePaths = Array.from({ length: 7 }, (_, index) => `${import.meta.en
 const smokePuffFramePaths = Array.from({ length: 9 }, (_, index) => `${import.meta.env.BASE_URL}assets/art/custom/particles/smoke-poff/smoke-poff-${index + 1}.png`);
 
 const clear = { r: 0.06, g: 0.05, b: 0.09, a: 1 };
+const PLAYER_RENDER_DEPTH_OFFSET = 50;
 let sharedEnginePromise: Promise<SharedEngine> | null = null;
 
 export function renderParticle(effect: ParticleEffect, x: number, y: number, width: number, height: number, zIndex: number) {
@@ -108,7 +110,14 @@ export interface GameViewToUiAnimation extends Position {
   destination: "row" | "counter";
 }
 
-export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "center", mouseInteraction = false, floatingFeedback = [], particleEffects = [], uiAnimations = [], selectedCell = null, selectedCellReachable = null, turnPresentation, onSelectedCellChange, onWorldAliveChange, onUiAnimationComplete, onFpsChange, onZoom }: { campaign: Campaign; zoom?: number; minimap?: boolean; camera?: string; mouseInteraction?: boolean; floatingFeedback?: Feedback[]; particleEffects?: ParticleEffect[]; uiAnimations?: GameViewToUiAnimation[]; selectedCell?: SelectedCell | null; selectedCellReachable?: boolean | null; turnPresentation?: TurnPresentationSystem; onSelectedCellChange?(cell: SelectedCell | null): void; onWorldAliveChange?(alive: boolean): void; onUiAnimationComplete?(id: string): void; onFpsChange?(fps: number | null): void; onZoom?(step: number): void }) {
+function visibleTarget(selector: string) {
+  return [...document.querySelectorAll<HTMLElement>(`${selector}, [data-ui-pickup-fallback]`)].find((element) => {
+    const rect = element.getBoundingClientRect();
+    return getComputedStyle(element).display !== "none" && rect.width > 0 && rect.height > 0;
+  });
+}
+
+export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "center", cameraAnimationToken = 0, mouseInteraction = false, floatingFeedback = [], particleEffects = [], uiAnimations = [], selectedCell = null, selectedCellReachable = null, turnPresentation, onSelectedCellChange, onWorldAliveChange, onUiAnimationComplete, onFpsChange, onZoom }: { campaign: Campaign; zoom?: number; minimap?: boolean; camera?: string; cameraAnimationToken?: number; mouseInteraction?: boolean; floatingFeedback?: Feedback[]; particleEffects?: ParticleEffect[]; uiAnimations?: GameViewToUiAnimation[]; selectedCell?: SelectedCell | null; selectedCellReachable?: boolean | null; turnPresentation?: TurnPresentationSystem; onSelectedCellChange?(cell: SelectedCell | null): void; onWorldAliveChange?(alive: boolean): void; onUiAnimationComplete?(id: string): void; onFpsChange?(fps: number | null): void; onZoom?(step: number): void }) {
   const hostRef = useRef<HTMLDivElement>(null); const canvasRef = useRef<HTMLCanvasElement>(null); const sceneRef = useRef<{ draw(): void; activate(): void } | null>(null); const latestRef = useRef({ campaign, zoom, minimap, camera, particleEffects });
   const cameraCenterRef = useRef<(Position & { key: string }) | null>(null);
   // This is updated only by the completed world draw, so pickup flights can
@@ -121,6 +130,8 @@ export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "ce
   const selectedCellRef = useRef(selectedCell);
   const onFpsChangeRef = useRef(onFpsChange);
   const previousCampaignRef = useRef(campaign);
+  const cameraAnimation = useRef(new CameraAnimationSystem()).current;
+  const cameraTransformRef = useRef({ positionPx: [0, 0] as [number, number], scale: 1 });
   const [message, setMessage] = useState("Preparing the crypt…");
   const [irisPhase, setIrisPhase] = useState<UiIrisPhase>("open");
   const [rendererLoaded, setRendererLoaded] = useState(minimap);
@@ -135,6 +146,11 @@ export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "ce
     if (!minimap && irisPhase === "closed" && rendererLoaded) setIrisPhase("opening");
   }, [irisPhase, minimap, rendererLoaded]);
   useEffect(() => { onWorldAliveChange?.(worldAlive); if (worldAlive) sceneRef.current?.activate(); }, [onWorldAliveChange, worldAlive]);
+  useEffect(() => {
+    if (!cameraAnimationToken || minimap || !worldAlive) return;
+    cameraAnimation.play(PLAYER_TAKE_DAMAGE_ANIMATION, { transform: cameraTransformRef.current, render: () => sceneRef.current?.draw() });
+  }, [cameraAnimation, cameraAnimationToken, minimap, worldAlive]);
+  useEffect(() => () => cameraAnimation.dispose(), [cameraAnimation]);
   useEffect(() => {
     if (minimap || !worldAlive || !turnPresentation) return;
     const host = hostRef.current;
@@ -154,9 +170,9 @@ export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "ce
       if (launchedFlightsRef.current.has(flight.id)) continue;
       const { rect, center, tileCssSize } = projection;
       const origin = getWorldCellScreenCenter({ ...flight, center, viewportWidth: rect.width, viewportHeight: rect.height, tileCssSize });
-      const target = document.querySelector<HTMLElement>(flight.target);
+      const target = visibleTarget(flight.target);
       const destinationLayer = target?.closest<HTMLElement>(flight.destination === "counter" ? ".game-screen" : ".game-screen__middle");
-      if (!target || !destinationLayer) continue;
+      if (!target || !destinationLayer) { onUiAnimationComplete?.(flight.id); continue; }
       launchedFlightsRef.current.add(flight.id);
       const transfer = document.createElement("span"); transfer.className = "world-view__ui-animation"; transfer.setAttribute("aria-hidden", "true");
       const goldCoin = flight.kind === "gold";
@@ -301,13 +317,15 @@ export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "ce
           const mapWidth = world.width * 32;
           const mapHeight = world.height * 32;
           const mapScale = Math.min(renderWidth / mapWidth, renderHeight / mapHeight) * 0.92;
-          const viewScale = isMinimap ? mapScale : scale * (window.devicePixelRatio || 1);
+          const cameraTransform = cameraTransformRef.current;
+          const viewScale = isMinimap ? mapScale : scale * cameraTransform.scale * (window.devicePixelRatio || 1);
           const rect = host.getBoundingClientRect(); const cameraCenter = isMinimap ? state.player : getViewCenter(rect, state); if (!isMinimap) { renderedCameraCenterRef.current = cameraCenter; renderedProjectionRef.current = { rect, center: cameraCenter, tileCssSize: cellSizeAt(rect) }; }
           const centerX = cameraCenter.x * 32 + 16;
           const centerY = cameraCenter.y * 32 + 16;
+          cameraTransform.positionPx = [centerX, centerY];
           viewLayers.forEach((layer) => {
             layer.view.zoom = viewScale;
-            centerSprite2DView(layer.view, centerX, centerY, renderWidth, renderHeight);
+            centerSprite2DView(layer.view, cameraTransform.positionPx[0], cameraTransform.positionPx[1], renderWidth, renderHeight);
           });
           while (terrainHandles.length < world.grounds.length) terrainHandles.push(addSprite2D(terrainLayer, { positionPx: [-10000, -10000], sizePx: [32, 32], frame: 0 }));
           while (wallHandles.length < world.walls.length) wallHandles.push(addSprite2D(wallLayer, { positionPx: [-10000, -10000], sizePx: [32, 32], frame: 0 }));
@@ -322,7 +340,7 @@ export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "ce
           const desiredIdleAnimation = heroWarriorIdleAnimationForHeading(playerHeading);
           if (activeHeroAnimation.getState().animation !== desiredIdleAnimation) activeHeroAnimation.selectAnimation(desiredIdleAnimation);
           const activeHeroFrame = activeHeroAnimation.getState().frame;
-          if (playerSprite) { playerLayer!.order = state.player.y * 100 + 50; updateSprite2D(playerSprite, { positionPx: [state.player.x * 32 + 16, state.player.y * 32 + 32], sizePx: [activeHeroFrame.widthPx, activeHeroFrame.heightPx], frame: heroFrameIndexes.get(activeHeroFrame.path) ?? 0, flipX: state.player.heading === "w" }); }
+          if (playerSprite) { playerLayer!.order = state.player.y * 100 + PLAYER_RENDER_DEPTH_OFFSET; updateSprite2D(playerSprite, { positionPx: [state.player.x * 32 + 16, state.player.y * 32 + 32], sizePx: [activeHeroFrame.widthPx, activeHeroFrame.heightPx], frame: heroFrameIndexes.get(activeHeroFrame.path) ?? 0, flipX: state.player.heading === "w" }); }
           const byKind: Record<string, typeof world.actors> = { rat: world.actors.filter((actor) => actor.kind === "rat"), skeleton: world.actors.filter((actor) => actor.kind === "skeleton") };
           for (const key of Object.keys(actors) as EnemyIdleAnimationName[]) { const frame = activeEnemyAnimations[key].getState().frame; const footOffset = key === "skeleton" ? 32 : 16; actors[key].forEach((sprite, i) => { const actor = byKind[key][i]; const position = actor && turnPresentation?.positionOf(actor.id, actor); actorLayers[key][i].order = (position?.y ?? -10000) * 100 + 40; updateSprite2D(sprite, { positionPx: position ? [position.x * 32 + 16, position.y * 32 + footOffset] : [-10000,-10000], sizePx: [frame.widthPx, frame.heightPx], frame: enemyFrameIndexes.get(frame.path) ?? 0, flipX: actor?.heading === "w" }); }); }
           const itemObjects = world.objects.filter((entity) => entity.kind !== "stairs" && entity.kind !== "gold");
@@ -339,7 +357,7 @@ export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "ce
           traps.forEach((sprite, i) => { const decoration = wallTraps[i]; trapLayers[i].order = (decoration?.y ?? -10000) * 100 + 15; updateSprite2D(sprite, { frame: trapFrame, positionPx: decoration ? [decoration.worldX, decoration.worldY] : [-10000,-10000] }); });
           stairs.forEach((sprite, i) => { const entity = stairObjects[i]; stairLayers[i].order = (entity?.y ?? -10000) * 100 + 10; updateSprite2D(sprite, { frame: DUNGEON_STAIR_UP_FRAME, positionPx: entity ? [entity.worldX, entity.worldY] : [-10000,-10000], flipY: entity?.direction === "back" }); });
           const activeParticles = latestRef.current.particleEffects.filter((effect) => !particleExpired(effect));
-          particles.forEach((sprite, i) => { const effect = activeParticles[i]; const progress = effect ? Math.max(0, Math.min(1, (performance.now() - effect.startedAt) / 720)) : 0; const ramp = progress < .25 ? progress / .25 : progress > .75 ? (1 - progress) / .25 : 1; const scale = .25 + .25 * ramp; particleLayers[i].order = (effect?.y ?? -10000) * 100 + 30; updateSprite2D(sprite, { positionPx: effect ? [effect.x * 32 + 16, effect.y * 32 + 16] : [-10000, -10000], sizePx: [32 * scale, 32 * scale], frame: effect ? particleFrame(effect) : 0, color: [1, 1, 1, ramp] }); });
+          particles.forEach((sprite, i) => { const effect = activeParticles[i]; const now = performance.now(); const progress = effect ? particleProgress(effect, now) : 0; const ramp = progress < .25 ? progress / .25 : progress > .75 ? (1 - progress) / .25 : 1; const target = effect?.targetId ? world.actors.find((actor) => actor.id === effect.targetId) ?? null : null; const position = effect ? particlePosition(effect, target, now) : null; const scale = effect ? particleScale(effect, now) : 1; const purple = effect?.kind === "heal" || effect?.kind === "wand"; particleLayers[i].order = effect?.kind === "heal" ? state.player.y * 100 + PLAYER_RENDER_DEPTH_OFFSET + HEAL_PARTICLE_PLAYER_LAYER_OFFSET : (position?.y ?? -10000) * 100 + 30; updateSprite2D(sprite, { positionPx: position ? [position.x * 32 + 16, position.y * 32 + 16] : [-10000, -10000], sizePx: [32 * scale, 32 * scale], frame: effect ? particleFrame(effect, now) : 0, color: purple ? [.72, .48, 1, ramp] : [1, 1, 1, ramp] }); });
         };
         let animationStarted = false;
         const activate = () => {

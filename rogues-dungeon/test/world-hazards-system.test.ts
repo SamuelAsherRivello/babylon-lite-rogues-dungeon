@@ -16,13 +16,21 @@ test("loops a trap animation once, pauses for three seconds, and leaves only mid
   assert.equal(trapStrikeDamage(0, 6), 6);
 });
 
-test("distributes torches and traps only on side or bottom wall faces", () => {
+test("distributes wall torches on valid faces and traps on walkable cells", () => {
   for (const seed of [17, 914]) {
     const floor = generateFloor(1, seed, 1);
     assert.ok(floor.decorations!.some((decoration) => decoration.kind === "torch"));
     assert.ok(floor.decorations!.some((decoration) => decoration.kind === "trap"));
     for (const decoration of floor.decorations!) {
-      assert.equal(isWallDecorationCell(floor.map!, decoration), true, `${seed}:${decoration.id} must have a walkable left, right, or bottom neighbor`);
+      if (decoration.kind === "torch") assert.equal(isWallDecorationCell(floor.map!, decoration), true, `${seed}:${decoration.id} must have a walkable left, right, or bottom neighbor`);
+      else assert.equal(floor.cells[decoration.y][decoration.x].walkable, true, `${seed}:${decoration.id} must be walkable so it can hurt the player`);
     }
   }
+});
+
+test("adds one extra walkable trap beside the level-one test entrance", () => {
+  const floor = generateFloor(1, 17, 1, { level1TestMode: true });
+  const traps = floor.decorations!.filter((decoration) => decoration.kind === "trap");
+  assert.equal(traps.length, 3);
+  assert.ok(traps.some((trap) => Math.abs(trap.x - floor.start.x) <= 2 && Math.abs(trap.y - floor.start.y) <= 1));
 });

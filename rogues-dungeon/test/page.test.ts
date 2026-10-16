@@ -51,7 +51,7 @@ test('uses a command desk and removes template corner units', async () => {
   assert.match(settingsWindow, /Clear Local Storage/); assert.match(game, /clearRoguesDungeonStorage\(localStorage\)/); assert.match(game, /window\.location\.reload\(\)/);
   assert.match(css, /\.title-bar \.title-bar__select-utility \{ width:9\.5em; flex:0 0 9\.5em/); assert.match(css, /\.title-bar \.title-bar__select-utility select \{ width:7\.4em/);
   assert.match(titleBar, /const selectPreference = \(event: SyntheticEvent<HTMLElement>, preference: Partial<Preferences>\) => \{/);
-  assert.match(game, /keyboardControlRows/); assert.match(game, /collapsedKeyboardGroups/); assert.match(controlsArea, /aria-label="Keyboard controls"/); assert.match(mobileControls, /dispatch\(\{ type: "wait" \}\)/); assert.match(mobileControls, /Quick 1/); assert.match(mobileControls, /Quick 2/); assert.match(mobileControls, />Wait<\/button>/); assert.doesNotMatch(mobileControls, /Sprint:/); assert.doesNotMatch(mobileControls, /Sneak:/); assert.doesNotMatch(mobileControls, /\[1, 2, 3, 4\]/); assert.match(game, /<InputKey key=\{key\}/); assert.match(css, /\.mobile-controls__actions \{ display:grid; grid-template-columns:repeat\(3,1fr\)/); assert.match(css, /\.keyboard_tray_keys \{[^}]*grid-template-columns:repeat\(3,2\.25rem\)/);
+  assert.match(game, /keyboardControlRows/); assert.match(game, /collapsedKeyboardGroups/); assert.match(controlsArea, /aria-label="Keyboard controls"/); assert.match(mobileControls, /dispatch\(\{ type: "wait" \}\)/); assert.match(mobileControls, /Quick 1/); assert.match(mobileControls, /Quick 2/); assert.match(mobileControls, />Wait<\/button>/); assert.match(game, /X: "Wait 1 time tick"/); assert.match(game, /key === "X" \? onWait/); assert.match(game, /onWait=\{\(\) => dispatch\(\{ type: "wait" \}\)\}/); assert.doesNotMatch(mobileControls, /Sprint:/); assert.doesNotMatch(mobileControls, /Sneak:/); assert.doesNotMatch(mobileControls, /\[1, 2, 3, 4\]/); assert.match(game, /<InputKey key=\{key\}/); assert.match(css, /\.mobile-controls__actions \{ display:grid; grid-template-columns:repeat\(3,1fr\)/); assert.match(css, /\.keyboard_tray_keys \{[^}]*grid-template-columns:repeat\(3,2\.25rem\)/);
   assert.match(titleBar, /<option value="deadzone">Deadzone<\/option>/);
   assert.doesNotMatch(app, /AppCorner/); assert.match(css, /mobile-controls/);
   assert.match(css, /grid-template-rows:4% 92% 4%/); assert.match(css, /grid-template-rows:4% 46% 4% 46%/);
@@ -67,9 +67,11 @@ test('renders the public My First Quest state in the Quest card', async () => {
 test('hands pickups from the rendered Babylon projection into their destination UI layer', async () => {
   const [game, renderer, css] = await Promise.all(['src/game/game.tsx', 'src/systems/rendering/babylon-render-system.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
   assert.match(renderer, /renderedProjectionRef/); assert.match(renderer, /renderedProjectionRef\.current = \{ rect, center: cameraCenter, tileCssSize: cellSizeAt\(rect\) \}/);
+  assert.match(renderer, /function visibleTarget\(selector: string\)/); assert.match(renderer, /\[data-ui-pickup-fallback\]/); assert.match(renderer, /onUiAnimationComplete\?\.\(flight\.id\); continue/);
   assert.match(renderer, /flight\.destination === "counter" \? "\.game-screen" : "\.game-screen__middle"/); assert.match(renderer, /destinationLayer\.append\(transfer\)/);
   assert.match(css, /width 500ms/); assert.match(css, /animation:world-view-ui-animation-flight 750ms/); assert.match(css, /0% \{ opacity:0; transform:translate\(-50%,-50%\) scale\(1\); \} 33\.333% \{ opacity:1; transform:translate\(-50%,-50%\) scale\(1\.25\); \} 66\.667% \{ opacity:1; transform:translate\(-50%,-50%\) scale\(1\); \} 100% \{ opacity:0; transform:translate\(-50%,-50%\) scale\(0\); \}/); assert.match(renderer, /window\.setTimeout\(\(\) => \{ transfer\.remove\(\);/);
   assert.match(game, /data-ui-counter-icon/); assert.match(game, /destination = entity\.kind === "gold" \|\| entity\.kind === "key" \? "counter" : "row"/);
+  assert.match(game, /data-ui-pickup-fallback/);
   assert.match(css, /z-index:10000/);
 });
 test('returns to the saved-game menu when a player death event is committed', async () => {
@@ -156,7 +158,7 @@ test('renders UI tooltips above every content-layer panel', async () => {
 test('matches inventory row spacing to the abilities list', async () => {
   const css = await readFile(new URL('../src/ui/style.css', import.meta.url), 'utf8');
   assert.match(css, /\.view_list,\.slot_group \{ display:grid; gap:\.18rem; \}/);
-  assert.match(css, /\.inventory_scroll \{ display:grid; align-content:start; gap:\.18rem; \}/);
+  assert.match(css, /\.inventory_scroll \.scroll-area__viewport \{ display:grid; align-content:start; gap:\.18rem; \}/);
 });
 test('fills unused inventory capacity with empty plus slots', async () => {
   const game = await readFile(new URL('../src/game/game.tsx', import.meta.url), 'utf8');
@@ -166,11 +168,14 @@ test('fills unused inventory capacity with empty plus slots', async () => {
   assert.match(game, /drag\?\.destination\?\.kind === "inventory" && drag\.destination\.index === index/);
   assert.doesNotMatch(game, /data-drop-inventory>/);
 });
-test('uses the shared card inset for log, equipment, and inventory scrollbars', async () => {
+test('uses permanent in-game scrollbars for the log and inventory', async () => {
   const css = await readFile(new URL('../src/ui/style.css', import.meta.url), 'utf8');
-  assert.match(css, /\.log_scroll,\.slot_scroll,\.inventory_scroll \{ height:100%; min-height:0;[^}]*overflow-y:scroll/);
-  assert.doesNotMatch(css, /\.log_scroll,\.slot_scroll,\.inventory_scroll \{[^}]*margin-inline/);
-  assert.match(css, /\.log_scroll::-webkit-scrollbar,\.slot_scroll::-webkit-scrollbar,\.inventory_scroll::-webkit-scrollbar/);
+  assert.match(css, /\.log_scroll,\.inventory_scroll \{ position:relative; height:100%; min-height:0;[^}]*overflow:visible/);
+  assert.match(css, /\.scroll-area__viewport \{[^}]*overflow-x:hidden; overflow-y:scroll/);
+  assert.match(css, /\.scroll-area__track \{ position:absolute; top:0; right:-5px; bottom:0; width:4px;/);
+  assert.match(css, /\.info-panel--primary \.inventory_scroll \.scroll-area__track,\.info-panel__log-card \.log_scroll \.scroll-area__track \{ top:1\.1rem; \}/);
+  assert.match(css, /\.scroll-area__thumb \{ width:4px; min-height:12px;[^}]*background:#e4b85e;/);
+  assert.match(css, /\.slot_scroll \{ height:100%; min-height:0;[^}]*overflow-y:scroll/);
 });
 test('renders transient item drag feedback without intercepting drops', async () => {
   const [game, dragPreview, css] = await Promise.all(['src/game/game.tsx', 'src/game/controls/item-drag-preview.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));

@@ -78,7 +78,7 @@ test("wires UI tooltips to pointer and keyboard focus with accessible descriptio
   assert.match(game, /No stats · Double-click to equip\./);
   assert.match(game, /<Tooltip content="Show movement and ability controls\."/);
   assert.match(game, /<Tooltip content="Show stats, gear, quest, and log\."/);
-  assert.match(titleBar, /<Tooltip content="Time advances with each move\."/);
+  assert.match(titleBar, /<Tooltip content="Time advances 1 per tick\."/);
   assert.match(titleBar, /<Tooltip content="Gold pays for goods\."/);
   assert.match(titleBar, /<Tooltip content="Keys open doors\."/);
   assert.doesNotMatch(titleBar, /titlebar_icon_group/);

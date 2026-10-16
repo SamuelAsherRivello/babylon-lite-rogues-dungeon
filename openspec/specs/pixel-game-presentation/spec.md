@@ -25,7 +25,7 @@ The game SHALL accept WASD and arrow keys as equivalent movement controls, inclu
 - **THEN** one corresponding grid movement request is sent
 
 ### Requirement: Provide mobile eight-way movement
-Portrait SHALL render cardinal movement buttons, ability buttons 1–4, Sneak, and both information panels in the lower content area. The statusbar SHALL provide Control and Info buttons. Control SHALL be selected by default and show the mobile controls; Info SHALL show the information panels in the bottom area. These controls SHALL use the same game action rules as keyboard input. The previous eight-way controller, diagonal buttons, and Brace button SHALL be removed.
+Portrait SHALL render cardinal movement buttons, ability buttons 1–3, Sneak, Quick 1, Quick 2, and Wait in the lower content area. The statusbar SHALL provide Control and Info buttons. Control SHALL be selected by default and show the mobile controls; Info SHALL show the information panels in the bottom area. These controls SHALL use the same game action rules as keyboard input. The previous eight-way controller, diagonal buttons, and Brace button SHALL be removed. Z and C SHALL not have mobile buttons.
 
 #### Scenario: Move with virtual controller
 - **WHEN** the player presses a cardinal arrow
@@ -34,6 +34,14 @@ Portrait SHALL render cardinal movement buttons, ability buttons 1–4, Sneak, a
 #### Scenario: Activate a mobile ability
 - **WHEN** the player presses an available numbered ability button
 - **THEN** the ability currently assigned to that position is requested
+
+#### Scenario: Use a mobile quick slot
+- **WHEN** the player presses Quick 1 or Quick 2
+- **THEN** the corresponding quick-slot use action is requested
+
+#### Scenario: Wait with the mobile controls
+- **WHEN** the player presses Wait
+- **THEN** the game requests one wait action without moving the player
 
 ### Requirement: Display turn and game status
 The titlebar SHALL show the title `Dungeon Roguelite (DR)`, world, Dungeon Level, Time, keys, and gold; the secondary panel SHALL show Minimap, Quest, and Log; and the primary panel SHALL show Resources, Attributes, Abilities, Slots, and Inventory. Statusbar content SHALL be vertically centered within its region. Difficulty SHALL remain hidden. A level-up selection SHALL appear in a modal window while an upgrade choice is pending. Item-decision overlays SHALL be removed.

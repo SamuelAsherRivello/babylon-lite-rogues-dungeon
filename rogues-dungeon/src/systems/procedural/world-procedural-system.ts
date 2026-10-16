@@ -329,11 +329,11 @@ export function generateFloor(level: number, seed = seedNow(), difficulty = leve
       const cell = nextCell(); if (!cell) return;
       add({ id: `${kind}-${index}`, kind, amount: kind === "gold" ? 5 + Math.floor(random() * 16) : 1, x: cell.x, y: cell.y });
     };
-    // Test mode places introductory pickups beside the first start and a chest beside the exit.
+    // Test mode places introductory pickups and a chest beside the level-one entrance.
     // Normal floors use the seeded random layout below.
     const nearStart = (offsets: readonly Position[]) => offsets.map(({ x, y }) => ({ x: start.x + x, y: start.y + y })).find((cell) => !route.has(`${cell.x},${cell.y}`) && claim(cell));
-    const nearExit = (offsets: readonly Position[]) => offsets.map(({ x, y }) => ({ x: exit.x + x, y: exit.y + y })).find(claim);
     if (level1TestMode) {
+      const testChest = nearStart([{ x: -1, y: 0 }, { x: 0, y: -1 }, { x: -1, y: -1 }, { x: -2, y: 0 }]);
       const healthCell = nearStart([{ x: 0, y: 1 }, { x: -1, y: 1 }, { x: 1, y: 1 }, { x: 0, y: 2 }]);
       const manaCell = nearStart([{ x: 2, y: 0 }, { x: 2, y: 1 }, { x: 1, y: 2 }, { x: -1, y: 2 }]);
       const starterKey = nearStart([{ x: -2, y: 2 }, { x: -2, y: -2 }, { x: 2, y: 2 }]);
@@ -342,7 +342,6 @@ export function generateFloor(level: number, seed = seedNow(), difficulty = leve
       if (manaCell) add({ id: "mana-potion", kind: "potion", resource: "mana", ...manaCell });
       if (starterKey) add({ id: "starter-key", kind: "key", amount: 1, ...starterKey });
       if (starterGold) add({ id: "starter-gold", kind: "gold", amount: 10, ...starterGold });
-      const testChest = nearExit([{ x: 0, y: 1 }, { x: 0, y: -1 }, { x: -1, y: 1 }, { x: -1, y: -1 }]);
       if (testChest) add({ id: "test-chest", kind: "chest", opened: false, ...testChest });
     }
     for (let i = 1; i < rooms.length; i++) {
@@ -385,9 +384,16 @@ export function generateFloor(level: number, seed = seedNow(), difficulty = leve
     stairs.forEach(add);
     return {};
   } }]);
-  const decorationCells = shuffledWallDecorationCells(map, random);
-  const decorationCount = Math.max(4, Math.floor(context.cells.flat().filter((cell) => cell.walkable).length / 120));
-  const decorations: WorldDecoration[] = decorationCells.slice(0, decorationCount).map((cell, index) => ({ id: `wall-${index % 3 === 2 ? "trap" : "torch"}-${index + 1}`, kind: index % 3 === 2 ? "trap" : "torch", wallMounted: true, ...cell }));
+  const torchCells = shuffledWallDecorationCells(map, random);
+  const trapCells = shuffledWalkableCells(context.cells, random).filter((cell) => !context.occupiedCells.some((occupied) => occupied.x === cell.x && occupied.y === cell.y));
+  const entranceTrap = level1TestMode ? [{ x: 1, y: 1 }, { x: -1, y: 1 }, { x: 1, y: -1 }, { x: -2, y: 1 }].map(({ x, y }) => ({ x: start.x + x, y: start.y + y })).find((cell) => isWalkable(context, cell.x, cell.y) && !context.occupiedCells.some((occupied) => occupied.x === cell.x && occupied.y === cell.y)) : null;
+  const torchCount = Math.max(3, Math.floor(context.cells.flat().filter((cell) => cell.walkable).length / 180));
+  const trapCount = Math.max(2, Math.floor(context.cells.flat().filter((cell) => cell.walkable).length / 280));
+  const placedTrapCells = entranceTrap ? [entranceTrap, ...trapCells.filter((cell) => cell.x !== entranceTrap.x || cell.y !== entranceTrap.y)].slice(0, trapCount + 1) : trapCells.slice(0, trapCount);
+  const decorations: WorldDecoration[] = [
+    ...torchCells.slice(0, torchCount).map((cell, index) => ({ id: `wall-torch-${index + 1}`, kind: "torch" as const, wallMounted: true, ...cell })),
+    ...placedTrapCells.map((cell, index) => ({ id: `floor-trap-${index + 1}`, kind: "trap" as const, wallMounted: false, ...cell })),
+  ];
   const floor: Floor = { seed, width: FLOOR_WIDTH, height: FLOOR_HEIGHT, cells: context.cells, start, entities: context.entities, decorations, time: 0, level, generatorVersion: GENERATOR_VERSION, generation: { ...context.generation, passes: context.passes } };
   return ensureSemanticCells(floor);
 }
@@ -518,7 +524,8 @@ export function applyAction(campaign: Campaign, action: Action): ActionResult {
     }
     tick(state, events); return { state, events, accepted: true, ticks: 1 };
   }
-  if (action.type === "ability") { if (!Number.isInteger(action.index) || action.index < 0 || action.index >= 3) return reject("invalid-ability-slot"); const abilityId = state.player.abilities[action.index]; const ability = abilityId ? abilityCatalog[abilityId] : null; if (!ability) return reject("empty-ability"); if (state.player.resources.mana.current < ability.manaCost) return reject("insufficient-mana"); const enemy = ability.kind === "wand" ? [...state.floor.entities.filter((entry): entry is Enemy => entry.kind === "enemy" && Math.abs(entry.x - state.player.x) + Math.abs(entry.y - state.player.y) <= ability.range)].sort((a, b) => Math.abs(a.x - state.player.x) + Math.abs(a.y - state.player.y) - Math.abs(b.x - state.player.x) - Math.abs(b.y - state.player.y) || a.id.localeCompare(b.id))[0] : null; if (ability.kind === "wand" && !enemy) return reject("no-valid-target"); changeResource(state, events, "mana", state.player.resources.mana.current - ability.manaCost, "ability"); if (ability.kind === "heal") changeResource(state, events, "health", state.player.resources.health.current + ability.amount, "heal"); else { const target = enemy!; const health = target.resources.health; const damage = integerDamage(ability.damage); const previousHealth = health.current; health.current = Math.max(0, health.current - damage); target.hp = health.current; emit(events, "combat.hit", { target: target.name, targetId: target.id, targetPosition: { x: target.x, y: target.y }, damage, previousHealth, currentHealth: health.current, source: ability.id }, state); if (health.current <= 0) { state.floor.entities = state.floor.entities.filter((entry) => entry.id !== target.id); gainXp(state, events, target.resources.xp.current, "kill"); emit(events, "enemy.defeated", { name: target.name, xp: target.resources.xp.current }, state); } } emit(events, "ability.used", { id: ability.id, title: ability.title, manaCost: ability.manaCost, target: ability.target }, state); tick(state, events); return { state, events, accepted: true, ticks: 1 }; }
+  if (action.type === "ability") { if (!Number.isInteger(action.index) || action.index < 0 || action.index >= 3) return reject("invalid-ability-slot"); const abilityId = state.player.abilities[action.index]; const ability = abilityId ? abilityCatalog[abilityId] : null; if (!ability) return reject("empty-ability"); if (state.player.resources.mana.current < ability.manaCost) return reject("insufficient-mana"); const enemy = ability.kind === "wand" ? [...state.floor.entities.filter((entry): entry is Enemy => entry.kind === "enemy" && Math.abs(entry.x - state.player.x) + Math.abs(entry.y - state.player.y) <= ability.range)].sort((a, b) => Math.abs(a.x - state.player.x) + Math.abs(a.y - state.player.y) - Math.abs(b.x - state.player.x) - Math.abs(b.y - state.player.y) || a.id.localeCompare(b.id))[0] : null; if (ability.kind === "wand" && !enemy) return reject("no-valid-target"); changeResource(state, events, "mana", state.player.resources.mana.current - ability.manaCost, "ability"); emit(events, "ability.used", { id: ability.id, abilityId: ability.id, title: ability.title, manaCost: ability.manaCost, target: ability.target, targetId: enemy?.id, position: { x: state.player.x, y: state.player.y } }, state); return { state, events, accepted: true, ticks: 0 }; }
+  if (action.type === "resolve-ability") { const ability = abilityCatalog[action.abilityId]; if (!ability) return reject("unknown-ability"); if (ability.kind === "heal") changeResource(state, events, "health", state.player.resources.health.current + ability.amount, "heal"); else { const target = state.floor.entities.find((entry): entry is Enemy => entry.kind === "enemy" && entry.id === action.targetId); if (target) { const health = target.resources.health; const damage = integerDamage(ability.damage); const previousHealth = health.current; health.current = Math.max(0, health.current - damage); target.hp = health.current; emit(events, "combat.hit", { target: target.name, targetId: target.id, targetPosition: { x: target.x, y: target.y }, damage, previousHealth, currentHealth: health.current, source: ability.id }, state); if (health.current <= 0) { state.floor.entities = state.floor.entities.filter((entry) => entry.id !== target.id); gainXp(state, events, target.resources.xp.current, "kill"); emit(events, "enemy.defeated", { name: target.name, xp: target.resources.xp.current }, state); } } } tick(state, events); return { state, events, accepted: true, ticks: 1 }; }
   if (action.type === "assign-ability") { const { from, to } = action; if (![from, to].every((index) => Number.isInteger(index) && index >= 0 && index < 3) || from === to) return reject("invalid-ability-slot"); [state.player.abilities[from], state.player.abilities[to]] = [state.player.abilities[to], state.player.abilities[from]]; emit(events, "ability.assignment.changed", { from, to }, state); tick(state, events); return { state, events, accepted: true, ticks: 1 }; }
   if (action.type === "assign-quick-slot") {
     const { index } = action; const slots = state.player.quickSlots!;

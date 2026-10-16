@@ -31,7 +31,7 @@ export function TitleBar({ campaign, visibleCounters, preferences, setPreference
         <Tooltip content="Current dungeon level."><span>Level: {campaign.floor.level ?? campaign.floor.depth ?? 1}</span></Tooltip>
       </span>
       <span className="title-bar__counters">
-        <Tooltip content="Time advances with each move."><span className="title-bar__counter"><span className="title-bar__icon title-bar__icon--time" role="img" aria-label="Time">⏱️</span><span className="title-bar__counter-value">{String(campaign.floor.time).padStart(2, "0")}</span></span></Tooltip>
+        <Tooltip content="Time advances 1 per tick."><span className="title-bar__counter"><span className="title-bar__icon title-bar__icon--time" role="img" aria-label="Time">⏱️</span><span className="title-bar__counter-value">{String(campaign.floor.time).padStart(2, "0")}</span></span></Tooltip>
         <Tooltip content="Gold pays for goods."><span className="title-bar__counter" data-ui-counter="gold"><span className="title-bar__icon title-bar__icon--gold" data-ui-counter-icon="gold" role="img" aria-label="Gold">🪙</span><span className="title-bar__counter-value">{counters.gold}</span></span></Tooltip>
         <Tooltip content="Keys open doors."><span className="title-bar__counter" data-ui-counter="key"><span className="title-bar__icon title-bar__icon--keys" data-ui-counter-icon="key" role="img" aria-label="Keys">🔑</span><span className="title-bar__counter-value">{String(counters.keys).padStart(2, "0")}</span></span></Tooltip>
       </span>

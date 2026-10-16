@@ -32,7 +32,7 @@
     <property name="dangerousFrames" value="1-5"/>
     <property name="pauseMs" type="int" value="3000"/>
     <property name="playback" value="once-pause-repeat"/>
-    <property name="wallMounted" type="bool" value="true"/>
+    <property name="wallMounted" type="bool" value="false"/>
    </properties>
   </object>
  </objectgroup>

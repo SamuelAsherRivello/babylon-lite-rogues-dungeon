@@ -28,7 +28,7 @@ export type Entity = Enemy
   | (Position & { id: string; kind: "discovery"; name?: string })
   | (Position & { id: string; kind: "chest"; opened?: boolean })
   | (Position & { id: string; kind: "item"; item: Item });
-export interface WorldDecoration extends Position { id: string; kind: "torch" | "trap"; wallMounted: true }
+export interface WorldDecoration extends Position { id: string; kind: "torch" | "trap"; wallMounted: boolean }
 export interface Floor {
   seed: number; width: number; height: number; cells: TerrainCell[][]; map?: number[][];
   start: Position; entities: Entity[]; time: number; level: number; depth?: number; generatorVersion?: string;
@@ -58,6 +58,7 @@ export type Action =
   | { type: "toggle-sneak" }
   | { type: "choose-upgrade"; stat: AttributeName }
   | { type: "ability"; index: number }
+  | { type: "resolve-ability"; abilityId: AbilityId; targetId?: string }
   | { type: "assign-ability"; from: number; to: number }
   | { type: "equip"; group: EquipmentGroup; index: number; itemId: string }
   | { type: "unequip"; group: EquipmentGroup; index: number }
@@ -75,7 +76,7 @@ export interface EventFacts {
   realm?: string; itemId?: string; name?: string; item?: string; lootTier?: number; xp?: number;
   action?: string; source?: string | { group: EquipmentGroup; index: number } | { quickSlot: number };
   destination?: string | { group: EquipmentGroup; index: number } | { quickSlot: number }; group?: EquipmentGroup; index?: number; other?: number;
-  id?: string; title?: string; manaCost?: number; targetType?: string; transactionId?: string; actionType?: string; ticks?: number;
+  id?: string; title?: string; manaCost?: number; targetType?: string; transactionId?: string; actionType?: string; ticks?: number; abilityId?: AbilityId;
   error?: string; message?: string; quantity?: number; quickSlot?: number;
 }
 export interface GameEvent { type: string; facts: EventFacts; source?: string; gameTime: number; sequence: number; eventId?: string; transactionId?: string | null; outcome?: string }

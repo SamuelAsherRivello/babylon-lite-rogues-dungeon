@@ -121,7 +121,7 @@ test('places level-one test-mode stairs and starter entities beside the start on
     assert.ok(floor.entities.some((entity) => entity.id === 'starter-key' && entity.kind === 'key'));
     const chest = floor.entities.find((entity) => entity.id === 'test-chest');
     assert.deepEqual(chest && { kind: chest.kind, opened: chest.kind === 'chest' ? chest.opened : undefined }, { kind: 'chest', opened: false });
-    assert.ok(chest && Math.max(Math.abs(chest.x - stairs[0].x), Math.abs(chest.y - stairs[0].y)) === 1);
+    assert.ok(chest && Math.max(Math.abs(chest.x - floor.start.x), Math.abs(chest.y - floor.start.y)) === 1);
     assert.ok(floor.entities.some((entity) => entity.id === 'starter-gold' && entity.kind === 'gold'));
     const testEnemies = floor.entities.filter((entity): entity is Enemy => entity.kind === 'enemy' && entity.id.startsWith('test-'));
     assert.deepEqual(testEnemies.map((entity) => entity.name).sort(), ['Rat', 'Skeleton']);
@@ -257,7 +257,9 @@ test('combat events capture actor positions before enemy removal or player respa
 
   const ability = createCampaign(302); const target = legacyEnemy({ id: 'wand-target', kind: 'enemy', name: 'Cave Rat', x: ability.player.x + 2, y: ability.player.y, hp: 50, damage: 0, xp: 1 });
   ability.floor.map![target.y][target.x] = 0; ability.floor.entities = [target];
-  const abilityHit = applyAction(ability, { type: 'ability', index: 1 }).events.find((event) => event.type === 'combat.hit')!;
+  const cast = applyAction(ability, { type: 'ability', index: 1 });
+  assert.equal(cast.state.floor.time, ability.floor.time);
+  const abilityHit = applyAction(cast.state, { type: 'resolve-ability', abilityId: 'wand', targetId: target.id }).events.find((event) => event.type === 'combat.hit')!;
   assert.equal(abilityHit.facts.targetId, target.id); assert.deepEqual(abilityHit.facts.targetPosition, { x: target.x, y: target.y });
 
   const dying = createCampaign(303); dying.player.resources.health.current = 1; const oldPosition = { x: dying.player.x, y: dying.player.y };
@@ -266,6 +268,30 @@ test('combat events capture actor positions before enemy removal or player respa
   const healthLoss = death.events.find((event) => event.type === 'resource.changed' && event.facts.resource === 'health')!;
   assert.deepEqual(healthLoss.facts.position, { x: oldPosition.x + 1, y: oldPosition.y });
   assert.ok(death.events.some((event) => event.type === 'player.died'));
+});
+
+test('abilities commit Mana before their effect and resolve one tactical turn on completion', () => {
+  const campaign = createCampaign(911); campaign.player.resources.health.current = 10;
+  const mana = campaign.player.resources.mana.current;
+  const cast = applyAction(campaign, { type: 'ability', index: 0 });
+  assert.equal(cast.accepted, true); assert.equal(cast.ticks, 0);
+  assert.equal(cast.state.player.resources.mana.current, mana - 5);
+  assert.equal(cast.state.player.resources.health.current, 10);
+  const completion = applyAction(cast.state, { type: 'resolve-ability', abilityId: 'heal' });
+  assert.equal(completion.ticks, 1); assert.equal(completion.state.floor.time, 1);
+  assert.equal(completion.state.player.resources.health.current, 18);
+});
+
+test('Wand resolves only its locked target and harmlessly completes when it is gone', () => {
+  const campaign = createCampaign(912); const target = legacyEnemy({ id: 'locked-target', kind: 'enemy', name: 'Locked Rat', x: campaign.player.x + 2, y: campaign.player.y, hp: 12, damage: 0, xp: 1 });
+  campaign.floor.map![target.y][target.x] = 0; campaign.floor.entities = [target];
+  const cast = applyAction(campaign, { type: 'ability', index: 1 });
+  cast.state.floor.entities[0].x += 1;
+  const movedHit = applyAction(cast.state, { type: 'resolve-ability', abilityId: 'wand', targetId: target.id });
+  assert.deepEqual(movedHit.events.find((event) => event.type === 'combat.hit')?.facts.targetPosition, { x: target.x + 1, y: target.y });
+  const missing = applyAction(cast.state, { type: 'resolve-ability', abilityId: 'wand', targetId: 'missing-target' });
+  assert.equal(missing.events.some((event) => event.type === 'combat.hit'), false);
+  assert.equal(missing.ticks, 1);
 });
 
 test('enemy damage is deterministic, stamina-scaled, and never reduced below one', () => {
