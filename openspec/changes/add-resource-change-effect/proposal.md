@@ -8,7 +8,8 @@ The permanent green world tint was a successful visual test, but it obscures the
 
 - Remove the permanent `green-tint` compositing layer from the playable world view.
 - Add one-shot rectangular world-view pulses for committed Health and Mana changes.
-- Show red for Health loss, green for Health gain, and purple for either Mana gain or loss.
+- Show red for Health loss, green for Health gain, and purple only for Mana gain; Mana loss has no world-view pulse.
+- Render each pulse as a thicker rectangular wave that contracts from shape 1 to shape 2 over 650 milliseconds, with a slower 1,000-millisecond fade.
 - Keep the pulse inside the playable world view, separate from the HUD and minimap, and preserve existing resource-meter and floating-text behavior.
 
 ## Capabilities

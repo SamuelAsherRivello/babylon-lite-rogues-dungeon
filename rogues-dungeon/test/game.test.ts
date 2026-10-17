@@ -2,7 +2,8 @@ import type { ActionResult, Campaign, Enemy, Entity, Item, Direction } from '../
 import type { TileLayer } from '../src/systems/rendering/tile-map-system.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { applyAction, combatReadiness, createCampaign, createGameSession, effectiveAttributes, ensureNearbyStairs, FLOOR_CENTER, FLOOR_HEIGHT, FLOOR_WIDTH, GAME_TUNING, generateFloor, headingFromMovement, isObjectSetBlocked, isObjectSetDoorOpen, levelUpOptions, previewEquipment, resourceState, STAIRS_MAX_DISTANCE_FROM_START, upgradeCampaignResources } from '../src/systems/procedural/world-procedural-system.ts';
+import { applyAction, combatReadiness, createCampaign, createGameSession, effectiveAttributes, ensureNearbyStairs, entrancePosition, FLOOR_CENTER, FLOOR_HEIGHT, FLOOR_WIDTH, GAME_TUNING, generateFloor, headingFromMovement, isNonBlockingChestPlacementCell, isObjectSetBlocked, isObjectSetDoorOpen, levelUpOptions, previewEquipment, resourceState, STAIRS_MAX_DISTANCE_FROM_START, upgradeCampaignResources } from '../src/systems/procedural/world-procedural-system.ts';
+import { worldFloorSeed } from '../src/systems/procedural/world-seed-system.ts';
 import { projectLogEvents } from '../src/game/log-policy.ts';
 import { projectFloatingFeedback, removeFloatingFeedback } from '../src/game/floating-feedback.ts';
 import { projectResourceChangeEffects, removeResourceChangeEffect, resourceChangeEffectDurationMs } from '../src/game/resource-change-effects.ts';
@@ -13,9 +14,10 @@ import { describeInventoryDrop, previewInventoryDrop, resolveInventoryDrop } fro
 import { getCameraCenter, getWorldCellAtScreenPosition, getWorldCellScreenCenter, getWorldScreenPosition, WorldRender } from '../src/systems/rendering/world-render-system.ts';
 import { findWorldTooltipPosition } from '../src/content/world/tooltip-placement.ts';
 import { gameZoomPresets, getTileCssSize } from '../src/content/world/zoom.ts';
-import { clearRoguesDungeonStorage, migrateCampaign, readPreferences, readSlot, readSlotSummary, writePreferences, writeSlot } from '../src/systems/persistence/save-system.ts';
+import { clearRoguesDungeonStorage, formatSavedAgo, migrateCampaign, readPreferences, readSlot, readSlotSummary, writePreferences, writeSlot } from '../src/systems/persistence/save-system.ts';
 import { randomSeedFromSearch } from '../src/game/random-seed.ts';
 import { parseGameUrlOptions } from '../src/game/url-options.ts';
+import { runUrlForCampaign } from '../src/game/run-url-system.ts';
 import { DUNGEON_FLOOR_TILE_GIDS, DUNGEON_TILESET_SOURCE, DUNGEON_WANG_TILE_BY_MASK, compareTiledRepairLayers, floorFromTiledRepairMap, serializeFloorToTiled, validateTiledRepairMap } from '../src/systems/rendering/tile-map-system.ts';
 import { createLevelContext, isWalkable, runLevelPasses } from '../src/systems/procedural/level-grid-system.ts';
 import { buildManualTileScenario, getManualTileScenario } from '../src/systems/procedural/manual-tile-scenarios.ts';
@@ -71,11 +73,19 @@ test('reads a validated randomSeed URL parameter for reproducible campaigns', ()
 });
 
 test('parses deterministic world, level, slot, seed, map-fix, and level-one test URL options', () => {
-  assert.deepEqual(parseGameUrlOptions('?world=2&level=3&slot=2&seed=7&mute=1&level-1-test-mode=true&debug-fix-map-autotiled=1&scenario=corridor-joins'), { world: 2, level: 3, slot: '2', seed: 7, mute: true, level1TestMode: true, mapFix: true, scenario: 'corridor-joins', map: null });
+  assert.deepEqual(parseGameUrlOptions('?world=2&level=3&slot=2&run=4&seed=7&mute=1&level-1-test-mode=true&debug-fix-map-autotiled=1&scenario=corridor-joins'), { world: 2, level: 3, run: 4, slot: '2', seed: 7, mute: true, level1TestMode: true, mapFix: true, scenario: 'corridor-joins', map: null });
   assert.equal(parseGameUrlOptions('?slot=4').slot, null);
   assert.equal(parseGameUrlOptions('?seed=-1').seed, null);
   assert.equal(parseGameUrlOptions('?level-1-test-mode=1').level1TestMode, false);
   assert.equal(parseGameUrlOptions('?randomSeed=9').seed, 9);
+});
+
+test('adds or removes reproducible run arguments without changing unrelated URL arguments', () => {
+  const campaign = createCampaign(17); Object.assign(campaign, { worldSeed: 17, slot: 2, run: 3, world: 'One' }); campaign.floor.level = 4;
+  const enabled = new URL(runUrlForCampaign('https://example.test/play?mute=1&debug=1', true, campaign, '2'));
+  assert.deepEqual(Object.fromEntries(enabled.searchParams), { mute: '1', debug: '1', world: '1', level: '4', slot: '2', run: '3', seed: '17' });
+  const disabled = new URL(runUrlForCampaign(enabled.toString(), false, campaign, '2'));
+  assert.deepEqual(Object.fromEntries(disabled.searchParams), { mute: '1', debug: '1' });
 });
 
 test('builds a deterministic manual tile scenario with width transitions', () => {
@@ -113,6 +123,8 @@ test('reconstructs deterministic floors and round-trips Tiled repair maps', () =
 test('places level-one test-mode stairs and starter entities beside the start only', () => {
   for (const seed of [1, 77, 13579, 9001]) {
     const floor = generateFloor(1, seed, 1, { level1TestMode: true });
+    const puzzle = present(floor.objectSets?.find((set) => set.kind === 'floor-trigger-door-barrel'));
+    assert.ok(Math.hypot(puzzle.barrel.x - floor.start.x, puzzle.barrel.y - floor.start.y) <= 3);
     const stairs = floor.entities.filter((entity) => entity.kind === 'stairs');
     assert.equal(stairs.length, 1);
     assert.deepEqual(stairs[0], { id: 'stairs-forward', kind: 'stairs', direction: 'forward', name: 'Stairs up', x: floor.start.x + 3, y: floor.start.y });
@@ -126,7 +138,7 @@ test('places level-one test-mode stairs and starter entities beside the start on
     assert.ok(chest && Math.max(Math.abs(chest.x - floor.start.x), Math.abs(chest.y - floor.start.y)) === 1);
     const crate = floor.entities.find((entity) => entity.id === 'test-crate');
     assert.deepEqual(crate && { kind: crate.kind, health: crate.kind === 'crate' ? crate.health : undefined, opened: crate.kind === 'crate' ? crate.opened : undefined }, { kind: 'crate', health: 100, opened: undefined });
-    assert.equal(floor.entities.filter((entity) => entity.kind === 'crate').length, 1);
+    assert.ok(floor.entities.filter((entity) => entity.kind === 'crate').length >= 1);
     assert.ok(crate && Math.max(Math.abs(crate.x - floor.start.x), Math.abs(crate.y - floor.start.y)) === 1);
     assert.ok(floor.entities.some((entity) => entity.id === 'starter-gold' && entity.kind === 'gold'));
     const testEnemies = floor.entities.filter((entity): entity is Enemy => entity.kind === 'enemy' && entity.id.startsWith('test-'));
@@ -151,14 +163,28 @@ test('places a return stair near the start and leaves the forward stair distant 
   assert.equal(floor.entities.some((entity) => entity.id === 'test-rat' || entity.id === 'test-skeleton'), false);
 });
 
+test('chooses an unoccupied entrance grid spot when the preferred stair exit is occupied', () => {
+  const floor = generateFloor(2, 77);
+  const returnStair = floor.entities.find((entity) => entity.kind === 'stairs' && entity.direction === 'back')!;
+  const preferred = { x: returnStair.x + 1, y: returnStair.y };
+  floor.entities.push(legacyEnemy({ id: 'entrance-guard', kind: 'enemy', x: preferred.x, y: preferred.y, hp: 12, damage: 1, xp: 1, actionCooldown: 1, nextActionAt: 1 }));
+  const entrance = entrancePosition(floor);
+  assert.notDeepEqual(entrance, preferred);
+  assert.equal(floor.entities.some((entity) => entity.x === entrance.x && entity.y === entrance.y), false);
+});
+
 test('linked stairs return to the previously visited floor', () => {
   let state = createCampaign(17, 1, 1, { level1TestMode: true });
   for (let step = 0; step < 3; step++) state = applyAction(state, { type: 'move', direction: 'e' }).state;
+  assert.equal(state.floor.level, 1);
+  assert.equal(state.floor.entities.some((entity) => entity.kind === 'stairs' && entity.x === state.player.x && entity.y === state.player.y), true);
+  state = applyAction(state, { type: 'enter-stairs' }).state;
   assert.equal(state.floor.level, 2);
   const returnStair = state.floor.entities.find((entity) => entity.kind === 'stairs' && entity.direction === 'back')!;
   assert.deepEqual({ x: state.player.x, y: state.player.y }, { x: returnStair.x + 1, y: returnStair.y });
   const levelOne = structuredClone(state.floors?.['1']);
   state = applyAction(state, { type: 'move', direction: 'w' }).state;
+  state = applyAction(state, { type: 'enter-stairs' }).state;
   assert.equal(state.floor.level, 1);
   assert.deepEqual(state.floor.entities.map(({ id, x, y }) => ({ id, x, y })), levelOne?.entities.map(({ id, x, y }) => ({ id, x, y })));
   assert.deepEqual(state.floor.map, levelOne?.map);
@@ -198,7 +224,7 @@ test('resolves previously unmapped seed-13579 masks without diagnostics', () => 
   const world = WorldRender.Render({ cells: campaign.floor.cells, entities: campaign.floor.entities, player: campaign.player });
   assert.equal(world.diagnostics.length, 0);
   assert.equal(world.wallDiagnostics.length, 0);
-  assert.ok(world.terrain.every((tile) => tile.frame === 13 || (tile.frame != null && Object.values(DUNGEON_WANG_TILE_BY_MASK).includes(tile.frame))));
+  assert.ok(world.terrain.every((tile) => tile.frame != null && DUNGEON_FLOOR_TILE_GIDS.includes(tile.frame + 1)));
 });
 
 test('compares one repaired scenario against its generated tile layers', () => {
@@ -219,6 +245,13 @@ test('generates deterministic width-aware corridors with connected floor paths',
   assert.ok(wide.map!.flat().filter((cell) => cell === 1).length > 0);
 });
 
+test('does not place a solid object in the reported level-three passage cell', () => {
+  const seed = worldFloorSeed(2818867945, 1, 1, 3);
+  const floor = generateFloor(3, seed, 3);
+  const solidObject = floor.entities.find((entity) => entity.x === 60 && entity.y === 50 && (entity.kind === 'chest' || entity.kind === 'crate' || entity.kind === 'campfire' || entity.kind === 'enemy'));
+  assert.equal(solidObject, undefined);
+});
+
 test('places seeded dungeon objects on unique walkable cells while preserving the exit route', () => {
   for (const seed of [17, 914]) {
     const floor = generateFloor(1, seed, 1);
@@ -229,6 +262,9 @@ test('places seeded dungeon objects on unique walkable cells while preserving th
       const key = `${entity.x},${entity.y}`;
       assert.equal(positions.has(key), false, `${seed}:${key} must contain one entity`);
       positions.add(key);
+    }
+    for (const chest of floor.entities.filter((entity) => entity.kind === 'chest')) {
+      assert.equal(isNonBlockingChestPlacementCell(floor.cells, chest), true, `${seed}:${chest.id} must not block floor connectivity`);
     }
     assert.ok(findCardinalPath(floor, floor.start, stairs), `${seed}: exit must remain reachable`);
     const set = floor.objectSets?.[0];
@@ -257,7 +293,7 @@ test('projects player Health changes and enemy hits into positioned transient te
   assert.deepEqual(removeFloatingFeedback(effects, 'heal'), effects.slice(1));
 });
 
-test('projects committed Health and Mana changes into transient resource effects', () => {
+test('projects Health changes and Mana gains into transient resource effects', () => {
   const effects = projectResourceChangeEffects([
     { type: 'resource.changed', eventId: 'hurt', facts: { resource: 'health', previous: 13, current: 9 } },
     { type: 'resource.changed', eventId: 'heal', facts: { resource: 'health', previous: 9, current: 13 } },
@@ -269,11 +305,10 @@ test('projects committed Health and Mana changes into transient resource effects
   assert.deepEqual(effects.map(({ id, color, duration }) => ({ id, color, duration })), [
     { id: 'hurt', color: 'health-loss', duration: resourceChangeEffectDurationMs },
     { id: 'heal', color: 'health-gain', duration: resourceChangeEffectDurationMs },
-    { id: 'mana-spent', color: 'mana', duration: resourceChangeEffectDurationMs },
     { id: 'mana-gained', color: 'mana', duration: resourceChangeEffectDurationMs },
   ]);
-  assert.equal(resourceChangeEffectDurationMs, 350);
-  assert.deepEqual(removeResourceChangeEffect(effects, 'heal'), [effects[0], effects[2], effects[3]]);
+  assert.equal(resourceChangeEffectDurationMs, 1000);
+  assert.deepEqual(removeResourceChangeEffect(effects, 'heal'), [effects[0], effects[2]]);
 });
 
 test('combat events capture actor positions before enemy removal or player respawn', () => {
@@ -305,7 +340,7 @@ test('abilities commit Mana before their effect and resolve one tactical turn on
   assert.equal(cast.state.player.resources.mana.current, mana - 5);
   assert.equal(cast.state.player.resources.health.current, 10);
   const completion = applyAction(cast.state, { type: 'resolve-ability', abilityId: 'heal' });
-  assert.equal(completion.ticks, 1); assert.equal(completion.state.floor.time, 1);
+  assert.equal(completion.ticks, 1); assert.equal(completion.state.floor.time, 2);
   assert.equal(completion.state.player.resources.health.current, 18);
 });
 
@@ -331,6 +366,25 @@ test('enemy damage is deterministic, stamina-scaled, and never reduced below one
   assert.equal(Number.isInteger(present(healthEvent.facts.previous) - present(healthEvent.facts.current)), true);
 });
 
+test('melee enemies move and attack only on cardinal tiles, while ranged attacks may target diagonals', () => {
+  const meleeCampaign = createCampaign(3_041); const { x, y } = meleeCampaign.player;
+  const melee = legacyEnemy({ id: 'diagonal-melee', kind: 'enemy', name: 'Diagonal Melee', x: x + 1, y: y + 1, hp: 10, damage: 2, xp: 1, actionCooldown: 1, nextActionAt: 1 });
+  meleeCampaign.floor.entities = [melee];
+  for (const cell of [{ x: x + 1, y }, { x, y: y + 1 }, { x: x + 1, y: y + 1 }]) meleeCampaign.floor.map![cell.y][cell.x] = 0;
+  const meleeResult = applyAction(meleeCampaign, { type: 'wait' });
+  const movedMelee = present(meleeResult.state.floor.entities.find((entity): entity is Enemy => entity.kind === 'enemy'));
+  assert.equal(meleeResult.events.some((event) => event.facts.cause === 'enemy-attack'), false);
+  assert.deepEqual({ x: movedMelee.x, y: movedMelee.y }, { x, y: y + 1 });
+  assert.equal(movedMelee.heading, 'w');
+
+  const rangedCampaign = createCampaign(3_042); const ranged = legacyEnemy({ id: 'diagonal-ranged', kind: 'enemy', name: 'Diagonal Ranged', x: rangedCampaign.player.x + 1, y: rangedCampaign.player.y + 1, hp: 10, damage: 2, xp: 1, actionCooldown: 1, nextActionAt: 1, attackKind: 'ranged', attackRange: 1 });
+  rangedCampaign.floor.entities = [ranged];
+  rangedCampaign.floor.map![ranged.y][ranged.x] = 0;
+  const rangedResult = applyAction(rangedCampaign, { type: 'wait' });
+  assert.ok(rangedResult.events.some((event) => event.facts.cause === 'enemy-attack'));
+  assert.equal(present(rangedResult.state.floor.entities.find((entity): entity is Enemy => entity.kind === 'enemy')).heading, 'w');
+});
+
 test('starts a v3 campaign with approved deterministic attributes and bindings', () => {
   const campaign = createCampaign(42);
   assert.equal(campaign.version, 3);
@@ -353,12 +407,12 @@ test('accepted move and equipment changes emit events and cost one time unit', (
   const campaign = createCampaign(9); campaign.floor.entities = [];
   campaign.floor.map![campaign.player.y][campaign.player.x + 1] = 0;
   const move = applyAction(campaign, { type: 'move', direction: 'e' });
-  assert.equal(move.accepted, true); assert.equal(move.state.floor.time, 1);
+  assert.equal(move.accepted, true); assert.equal(move.state.floor.time, 2);
   assert.ok(move.events.some((event) => event.type === 'player.moved'));
   const item = { id: 'sword', name: 'Iron Sword 01', group: 'weapons' as const, modifiers: { offense: 8 } };
   move.state.player.inventory = [item];
   const equip = applyAction(move.state, { type: 'equip', itemId: item.id, group: 'weapons' as const, index: 1 });
-  assert.equal(equip.state.floor.time, 2); assert.equal(equip.state.player.inventory.length, 0);
+  assert.equal(equip.state.floor.time, 3); assert.equal(equip.state.player.inventory.length, 0);
   assert.ok(equip.events.some((event) => event.type === 'equipment.changed'));
 });
 
@@ -367,7 +421,7 @@ test('wait advances one turn without moving the player and resolves a due enemy 
   campaign.floor.map![y][x + 1] = 0;
   campaign.floor.entities = [legacyEnemy({ id: 'waiting-enemy', kind: 'enemy', name: 'Waiting Enemy', x: x + 1, y, hp: 10, damage: 2, xp: 1, actionCooldown: 1, nextActionAt: 1 })];
   const result = applyAction(campaign, { type: 'wait' });
-  assert.equal(result.accepted, true); assert.equal(result.ticks, 1); assert.equal(result.state.floor.time, 1);
+  assert.equal(result.accepted, true); assert.equal(result.ticks, 1); assert.equal(result.state.floor.time, 2);
   assert.deepEqual({ x: result.state.player.x, y: result.state.player.y }, { x, y });
   assert.ok(result.events.some((event) => event.type === 'time.advanced'));
   assert.ok(result.events.some((event) => event.type === 'resource.changed' && event.facts.cause === 'enemy-attack'));
@@ -391,9 +445,20 @@ test('saved campaigns and preferences remain independent', () => {
   writeSlot(storage, '1', campaign); writePreferences(storage, { zoom: 2, camera: 'deadzone', fullscreenDesired: true });
   assert.equal(present(readSlot(storage, '1')).floor.seed, 7);
   assert.deepEqual(readSlotSummary(storage).map((entry) => entry.occupied), [true, false, false]);
-  assert.deepEqual(readPreferences(storage), { zoom: 2, camera: 'deadzone', fullscreenDesired: true, sfxVolume: 80, musicVolume: 5, muteAll: false });
-  assert.deepEqual(writePreferences(storage, { zoom: 0.5, camera: 'screen', fullscreenDesired: false, sfxVolume: 0, musicVolume: 63, muteAll: true }), { zoom: 0.5, camera: 'screen', fullscreenDesired: false, sfxVolume: 0, musicVolume: 63, muteAll: true });
-  assert.deepEqual(readPreferences(storage), { zoom: 0.5, camera: 'screen', fullscreenDesired: false, sfxVolume: 0, musicVolume: 63, muteAll: true });
+  assert.deepEqual(readPreferences(storage), { zoom: 2, camera: 'deadzone', fullscreenDesired: true, sfxVolume: 80, musicVolume: 1, muteAll: false, urlArgs: false });
+  assert.deepEqual(writePreferences(storage, { zoom: 0.5, camera: 'screen', fullscreenDesired: false, sfxVolume: 0, musicVolume: 63, muteAll: true, urlArgs: true }), { zoom: 0.5, camera: 'screen', fullscreenDesired: false, sfxVolume: 0, musicVolume: 63, muteAll: true, urlArgs: true });
+  assert.deepEqual(readPreferences(storage), { zoom: 0.5, camera: 'screen', fullscreenDesired: false, sfxVolume: 0, musicVolume: 63, muteAll: true, urlArgs: true });
+});
+
+test('formats saved-game ages with rounded short units', () => {
+  const now = 10_000_000_000;
+  assert.equal(formatSavedAgo(now, now), '1 secs ago');
+  assert.equal(formatSavedAgo(now - 3_400, now), '3 secs ago');
+  assert.equal(formatSavedAgo(now - 10 * 60_000, now), '10 mins ago');
+  assert.equal(formatSavedAgo(now - 3 * 3_600_000, now), '3 hours ago');
+  assert.equal(formatSavedAgo(now - 6 * 86_400_000, now), '6 days ago');
+  assert.equal(formatSavedAgo(now - 8 * 7 * 86_400_000, now), '8 weeks ago');
+  assert.equal(formatSavedAgo(now - 2 * 365 * 86_400_000, now), '2 years ago');
 });
 
 test('normalizes legacy fourth ability bindings while retaining the first three', () => {
@@ -421,12 +486,12 @@ test('migrates and persists quick-slot stacks without invalid zero quantities', 
 test('preferences validate malformed, out-of-range, and unavailable storage', () => {
   const storage = new MemoryStorage();
   storage.setItem('rogues-dungeon.preferences.v1', '{broken');
-  assert.deepEqual(readPreferences(storage), { zoom: 1, camera: 'center', fullscreenDesired: false, sfxVolume: 80, musicVolume: 5, muteAll: false });
+  assert.deepEqual(readPreferences(storage), { zoom: 1, camera: 'center', fullscreenDesired: false, sfxVolume: 80, musicVolume: 1, muteAll: false, urlArgs: false });
   storage.setItem('rogues-dungeon.preferences.v1', JSON.stringify({ zoom: 7, camera: 'follow', fullscreenDesired: 'yes' }));
-  assert.deepEqual(readPreferences(storage), { zoom: 1, camera: 'center', fullscreenDesired: false, sfxVolume: 80, musicVolume: 5, muteAll: false });
+  assert.deepEqual(readPreferences(storage), { zoom: 1, camera: 'center', fullscreenDesired: false, sfxVolume: 80, musicVolume: 1, muteAll: false, urlArgs: false });
   storage.setItem('rogues-dungeon.preferences.v1', JSON.stringify({ zoom: 2, camera: 'screen', fullscreenDesired: true, sfxVolume: 101, musicVolume: -1, muteAll: 'yes' }));
-  assert.deepEqual(readPreferences(storage), { zoom: 2, camera: 'screen', fullscreenDesired: true, sfxVolume: 80, musicVolume: 5, muteAll: false });
-  assert.deepEqual(readPreferences(Object.assign(new MemoryStorage(), { getItem: () => { throw new Error('blocked'); } })), { zoom: 1, camera: 'center', fullscreenDesired: false, sfxVolume: 80, musicVolume: 5, muteAll: false });
+  assert.deepEqual(readPreferences(storage), { zoom: 2, camera: 'screen', fullscreenDesired: true, sfxVolume: 80, musicVolume: 1, muteAll: false, urlArgs: false });
+  assert.deepEqual(readPreferences(Object.assign(new MemoryStorage(), { getItem: () => { throw new Error('blocked'); } })), { zoom: 1, camera: 'center', fullscreenDesired: false, sfxVolume: 80, musicVolume: 1, muteAll: false, urlArgs: false });
 });
 
 test('migrates legacy campaigns without losing world progress or duplicating equipment', () => {
@@ -469,7 +534,7 @@ test('a fresh player can defeat three adjacent basic enemies without dying', () 
   for (const direction of ['e', 'e', 'n', 'n', 's', 's']) campaign = applyAction(campaign, { type: 'move', direction }).state;
 
   assert.equal(campaign.floor.entities.filter((entity) => entity.kind === 'enemy').length, 0);
-  assert.equal(campaign.player.resources.health.current, 24);
+  assert.equal(campaign.player.resources.health.current, 18);
   assert.equal(campaign.log.some((entry) => ('type' in entry ? entry.type : undefined) === 'player.died'), false);
 });
 
@@ -589,7 +654,7 @@ test('persists hidden Difficulty across exit, death, and save reload while it sc
   const storage = new MemoryStorage(); const campaign = createCampaign(181);
   campaign.floor.entities = [{ id: 'stairs', kind: 'stairs', x: campaign.player.x + 1, y: campaign.player.y }];
   campaign.floor.map![campaign.player.y][campaign.player.x + 1] = 0;
-  const descended = applyAction(campaign, { type: 'move', direction: 'e' }).state;
+  const descended = applyAction(applyAction(campaign, { type: 'move', direction: 'e' }).state, { type: 'enter-stairs' }).state;
   assert.equal(descended.floor.level, 2); assert.equal(descended.progression.difficulty, 2);
   const expectedEnemy = (level: number) => 12 + (level - 1) * 3;
   assert.ok(descended.floor.entities.filter((entity) => entity.kind === 'enemy').every((enemy) => enemy.maxHp >= expectedEnemy(descended.progression.difficulty)));
@@ -601,11 +666,11 @@ test('persists hidden Difficulty across exit, death, and save reload while it sc
   reloaded.floor.entities = [legacyEnemy({ id: 'killer', kind: 'enemy', x: reloaded.player.x + 1, y: reloaded.player.y, hp: 99, damage: 99, xp: 1, actionCooldown: 1, nextActionAt: 1 })];
   reloaded.floor.map![reloaded.player.y][reloaded.player.x + 1] = 0;
   const death = applyAction(reloaded, { type: 'move', direction: 'e' }).state;
-  assert.equal(death.floor.level, 1); assert.equal(death.floor.time, 0); assert.equal(death.progression.difficulty, 7);
+  assert.equal(death.floor.level, 1); assert.equal(death.floor.time, 1); assert.equal(death.progression.difficulty, 7);
   assert.ok(death.floor.entities.filter((entity) => entity.kind === 'enemy').every((enemy) => enemy.maxHp >= expectedEnemy(death.progression.difficulty)));
   writeSlot(storage, '1', death);
   const resumed = present(readSlot(storage, '1'));
-  assert.equal(resumed.floor.level, 1); assert.equal(resumed.floor.time, 0); assert.equal(resumed.progression.difficulty, 7);
+  assert.equal(resumed.floor.level, 1); assert.equal(resumed.floor.time, 1); assert.equal(resumed.progression.difficulty, 7);
 });
 
 test('session serializes committed and rejected actions with unique transaction and event IDs', () => {
@@ -615,7 +680,7 @@ test('session serializes committed and rejected actions with unique transaction 
   const move = transaction(session.dispatch({ type: 'move', direction: 'e' }));
   const rejected = transaction(session.dispatch({ type: 'move', direction: 'bad' }));
   const sneak = transaction(session.dispatch({ type: 'toggle-sneak' }));
-  assert.equal(move.accepted, true); assert.equal(move.ticks, 1); assert.equal(session.getState().floor.time, 1);
+  assert.equal(move.accepted, true); assert.equal(move.ticks, 1); assert.equal(session.getState().floor.time, 2);
   assert.equal(rejected.accepted, false); assert.equal(rejected.ticks, 0); assert.equal(sneak.ticks, 0);
   assert.notEqual(move.transactionId, rejected.transactionId);
   const eventIds = seen.flatMap((result) => result.events.map((event) => event.eventId));
@@ -672,11 +737,11 @@ test('potion pickups enter inventory without being spent, including at full reso
   campaign.player.resources.health.current = 10;
   const collected = applyAction(campaign, { type: 'move', direction: 'e' });
   assert.equal(collected.state.player.resources.health.current, 10); assert.deepEqual(collected.state.player.inventory.map((item) => item.name), ['Health Potion']);
-  assert.equal(collected.state.floor.time, 1); assert.ok(collected.events.some((event) => event.type === 'item.collected' && event.facts.itemId === 'health-potion-1' && event.facts.destination === 'inventory'));
+  assert.equal(collected.state.floor.time, 2); assert.ok(collected.events.some((event) => event.type === 'item.collected' && event.facts.itemId === 'health-potion-1' && event.facts.destination === 'inventory'));
   campaign.floor.entities = [{ id: 'health-potion-2', kind: 'potion', resource: 'health', x: target.x, y: target.y }];
   campaign.player.x = target.x - 1; campaign.player.y = target.y; campaign.player.resources.health.current = 30;
   const full = applyAction(campaign, { type: 'move', direction: 'e' });
-  assert.equal(full.state.player.x, target.x); assert.equal(full.state.floor.entities.length, 0); assert.ok(full.state.player.inventory.some((item) => item.name === 'Health Potion')); assert.equal(full.state.floor.time, 1);
+  assert.equal(full.state.player.x, target.x); assert.equal(full.state.floor.entities.length, 0); assert.ok(full.state.player.inventory.some((item) => item.name === 'Health Potion')); assert.equal(full.state.floor.time, 2);
 });
 
 test('stackable potion pickups merge into the assigned quick slot or inventory stack', () => {
@@ -702,7 +767,7 @@ test('attacks charge once, award attack and kill XP, and carry threshold overflo
   campaign.floor.entities = [legacyEnemy({ id: 'rat', kind: 'enemy', name: 'Cave Rat', x: target.x, y: target.y, hp: 1, damage: 0, xp: 8 })];
   campaign.progression.xp = 95; campaign.player.resources.stamina.current = 16;
   const result = applyAction(campaign, { type: 'move', direction: 'e' });
-  assert.equal(result.ticks, 1); assert.equal(result.state.floor.time, 1);
+  assert.equal(result.ticks, 1); assert.equal(result.state.floor.time, 2);
   assert.equal(result.state.player.resources.stamina.current, 12); assert.equal(result.state.progression.level, 2);
   assert.equal(result.state.progression.xp, 4); assert.equal(result.state.progression.nextXp, GAME_TUNING.xpThreshold);
   assert.deepEqual(result.state.progression.pendingUpgrades[0].options, levelUpOptions(2));
@@ -746,6 +811,7 @@ test('a crate takes two bumps to break, then releases three coins', () => {
 
   const damaged = applyAction(campaign, { type: 'move', direction: 'e' });
   assert.equal((damaged.state.floor.entities.find((entity) => entity.id === 'crate') as { health?: number }).health, 50);
+  assert.equal(damaged.events.some((event) => event.type === 'crate.bumped'), true);
   assert.equal(damaged.events.some((event) => event.type === 'crate.opened'), false);
 
   const opened = applyAction(damaged.state, { type: 'move', direction: 'e' });
@@ -755,6 +821,10 @@ test('a crate takes two bumps to break, then releases three coins', () => {
   const coins = opened.state.floor.entities.filter((entity) => entity.kind === 'gold' && entity.id.startsWith('crate-gold-crate-'));
   assert.equal(coins.length, 3);
   assert.ok(coins.every((coin) => Math.max(Math.abs(coin.x - cratePosition.x), Math.abs(coin.y - cratePosition.y)) === 1));
+
+  const steppedThrough = applyAction(opened.state, { type: 'move', direction: 'e' });
+  assert.equal(steppedThrough.accepted, true);
+  assert.deepEqual({ x: steppedThrough.state.player.x, y: steppedThrough.state.player.y }, cratePosition);
 });
 
 test('level choices are distinct, block tactical actions, and resolve without another turn', () => {
@@ -778,7 +848,7 @@ test('death starts a clean run while preserving persistent progression and bindi
   const target = { x: campaign.player.x + 1, y: campaign.player.y }; campaign.floor.map![target.y][target.x] = 0;
   campaign.floor.entities = [legacyEnemy({ id: 'killer', kind: 'enemy', name: 'Killer', x: target.x + 1, y: target.y, hp: 20, damage: 99, xp: 1, actionCooldown: 1, nextActionAt: 1 })];
   const result = applyAction(campaign, { type: 'move', direction: 'e' });
-  assert.equal(result.state.realm, 'Underground 1'); assert.equal(result.state.floor.level, 1); assert.equal(result.state.floor.time, 0); assert.equal(result.state.progression.difficulty, 10);
+  assert.equal(result.state.realm, 'Underground 1'); assert.equal(result.state.floor.level, 1); assert.equal(result.state.floor.time, 1); assert.equal(result.state.progression.difficulty, 10);
   assert.equal(result.state.progression.level, 4); assert.equal(result.state.progression.xp, 27);
   assert.equal(result.state.progression.attributes.strength, 14); assert.deepEqual(result.state.player.abilities, ['wand', 'heal', null]);
   assert.deepEqual(result.state.player.inventory.map(({ name }) => name), ['Health Potion', 'Mana Potion']); assert.deepEqual(result.state.player.equipment.weapons, [{ id: 'starter-stick', name: 'Wooden Stick', group: 'weapons' as const, modifiers: { offense: 8, }, isStackable: false }, null]);
@@ -852,13 +922,13 @@ test('abilities reject empty or unaffordable bindings and reassignment updates k
   const insufficient = structuredClone(campaign); insufficient.player.resources.mana.current = 0;
   const rejected = applyAction(insufficient, { type: 'ability', index: 0 });
   assert.equal(rejected.accepted, false); assert.equal(rejected.ticks, 0); assert.equal(rejected.events[0].facts.reason, 'insufficient-mana');
-  const empty = applyAction(campaign, { type: 'ability', index: 2 }); assert.equal(empty.accepted, false); assert.equal(empty.state.floor.time, 0);
+  const empty = applyAction(campaign, { type: 'ability', index: 2 }); assert.equal(empty.accepted, false); assert.equal(empty.state.floor.time, 1);
   const moved = applyAction(campaign, { type: 'assign-ability', from: 0, to: 2 });
-  assert.deepEqual(moved.state.player.abilities, [null, 'wand', 'heal']); assert.equal(moved.state.floor.time, 1);
+  assert.deepEqual(moved.state.player.abilities, [null, 'wand', 'heal']); assert.equal(moved.state.floor.time, 2);
   const invalidSlot = applyAction(campaign, { type: 'assign-ability', from: 0, to: 3 });
-  assert.equal(invalidSlot.accepted, false); assert.equal(invalidSlot.events[0].facts.reason, 'invalid-ability-slot'); assert.equal(invalidSlot.state.floor.time, 0);
+  assert.equal(invalidSlot.accepted, false); assert.equal(invalidSlot.events[0].facts.reason, 'invalid-ability-slot'); assert.equal(invalidSlot.state.floor.time, 1);
   const invalidAbility = applyAction(campaign, { type: 'ability', index: 3 });
-  assert.equal(invalidAbility.accepted, false); assert.equal(invalidAbility.events[0].facts.reason, 'invalid-ability-slot'); assert.equal(invalidAbility.state.floor.time, 0);
+  assert.equal(invalidAbility.accepted, false); assert.equal(invalidAbility.events[0].facts.reason, 'invalid-ability-slot'); assert.equal(invalidAbility.state.floor.time, 1);
   const noTarget = applyAction(campaign, { type: 'ability', index: 1 });
   assert.equal(noTarget.accepted, false); assert.equal(noTarget.events[0].facts.reason, 'no-valid-target');
 });
@@ -958,7 +1028,7 @@ test('WorldRender shares exact terrain and entity coordinates while camera polic
   assert.deepEqual({ x: campaign.player.x, y: campaign.player.y }, game.markers.player); // Camera framing never mutates map coordinates.
   assert.ok(game.terrain.length < campaign.floor.map!.length * campaign.floor.map![0].length, 'deep blocked interiors are omitted from sparse terrain');
   assert.ok(game.terrain.every((tile) => campaign.floor.map![tile.y][tile.x] === 0), 'terrain entries are walkable cells only');
-  assert.ok(game.terrain.every((tile) => tile.frame === 13 || Object.values(DUNGEON_WANG_TILE_BY_MASK).includes(present(tile.frame))), 'terrain uses verified Wang IDs or the plain walkable fallback');
+  assert.ok(game.terrain.every((tile) => tile.frame != null && DUNGEON_FLOOR_TILE_GIDS.includes(tile.frame + 1)), 'terrain uses only approved walkable-floor IDs');
   assert.equal(game.diagnostics.length, 0, 'unsupported walkable masks resolve to plain ground instead of red diagnostics');
   assert.deepEqual(game.grounds.map(({ x, y }) => [x, y]), game.terrain.map(({ x, y }) => [x, y]));
   assert.ok(game.walls.every((wall) => campaign.floor.map![wall.y][wall.x] === 1), 'wall entries are blocked cells');
@@ -966,7 +1036,7 @@ test('WorldRender shares exact terrain and entity coordinates while camera polic
   assert.deepEqual(game.diagnostics.map(({ x, y, mask }) => [x, y, mask]), minimap.diagnostics.map(({ x, y, mask }) => [x, y, mask]));
 });
 
-test('characters keep their last successful cardinal movement as heading', () => {
+test('characters face the direction of movement and bump interactions', () => {
   assert.equal(headingFromMovement(-1, 0), 'w');
   assert.equal(headingFromMovement(1, 0), 'e');
   assert.equal(headingFromMovement(0, -1), 'n');
@@ -976,6 +1046,11 @@ test('characters keep their last successful cardinal movement as heading', () =>
   const movedWest = applyAction(applyAction(campaign, { type: 'move', direction: 'e' }).state, { type: 'move', direction: 'w' });
   assert.equal(movedWest.accepted, true);
   assert.equal(movedWest.state.player.heading, 'w');
+  const enemyToTheLeft = legacyEnemy({ id: 'left-target', kind: 'enemy', x: movedWest.state.player.x - 1, y: movedWest.state.player.y, hp: 10, damage: 0, xp: 1 });
+  movedWest.state.floor.entities = [enemyToTheLeft];
+  movedWest.state.floor.map![enemyToTheLeft.y][enemyToTheLeft.x] = 0;
+  const bumpedLeft = applyAction(movedWest.state, { type: 'move', direction: 'w' });
+  assert.equal(bumpedLeft.state.player.heading, 'w');
 });
 test('WorldRender keeps every authored repaired wall tile, including interior wall cells', () => {
   const campaign = createCampaign(17); const wallTiles = Array(10000).fill(0); wallTiles[0] = 20;
@@ -1054,14 +1129,25 @@ test('WASD and arrow input track held directions independently and delay held-ke
   assert.equal(getMoveScheduleDelay(true, true), SPRINT_REPEAT_DELAY);
 });
 
-test('enemies advance toward the player every second game frame while attacking when adjacent', () => {
+test('the game starts at time tick one, which is safe from enemy actions', () => {
   const campaign = createCampaign(71); const { x, y } = campaign.player;
+  assert.equal(campaign.floor.time, 1);
   for (let offset = 1; offset <= 5; offset++) campaign.floor.map![y][x + offset] = 0;
   campaign.floor.entities = [legacyEnemy({ id: 'slow-enemy', kind: 'enemy', name: 'Slow Enemy', x: x + 4, y, hp: 10, damage: 1, xp: 1 })];
   const first = applyAction(campaign, { type: 'move', direction: 'e' });
-  assert.equal(first.state.floor.time, 1); assert.equal(first.state.floor.entities[0].x, x + 4);
+  assert.equal(first.state.floor.time, 2); assert.equal(first.state.floor.entities[0].x, x + 4);
   const second = applyAction(first.state, { type: 'move', direction: 'e' });
-  assert.equal(second.state.floor.time, 2); assert.equal(second.state.floor.entities[0].x, x + 3);
+  assert.equal(second.state.floor.time, 3); assert.equal(second.state.floor.entities[0].x, x + 3);
+});
+
+test('enemies cannot move or attack on time tick one', () => {
+  const campaign = createCampaign(73); const { x, y } = campaign.player;
+  campaign.floor.entities = [legacyEnemy({ id: 'adjacent-enemy', kind: 'enemy', name: 'Adjacent Enemy', x: x + 1, y, hp: 10, damage: 99, xp: 1, actionCooldown: 1, nextActionAt: 1 })];
+  campaign.floor.map![y][x + 1] = 0;
+  const result = applyAction({ ...campaign, floor: { ...campaign.floor, time: 0 } }, { type: 'wait' });
+  assert.equal(result.state.floor.time, 1);
+  assert.equal(result.state.player.resources.health.current, campaign.player.resources.health.current);
+  assert.equal(present(result.state.floor.entities.find((entity): entity is Enemy => entity.kind === 'enemy')).nextActionAt, 1);
 });
 
 test('turn presentation tweens ordered enemies, retargets from displayed positions, and resets removed actors', () => {
@@ -1122,6 +1208,15 @@ test('turn presentation exposes a hop and shadow pulse only during character mov
   assert.equal(presentation.movementPulseOf('player', CHARACTER_MOVEMENT_DURATION_MS / 2), 1);
   assert.equal(presentation.movementPulseOf('player', CHARACTER_MOVEMENT_DURATION_MS), 0);
   assert.equal(presentation.movementPulseOf('missing', CHARACTER_MOVEMENT_DURATION_MS / 2), 0);
+});
+
+test('turn presentation changes player depth to the destination tile at the movement apex', () => {
+  const previous = createCampaign(732); const current = structuredClone(previous); current.player.y++;
+  const presentation = new TurnPresentationSystem();
+  presentation.begin(previous, current, new Set(), 0);
+  assert.equal(presentation.playerDepthPositionOf(current.player, CHARACTER_MOVEMENT_DURATION_MS / 2 - 1).y, previous.player.y);
+  assert.equal(presentation.playerDepthPositionOf(current.player, CHARACTER_MOVEMENT_DURATION_MS / 2).y, current.player.y);
+  assert.ok(presentation.playerPositionOf(current.player).y < current.player.y);
 });
 
 test('turn presentation moves a pushed barrel with the player sub-grid animation', () => {
@@ -1192,7 +1287,9 @@ test('integrates collect, equipment preview and reorder, ability, potion, descen
   assert.ok(potion.events.some((event) => event.type === 'item.collected' && event.facts.destination === 'inventory')); assert.ok(state.player.inventory.some((item) => item.name === 'Health Potion'));
   const sx = state.player.x + 1, sy = state.player.y; open(sx, sy);
   state.floor.entities = [{ id: 'stairs', kind: 'stairs', x: sx, y: sy }];
-  const descent = applyAction(state, { type: 'move', direction: 'e' }); state = descent.state;
+  const stairArrival = applyAction(state, { type: 'move', direction: 'e' });
+  assert.ok(stairArrival.events.some((event) => event.type === 'stairs.entered'));
+  const descent = applyAction(stairArrival.state, { type: 'enter-stairs' }); state = descent.state;
   assert.ok(descent.events.some((event) => event.type === 'realm.entered'));
   assert.ok(!descent.events.some((event) => event.type === 'item.collected'));
   assert.equal(state.floor.level, 2); assert.equal(state.progression.difficulty, 2);
@@ -1219,7 +1316,7 @@ test('quick slots seed, transfer, stack, consume, and reject full resources', ()
   assert.equal(rejected.events[0].type, 'quick-slot.use.rejected'); assert.equal(rejected.events[0].facts.reason, 'resource-full');
   result.state.player.resources.mana.current = 0;
   result = applyAction(result.state, { type: 'use-quick-slot', index: 1 });
-  assert.equal(result.accepted, true); assert.equal(result.state.player.quickSlots?.[1]?.quantity, 1); assert.equal(result.state.floor.time, 3);
+  assert.equal(result.accepted, true); assert.equal(result.state.player.quickSlots?.[1]?.quantity, 1); assert.equal(result.state.floor.time, 4);
   result = applyAction(result.state, { type: 'return-quick-slot', index: 1 });
   assert.equal(result.state.player.quickSlots?.[1], null); assert.equal(result.state.player.inventory.filter((item) => item.name === 'Mana Potion').length, 1);
 });

@@ -98,10 +98,25 @@ test("wires UI tooltips to pointer and keyboard focus with accessible descriptio
 });
 
 test("renders and measures the in-world tooltip after its React node mounts", async () => {
-  const world = await readFile(new URL("../src/systems/rendering/babylon-render-system.tsx", import.meta.url), "utf8");
+  const [world, css] = await Promise.all([
+    readFile(new URL("../src/systems/rendering/babylon-render-system.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/ui/style.css", import.meta.url), "utf8"),
+  ]);
   assert.match(world, /<section ref=\{tooltipRef\} className="world-view__enemy-tooltip"/);
   assert.match(world, /if \(!host \|\| !panel\) return;/);
   assert.match(world, /if \(tooltipRef\.current\) observer\.observe\(tooltipRef\.current\)/);
-  assert.match(world, /<h2>ENEMY: \{hoveredEnemy\.name\}<\/h2>/);
+  assert.match(world, /<h2>Enemy: \{tooltipEnemy\.name\}<\/h2>/);
   assert.match(world, /<h2>RESOURCES<\/h2>/);
+  assert.match(world, /<div className="world-view__enemy-tooltip-portrait-box"><img/);
+  assert.match(css, /\.world-view__enemy-tooltip-section--portrait \{[^}]*grid-template-rows:auto minmax\(0,1fr\)/);
+  assert.match(css, /\.world-view__enemy-tooltip-portrait-box img \{[^}]*width:100%;[^}]*height:100%;[^}]*object-fit:contain/);
+});
+
+test("animates the enemy information panel in and out through the shared UI motion system", async () => {
+  const world = await readFile(new URL("../src/systems/rendering/babylon-render-system.tsx", import.meta.url), "utf8");
+  const motion = await readFile(new URL("../src/ui/ui-transition-system.tsx", import.meta.url), "utf8");
+  assert.match(world, /useUiMotion\("enemy-tooltip", \{ xOffsetPx: tooltipVisible \? 0 : 3, opacity: tooltipVisible \? 1 : 0, depth: 8 \}, 100, tooltipVisible \? easeInCubic : easeOutCubic\)/);
+  assert.match(world, /window\.setTimeout\(\(\) => setTooltipEnemy\(null\), 100\)/);
+  assert.match(motion, /"enemy-tooltip"/);
+  assert.match(motion, /xOffsetPx/);
 });

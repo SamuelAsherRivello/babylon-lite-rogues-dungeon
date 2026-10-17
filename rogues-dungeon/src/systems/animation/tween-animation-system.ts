@@ -1,6 +1,7 @@
 export type TweenEasing = (progress: number) => number;
 
 export const easeOutCubic: TweenEasing = (progress) => 1 - (1 - progress) ** 3;
+export const easeInCubic: TweenEasing = (progress) => progress ** 3;
 
 export interface TweenScheduler {
   now(): number;

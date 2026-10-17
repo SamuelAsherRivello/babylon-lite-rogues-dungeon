@@ -1,8 +1,11 @@
-import type { Campaign, Enemy, Position } from "../../game/types.ts";
+import type { Campaign, Direction, Enemy, Position } from "../../game/types.ts";
 import { easeOutCubic } from "./tween-animation-system.ts";
 
 export const TURN_PLAYBACK_DURATION_MS = 1000;
 export const CHARACTER_MOVEMENT_DURATION_MS = 250;
+export const INTERACTIVE_BUMP_DURATION_MS = CHARACTER_MOVEMENT_DURATION_MS / 2;
+export const INTERACTIVE_BUMP_APEX_MS = INTERACTIVE_BUMP_DURATION_MS / 2;
+export const DAMAGE_REACTION_DURATION_MS = CHARACTER_MOVEMENT_DURATION_MS;
 export const SUB_GRID_MOVEMENT = true;
 
 export interface PresentedEnemy { id: string; from: Position; to: Position; rank: number; startAt: number; endAt: number }
@@ -30,12 +33,15 @@ export class TurnPresentationSystem {
   private motions = new Map<string, SubGridMotion>();
   private active: TurnPlaybackPlan | null = null;
   private floorKey: string | null = null;
+  private bumps = new Map<string, { origin: Position; direction: Position; startAt: number }>();
+  private damageReactions = new Map<string, number>();
+  private headings = new Map<string, Direction>();
 
   constructor(private readonly subGridMovement = SUB_GRID_MOVEMENT) {}
 
   reset(campaign: Campaign) {
     this.floorKey = `${campaign.floor.seed}:${campaign.floor.level}`;
-    this.ranks.clear(); this.nextRank = 0; this.active = null; this.motions.clear();
+    this.ranks.clear(); this.nextRank = 0; this.active = null; this.motions.clear(); this.bumps.clear(); this.damageReactions.clear(); this.headings.clear();
     this.positions = new Map(subGridMovers(campaign).map((mover) => [mover.id, clonePosition(mover)]));
     this.positions.set("player", clonePosition(campaign.player));
   }
@@ -45,6 +51,7 @@ export class TurnPresentationSystem {
     if (this.floorKey !== floorKey) this.reset(previous);
     this.sample(now);
     const before = new Map(subGridMovers(previous).map((mover) => [mover.id, mover]));
+    const beforeEnemies = new Map(enemies(previous).map((enemy) => [enemy.id, enemy]));
     const movers = subGridMovers(current);
     const liveIds = new Set(movers.map((mover) => mover.id));
     for (const id of this.positions.keys()) if (id !== "player" && !liveIds.has(id)) this.positions.delete(id);
@@ -53,6 +60,11 @@ export class TurnPresentationSystem {
     const visible = enemies(current).filter((enemy) => visibleEnemyIds.has(enemy.id));
     for (const enemy of visible) if (!this.ranks.has(enemy.id)) this.ranks.set(enemy.id, this.nextRank++);
     const changed = visible.filter((enemy) => !samePosition(before.get(enemy.id), enemy)).sort((a, b) => this.rankOf(a.id) - this.rankOf(b.id));
+    for (const enemy of enemies(current)) if ((beforeEnemies.get(enemy.id)?.hp ?? enemy.hp) > enemy.hp) this.beginDamageReaction(enemy.id, now);
+    if (previous.player.resources.health.current > current.player.resources.health.current) {
+      const attacker = enemies(current).find((enemy) => beforeEnemies.get(enemy.id)?.nextActionAt !== enemy.nextActionAt && Math.max(Math.abs(current.player.x - enemy.x), Math.abs(current.player.y - enemy.y)) <= 1);
+      if (attacker) this.beginBump(attacker.id, attacker, { x: Math.sign(current.player.x - attacker.x), y: Math.sign(current.player.y - attacker.y) }, now);
+    }
     const duration = changed.length ? TURN_PLAYBACK_DURATION_MS : 0;
     const enemiesToPlay = changed.map((enemy, index) => {
       const from = this.positions.get(enemy.id) ?? (before.has(enemy.id) ? clonePosition(before.get(enemy.id)!) : clonePosition(enemy));
@@ -61,6 +73,7 @@ export class TurnPresentationSystem {
       this.setMotion(enemy.id, entry, now);
       return entry;
     });
+    if (current.player.heading) this.headings.set("player", current.player.heading);
     if (!samePosition(previous.player, current.player)) this.setMotion("player", { from: this.positions.get("player") ?? clonePosition(previous.player), to: clonePosition(current.player), startAt: now, endAt: now + CHARACTER_MOVEMENT_DURATION_MS }, now);
     else if (!this.motions.has("player")) this.positions.set("player", clonePosition(current.player));
     for (const barrel of barrels(current)) {
@@ -83,6 +96,15 @@ export class TurnPresentationSystem {
       this.positions.set(id, { x: motion.from.x + (motion.to.x - motion.from.x) * eased, y: motion.from.y + (motion.to.y - motion.from.y) * eased });
       running = true;
     }
+    for (const [id, bump] of this.bumps) {
+      const elapsed = now - bump.startAt;
+      if (elapsed >= INTERACTIVE_BUMP_DURATION_MS) { this.positions.set(id, clonePosition(bump.origin)); this.bumps.delete(id); continue; }
+      const progress = Math.max(0, elapsed / INTERACTIVE_BUMP_DURATION_MS);
+      const distance = progress <= .5 ? progress : 1 - progress;
+      this.positions.set(id, { x: bump.origin.x + bump.direction.x * distance, y: bump.origin.y + bump.direction.y * distance });
+      running = true;
+    }
+    for (const [id, startedAt] of this.damageReactions) if (now - startedAt >= DAMAGE_REACTION_DURATION_MS) this.damageReactions.delete(id); else running = true;
     if (!running) this.active = null;
     return running;
   }
@@ -93,7 +115,24 @@ export class TurnPresentationSystem {
   }
 
   positionOf(id: string, fallback: Position): Position { return this.positions.get(id) ?? fallback; }
+  beginBump(id: string, origin: Position, direction: Position, now: number) { this.positions.set(id, clonePosition(origin)); this.headings.set(id, direction.x < 0 ? "w" : direction.x > 0 ? "e" : direction.y < 0 ? "n" : "s"); this.bumps.set(id, { origin: clonePosition(origin), direction: clonePosition(direction), startAt: now }); }
+  isBumping(id: string, now: number) { const bump = this.bumps.get(id); return Boolean(bump && now - bump.startAt < INTERACTIVE_BUMP_DURATION_MS); }
+  bumpDepthTieBreakOf(id: string, now: number) { const bump = this.bumps.get(id); return bump && bump.direction.x !== 0 && now - bump.startAt < INTERACTIVE_BUMP_DURATION_MS ? 1 : 0; }
+  bumpApexAt(id: string) { const bump = this.bumps.get(id); return bump ? bump.startAt + INTERACTIVE_BUMP_APEX_MS : null; }
+  beginDamageReaction(id: string, now: number) { this.damageReactions.set(id, now); }
+  damageScaleOf(id: string, now: number) { const start = this.damageReactions.get(id); if (start === undefined) return 1; const progress = Math.max(0, Math.min(1, (now - start) / DAMAGE_REACTION_DURATION_MS)); return 1 - .1 * Math.sin(Math.PI * progress); }
+  headingOf(id: string, fallback: Direction): Direction { return this.headings.get(id) ?? fallback; }
   playerPositionOf(fallback: Position): Position { return this.positionOf("player", fallback); }
+  /**
+   * The player keeps the origin tile's depth while rising, then takes the
+   * destination tile's depth at the movement apex. The sprite position itself
+   * remains continuously interpolated by playerPositionOf().
+   */
+  playerDepthPositionOf(fallback: Position, now: number): Position {
+    const motion = this.motions.get("player");
+    if (!motion || !this.subGridMovement || now < motion.startAt + (motion.endAt - motion.startAt) / 2) return this.playerPositionOf(fallback);
+    return motion.to;
+  }
   /**
    * Returns a renderer-only 0..1 movement pulse. It shares the exact motion
    * interval with the positional tween, so a visual pulse cannot outlive or

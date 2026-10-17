@@ -17,6 +17,8 @@ When the main menu opens, the audio manager begins loading every known music and
 | Type | Event | Asset | Source entry | Intent |
 |---|---|---|---|---|
 | Diegetic | Player moves one tile | `sfx/footstep.ogg` | `sfx100v2_footstep_01.ogg` | Quiet stone step; rate-limited during held movement |
+| Diegetic | Player successfully pushes a barrel | `sfx/barrel-slide.wav` | Procedurally synthesized for Rogue's Dungeon | 0.28-second muted wood-and-stone slide |
+| Diegetic | Player hits a crate | `sfx/crate-hit.wav` | Procedurally synthesized for Rogue's Dungeon | 0.18-second wooden knock |
 | Diegetic | Player hits an enemy | `sfx/weapon_hit.ogg` | `sfx100v2_metal_hit_01.ogg` | Brief weapon impact |
 | Diegetic | Enemy hits the player | `sfx/enemy_hit.ogg` | `sfx100v2_hit_01.ogg` | Muted impact |
 | Diegetic | Enemy is defeated | `sfx/enemy_fall.ogg` | `sfx100v2_hit_02.ogg` | Short defeat cue |
@@ -32,7 +34,7 @@ When the main menu opens, the audio manager begins loading every known music and
 | Non-diegetic | Equipment drop is rejected | `sfx/ui_reject.ogg` | `sfx100v2_switch_02.ogg` | Soft rejection tick |
 | Non-diegetic | Ability activation succeeds | `sfx/ability.ogg` | `sfx100v2_items_01.ogg` | Brief UI confirmation |
 
-Fourteen OGG SFX are selected from rubberduck's **100 CC0 SFX #2** pack on [OpenGameArt](https://opengameart.org/content/100-cc0-sfx-2), licensed CC0. The additional `pickup-click.wav` is the CC0 click by qubodup listed above. The source archives are not shipped; only the listed files are included. Original entry names are recorded to make each selection traceable.
+Fourteen OGG SFX are selected from rubberduck's **100 CC0 SFX #2** pack on [OpenGameArt](https://opengameart.org/content/100-cc0-sfx-2), licensed CC0. The additional `pickup-click.wav` is the CC0 click by qubodup listed above. `barrel-slide.wav` and `crate-hit.wav` are original, procedurally synthesized effects. The source archives are not shipped; only the listed files are included. Original entry names are recorded to make each selection traceable.
 
 ## Music Tracks
 

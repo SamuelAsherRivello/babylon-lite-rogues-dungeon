@@ -20,6 +20,8 @@ export interface TerrainCell { walkable: boolean; role: string; protected?: bool
 export interface Enemy extends Position {
   id: string; kind: "enemy"; name: string; hp: number; maxHp: number; damage: number; xp: number;
   resources: Resources; awareness: number; actionCooldown: number; nextActionAt: number; heading?: CharacterHeading;
+  /** Melee attacks require cardinal adjacency. Ranged attacks may target diagonals within their range. */
+  attackKind?: "melee" | "ranged"; attackRange?: number;
 }
 export type Entity = Enemy
   | (Position & { id: string; kind: "potion"; resource: "health" | "mana"; name?: string })
@@ -28,6 +30,7 @@ export type Entity = Enemy
   | (Position & { id: string; kind: "discovery"; name?: string })
   | (Position & { id: string; kind: "chest"; opened?: boolean })
   | (Position & { id: string; kind: "crate"; health: number; opened?: boolean; openFrame?: 1 | 5 })
+  | (Position & { id: string; kind: "campfire"; name?: string })
   | (Position & { id: string; kind: "item"; item: Item });
 export type ObjectSetRegionRole = "optional-reward" | "exit";
 export interface FloorTriggerDoorBarrelSet {
@@ -51,6 +54,8 @@ export interface QuestItem { id: QuestItemId; title: string; complete: boolean }
 export interface Quest { id: "my-first-quest"; title: "My First Quest"; items: QuestItem[]; activeItemId: QuestItemId | null }
 export interface Campaign {
   version: number; world: string; realm: string; floor: Floor;
+  /** Inputs used to regenerate this run's floors deterministically. */
+  worldSeed?: number; slot?: number; run?: number;
   /** Previously visited floors, keyed by level, so a return stair restores its dungeon. */
   floors?: Record<string, Floor>;
   progression: { attributes: Attributes; level: number; xp: number; nextXp: number; totalKills: number; difficulty: number; pendingUpgrades: { level: number; options: AttributeName[] }[] };
@@ -58,11 +63,13 @@ export interface Campaign {
   starterConsumablesSeeded?: boolean;
   counters: { keys: number; gold: number }; objective: string; quest?: Quest; log: LogEntry[]; savedAt?: number;
 }
-export interface Preferences { zoom: number; camera: "center" | "deadzone" | "screen"; fullscreenDesired: boolean; sfxVolume: number; musicVolume: number; muteAll: boolean }
+export interface Preferences { zoom: number; camera: "center" | "deadzone" | "screen"; fullscreenDesired: boolean; sfxVolume: number; musicVolume: number; muteAll: boolean; urlArgs: boolean }
 export interface StorageAccess { getItem(key: string): string | null; setItem(key: string, value: string): void; removeItem(key: string): void }
 export interface StorageCollection extends StorageAccess { length: number; key(index: number): string | null }
 export type Action =
   | { type: "move"; direction: string; hazardElapsedMs?: number }
+  | { type: "trap-strike"; hazardElapsedMs: number }
+  | { type: "enter-stairs" }
   | { type: "return-barrel"; setId: string }
   | { type: "wait" }
   | { type: "toggle-sneak" }

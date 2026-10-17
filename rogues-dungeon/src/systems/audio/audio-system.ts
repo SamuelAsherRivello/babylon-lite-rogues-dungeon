@@ -32,6 +32,8 @@ export const AUDIO_ASSETS = Object.freeze({
     accepted: `${baseUrl}assets/audio/sfx/ui_accept.ogg`,
     rejected: `${baseUrl}assets/audio/sfx/ui_reject.ogg`,
     ability: `${baseUrl}assets/audio/sfx/ability.ogg`,
+    barrelSlide: `${baseUrl}assets/audio/sfx/barrel-slide.wav`,
+    crateHit: `${baseUrl}assets/audio/sfx/crate-hit.wav`,
   }),
 });
 
@@ -41,14 +43,18 @@ const eventCues: Readonly<Partial<Record<string, keyof typeof AUDIO_ASSETS.sfx>>
   "potion.consumed": "potion",
   "item.collected": "pickupClick",
   "chest.opened": "chest",
+  "crate.bumped": "crateHit",
   "realm.entered": "stairs",
   "ability.used": "ability",
+  "barrel.pushed": "barrelSlide",
 });
 
 const SFX_VOLUME_MULTIPLIERS: Readonly<Partial<Record<keyof typeof AUDIO_ASSETS.sfx, number>>> = Object.freeze({
   footstep: 0.25,
   key: 0.5,
   inventory: 0.5,
+  barrelSlide: 0.45,
+  crateHit: 0.5,
 });
 
 function readVolume(value: unknown, fallback: number) { return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 100 ? value : fallback; }
@@ -76,7 +82,7 @@ function warmAudio(audio: AudioHandle) {
 
 export function createAudioManager({ search = "", createAudio = (src) => new Audio(src), random = Math.random }: { search?: string; createAudio?: (src: string) => AudioHandle; random?: () => number } = {}) {
   const hardMuted = muteFromSearch(search);
-  let preferences = { sfxVolume: 80, musicVolume: 5, muteAll: false };
+  let preferences = { sfxVolume: 80, musicVolume: 1, muteAll: false };
   let musicAudio: AudioHandle | null = null;
   const prewarmedMusic: AudioHandle[] = [];
   const prewarmedSfx = new Map<keyof typeof AUDIO_ASSETS.sfx, AudioHandle[]>();
@@ -89,7 +95,7 @@ export function createAudioManager({ search = "", createAudio = (src) => new Aud
   const setPreferences = (value: Partial<Pick<Preferences, "sfxVolume" | "musicVolume" | "muteAll">> = {}) => {
     preferences = {
       sfxVolume: readVolume(value.sfxVolume, 80),
-      musicVolume: readVolume(value.musicVolume, 5),
+      musicVolume: readVolume(value.musicVolume, 1),
       muteAll: value.muteAll === true,
     };
     if (musicAudio) musicAudio.volume = busMuted("music") ? 0 : preferences.musicVolume / 100;
@@ -116,7 +122,7 @@ export function createAudioManager({ search = "", createAudio = (src) => new Aud
     // canplay here loses that authorization on slower connections.
     prewarm();
     if (cue === "footstep") {
-      if (now - lastFootstepAt < 140) return false;
+      if (now - lastFootstepAt < 90) return false;
       lastFootstepAt = now;
     }
     const handles = prewarmedSfx.get(cue);

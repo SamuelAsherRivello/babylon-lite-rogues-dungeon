@@ -12,6 +12,12 @@ test('fits both landscape and portrait command-desk surfaces', () => {
   for (const layout of [defaultLayout, { orientation: 'portrait' as const, ...aspectRatioPresets.portrait }]) { const fitted = fitViewport(900, 900, layout); assert.ok(fitted.width <= 900 && fitted.height <= 900); assert.equal(fitted.x * 2 + fitted.width, 900); }
   assert.throws(() => validateLayout({ orientation: 'portrait', width: 16, height: 9 }));
 });
+test('recovers a wall-adjacent barrel only when its current and starting cells are both offscreen', async () => {
+  const renderer = await readFile(new URL('../src/systems/rendering/babylon-render-system.tsx', import.meta.url), 'utf8');
+  assert.match(renderer, /const barrelOffscreen = isPositionOffscreen\(set\.barrel, cameraCenter, halfWidth, halfHeight\)/);
+  assert.match(renderer, /const startOffscreen = Boolean\(set\.barrelStart && isPositionOffscreen\(set\.barrelStart, cameraCenter, halfWidth, halfHeight\)\)/);
+  assert.match(renderer, /if \(barrelOffscreen && startOffscreen && isBarrelAdjacentToWall/);
+});
 test('selects aspect by mobile platform signal with a PC-only developer preview override', () => {
   assert.equal(classifyPlatform({ userAgentDataMobile: false, userAgent: 'iPhone' }), 'mobile');
   assert.equal(classifyPlatform({ userAgentDataMobile: false, userAgent: 'Windows NT 10.0' }), 'pc');
@@ -32,6 +38,30 @@ test('keeps the developer aspect override behind the development build flag', as
   const css = await readFile(new URL('../src/ui/style.css', import.meta.url), 'utf8');
   assert.match(css, /\.game-screen\[data-orientation="portrait"\]/);
   assert.doesNotMatch(css, /@media\s*\(max-aspect-ratio|@container\s*\(max-aspect-ratio/);
+});
+test('persists the developer character-pivot overlay and renders it above game art only when enabled', async () => {
+  const [app, game, renderer] = await Promise.all(['../src/ui/App.tsx', '../src/game/game.tsx', '../src/systems/rendering/babylon-render-system.tsx'].map((path) => readFile(new URL(path, import.meta.url), 'utf8')));
+  assert.match(app, /const PIVOT_POINTS_STORAGE_KEY = "rogues-dungeon\.dev\.show-pivot-points"/);
+  assert.match(app, /localStorage\.setItem\(PIVOT_POINTS_STORAGE_KEY, String\(next\)\)/);
+  assert.match(app, /useState\(readShowPivotPoints\)/);
+  assert.match(game, /showPivotPoints=\{showPivotPoints\}/);
+  assert.match(game, /Pivots: \{showPivotPoints \? "On" : "Off"\}/);
+  assert.match(game, /Url: \{urlArgs \? "On" : "Off"\}/);
+  assert.match(game, /setUrlArgs\(!urlArgs\)/);
+  assert.match(game, /MapTest: \{mapTest \? "On" : "Off"\}/);
+  assert.match(game, /const \[mapTest, setMapTest\] = useState\(false\)/);
+  assert.match(game, /<MapTestControls campaign=\{campaign\} \/>/);
+  assert.match(game, /Open Current Map/);
+  assert.match(game, /Open Floor\/Wall Tileset/);
+  assert.match(game, /urlArgs=\{preferences\.urlArgs\} setUrlArgs=\{\(urlArgs\) => setPreference\(\{ urlArgs \}\)\} mapTest=\{mapTest\} setMapTest=\{setMapTest\}/);
+  assert.match(renderer, /showPivotPoints = false/);
+  assert.match(renderer, /pivotMarkerLayer\.order = OVERLAY_RENDER_ORDER \+ 1/);
+  assert.match(renderer, /updatePivotMarkers\(playerPivotMarkers, playerSprite, positionPx, pivotsVisible\)/);
+  assert.match(renderer, /updatePivotMarkers\(actorPivotMarkers\[key\]\[i\], character, positionPx, pivotsVisible\)/);
+  assert.match(renderer, /markers\.forEach\(\(marker\) => updateSprite2D\(marker, \{ positionPx: \[-10000, -10000\] \}\)\)/);
+  assert.match(renderer, /showPivotPoints && <span className="world-view__grid-reticle-code"/);
+  assert.match(renderer, /String\(selectedCell\.y\)\.padStart\(2, "0"\).*String\(selectedCell\.x\)\.padStart\(2, "0"\)/);
+  assert.match(await readFile(new URL('../src/ui/style.css', import.meta.url), 'utf8'), /\.world-view__grid-reticle-code[^}]*color:#f5f1e6/);
 });
 test('loads Libron locally as the global game font', async () => {
   const [app, css, license] = await Promise.all([
@@ -93,6 +123,23 @@ test('centers a new screen-mode page on the player', async () => {
 test('returns to the saved-game menu when a player death event is committed', async () => {
   const game = await readFile(new URL('../src/game/game.tsx', import.meta.url), 'utf8');
   assert.match(game, /event\.type === "player\.died"/); assert.match(game, /returnToMainMenu\(\); return;/);
+  assert.match(game, /setInterval\(\(\) => setSummaryNow\(Date\.now\(\)\), 60_000\)/);
+  assert.match(game, /formatSavedAgo\(entry\.savedAt, summaryNow\)/);
+});
+
+test('saves a running game before returning to the main menu', async () => {
+  const [game, settingsWindow] = await Promise.all(['../src/game/game.tsx', '../src/game/windows/settings-window.tsx'].map((path) => readFile(new URL(path, import.meta.url), 'utf8')));
+  assert.match(settingsWindow, /Save &amp; Quit to Main Menu/);
+  assert.match(game, /const saveAndQuit = useCallback/);
+  assert.match(game, /writeSlot\(localStorage, slot, campaign\);[\s\S]*setSummaries\(readSlotSummary\(localStorage\)\);[\s\S]*returnToMainMenu\(\);/);
+  assert.match(game, /onSaveAndQuit=\{saveAndQuit\}/);
+});
+
+test('saves and quits on Escape during play while Settings keeps Escape for closing the dialog', async () => {
+  const [game, dialog] = await Promise.all(['../src/game/game.tsx', '../src/ui/Dialog.tsx'].map((path) => readFile(new URL(path, import.meta.url), 'utf8')));
+  assert.match(game, /event\.key !== "Escape" \|\| event\.repeat \|\| settings \|\| !campaign \|\| !slot/);
+  assert.match(game, /saveAndQuit\(\);/);
+  assert.match(dialog, /event\.key === "Escape"/);
 });
 
 test('uses randomSeed to seed only a newly selected save slot', async () => {
@@ -203,11 +250,13 @@ test('renders one transient resource pulse over the game view only', async () =>
   assert.match(game, /resourceChangeEffects=\{resourceChangeEffects\}/);
   assert.match(renderer, /!minimap && resourceChangeEffects\.map/);
   assert.match(renderer, /world-view__resource-change-effect--\$\{effect\.color\}/);
-  assert.match(css, /\.world-view__resource-change-effect \{ position:absolute; z-index:1; inset:1rem;[^}]*pointer-events:none;[^}]*animation:world-view-resource-change 350ms/);
+  assert.match(css, /\.world-view__resource-change-effect \{ position:absolute; z-index:1; inset:1rem;[^}]*border:8px solid currentColor;[^}]*box-shadow:0 0 10px currentColor,inset 0 0 8px currentColor;[^}]*pointer-events:none;[^}]*animation:world-view-resource-change 650ms ease-out forwards,world-view-resource-fade 1000ms linear forwards/);
   assert.match(css, /world-view__resource-change-effect--health-loss[^}]*#ff625f/);
   assert.match(css, /world-view__resource-change-effect--health-gain[^}]*#67e879/);
   assert.match(css, /world-view__resource-change-effect--mana[^}]*#b88cff/);
-  assert.match(css, /@keyframes world-view-resource-change \{ to \{ transform:scale\(1\.12\); opacity:0; \} \}/);
+  assert.match(css, /world-view__resource-change-effect \{[^}]*transform:scale\(1\.12\);[^}]*opacity:\.78/);
+  assert.match(css, /@keyframes world-view-resource-change \{ to \{ transform:scale\(1\); \} \}/);
+  assert.match(css, /@keyframes world-view-resource-fade \{ to \{ opacity:0; \} \}/);
 });
 test('renders transient item drag feedback without intercepting drops', async () => {
   const [game, dragPreview, css] = await Promise.all(['src/game/game.tsx', 'src/game/controls/item-drag-preview.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));

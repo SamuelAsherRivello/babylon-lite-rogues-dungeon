@@ -22,19 +22,19 @@ See `proposal.md` for motivation and `specs/world-resource-change-effects/spec.m
 
 ### Project events at the React boundary
 
-The game subscription will convert each committed `resource.changed` event for Health or Mana into a small transient effect record keyed by event ID. The record contains only presentation data: ID, color, and start time or animation lifetime. Timers remove records after 350 milliseconds and are cleared when a session ends.
+The game subscription will convert each committed Health `resource.changed` event and each Mana-gain event into a small transient effect record keyed by event ID. Mana-loss events deliberately create no record, so a Heal action that spends Mana while restoring Health emits only its green Health-gain effect. The record contains only presentation data: ID, color, and start time or animation lifetime. Timers remove records after the 1,000-millisecond fade completes and are cleared when a session ends.
 
 This keeps the game rules and save format unchanged. It also follows the existing floating-feedback and resource-gain projection pattern. Projecting inside the procedural system would couple authoritative rules to CSS presentation.
 
 ### Render CSS rectangular outlines over the main world view
 
-`BabylonWorld` will receive the transient effect records and render an inert overlay element for each main-view effect. CSS will draw a thin rectangular border, animate it from an inset first rectangle to a larger second rectangle, and fade it to transparent in 350 milliseconds. The outline will use a pixel-aligned border and `pointer-events:none`.
+`BabylonWorld` will receive the transient effect records and render an inert overlay element for each main-view effect. CSS will draw a thick, soft-edged rectangular band, animate it from the outer shape 1 to the inner shape 2 in 650 milliseconds, and fade it to transparent over a separate 1,000 milliseconds. The band will use a pixel-aligned border, glow, and `pointer-events:none`.
 
 The overlay keeps the effect independent of Babylon Lite draw state and automatically matches the world-view bounds at every zoom. Rendering through the existing permanent shader layer would require a persistent layer model and makes removal timing less direct. A canvas or WebGPU post-effect is unnecessary for a single border animation.
 
 ### Map event direction to color
 
-Health events use red for a lower current value and green for a higher value. Mana events use purple for both directions, as requested. Events with no current-value change create no effect.
+Health events use red for a lower current value and green for a higher value. Only Mana gains use purple. Mana losses and events with no current-value change create no effect.
 
 ### Delete the test tint as part of the same renderer change
 
@@ -43,7 +43,7 @@ The permanent `gameViewShaderSystem` layer, its renderer invocation, CSS selecto
 ## Risks / Trade-offs
 
 - [Several resource events may arrive in one commit] -> Render one overlay per event so Health and Mana feedback are not lost; overlapping outlines may briefly blend.
-- [A short pulse can be missed at low frame rates] -> Use CSS animation with a 350-millisecond duration, within the requested 200 to 500 millisecond range.
+- [A short pulse can be missed at low frame rates] -> Use a 650-millisecond contraction and a 1,000-millisecond fade so its visual weight persists after the shape motion ends.
 - [A border could cover world interaction] -> Keep it non-interactive and above only the main canvas, never the minimap or HUD.
 - [Stale effects can survive a session switch] -> Clear the transient effect state and timers with the existing session cleanup paths.
 

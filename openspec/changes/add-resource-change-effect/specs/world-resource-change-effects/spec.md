@@ -17,19 +17,19 @@ The game SHALL show one rectangular pulse in the playable world view when a comm
 - **WHEN** a committed resource event raises player Health
 - **THEN** the playable world view shows one green rectangular pulse
 
-### Requirement: Pulse committed player Mana changes
-The game SHALL show one purple rectangular pulse in the playable world view when a committed player Mana change changes its current value, regardless of whether Mana rises or falls.
+### Requirement: Pulse committed player Mana gains
+The game SHALL show one purple rectangular pulse in the playable world view when a committed player Mana change raises its current value. A Mana loss SHALL NOT produce a world-view pulse.
 
 #### Scenario: Player spends Mana
 - **WHEN** a committed resource event lowers player Mana
-- **THEN** the playable world view shows one purple rectangular pulse
+- **THEN** the playable world view shows no resource-change pulse for that Mana event
 
 #### Scenario: Player gains Mana
 - **WHEN** a committed resource event raises player Mana
 - **THEN** the playable world view shows one purple rectangular pulse
 
 ### Requirement: Keep the pulse transient and isolated
-Each pulse SHALL expand once from its initial rectangle to its larger rectangle while fading out over 200 to 500 milliseconds. It SHALL not cover the HUD or minimap, intercept input, advance game time, or persist after its animation completes.
+Each pulse SHALL contract once from the outer rectangle (shape 1 in the approved reference) to the inner rectangle (shape 2) as a thick, soft-edged band over 650 milliseconds. It SHALL fade from its initial opacity to transparent over a separate 1,000 milliseconds, and SHALL remain visible until that fade completes. It SHALL not cover the HUD or minimap, intercept input, or advance game time.
 
 #### Scenario: Pulse finishes
 - **WHEN** a resource pulse reaches the end of its animation

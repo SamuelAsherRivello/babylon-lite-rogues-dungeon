@@ -11,6 +11,20 @@ framework, tool, or platform requires an exact filename.
 
 Any automated browser session that launches or navigates to Rogue's Dungeon must include `?mute=1` so audio stays silent during testing. Keep the public player demo and normal human sessions unmuted.
 
+## World Object Placement
+
+Every persistent world object must be placed by the appropriate world-generation
+pass and follow that object's own placement rules: valid walkable cells,
+reservation/occupancy, protected semantic cells, route restrictions, and any
+object-specific constraints. Do not use a nearby-start fixture as a substitute
+for normal object distribution.
+
+`level1TestMode` may add exactly one additional object instance beside the
+level-one entrance for deterministic manual and automated checks. This is a
+test-only fixture; it supplements, rather than replaces, normal world-pass
+distribution. In particular, crates retain their per-room spawn roll during
+test-mode generation, with one additional crate beside the level-one entrance.
+
 ## Browser verification
 
 Test the live game in all three available browser contexts when a change affects

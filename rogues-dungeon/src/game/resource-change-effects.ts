@@ -1,6 +1,6 @@
 import type { GameEvent } from "./types.ts";
 
-export const resourceChangeEffectDurationMs = 350;
+export const resourceChangeEffectDurationMs = 1000;
 export type ResourceChangeEffectColor = "health-loss" | "health-gain" | "mana";
 export interface ResourceChangeEffect {
   readonly id: string;
@@ -14,7 +14,7 @@ export function projectResourceChangeEffects(events: readonly Pick<GameEvent, "e
     const { current, previous, resource } = event.facts;
     if (typeof current !== "number" || typeof previous !== "number" || current === previous) return [];
     if (resource === "health") return [{ id: event.eventId, color: current > previous ? "health-gain" : "health-loss", duration: resourceChangeEffectDurationMs }];
-    if (resource === "mana") return [{ id: event.eventId, color: "mana", duration: resourceChangeEffectDurationMs }];
+    if (resource === "mana" && current > previous) return [{ id: event.eventId, color: "mana", duration: resourceChangeEffectDurationMs }];
     return [];
   });
 }

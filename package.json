@@ -6,7 +6,7 @@
     "dev": "vite",
     "build": "npm run typecheck && vite build",
     "preview": "vite preview",
-    "test": "node --import tsx --test --test-isolation=none rogues-dungeon/test/page.test.ts rogues-dungeon/test/content.test.ts rogues-dungeon/test/game.test.ts rogues-dungeon/test/audio.test.ts rogues-dungeon/test/tooltip.test.ts rogues-dungeon/test/tween-animation-system.test.ts rogues-dungeon/test/camera-animation-system.test.ts rogues-dungeon/test/world-hazards-system.test.ts",
+    "test": "node --import tsx --test --test-isolation=none rogues-dungeon/test/page.test.ts rogues-dungeon/test/content.test.ts rogues-dungeon/test/game.test.ts rogues-dungeon/test/audio.test.ts rogues-dungeon/test/stair-descent-animation-system.test.ts rogues-dungeon/test/tooltip.test.ts rogues-dungeon/test/tween-animation-system.test.ts rogues-dungeon/test/camera-animation-system.test.ts rogues-dungeon/test/world-hazards-system.test.ts",
     "test:browser": "playwright test --grep @smoke",
     "test:browser:full": "playwright test",
     "typecheck": "tsc -p tsconfig.app.json && tsc -p tsconfig.node.json"

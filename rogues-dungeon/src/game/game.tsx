@@ -13,13 +13,15 @@ interface Movement { direction: string; sprint: boolean; source?: string }
 interface SlotItemProps { type?: string; slotType?: "ability" | "quickslot" | "equipment" | "inventory"; slotSubtype?: EquipmentGroup; number?: number; hotkey?: string; text?: string; icon?: string; cost?: string | number; accentColor?: string; disabled?: boolean; unavailable?: boolean; onClick?: () => void; onDoubleClick?: () => void; className?: string; dragSource?: Record<string, string | number>; dropTarget?: Record<string, string | number | boolean>; empty?: boolean; tooltip?: string }
 interface InventoryStack { item: Item; quantity: number }
 import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { abilityCatalog, attributeLabels, createCampaign, directions, effectiveAttributes, isQuickSlottableItem, resourceState } from "../systems/procedural/world-procedural-system.ts";
+import { abilityCatalog, attributeLabels, createRunCampaign, directions, effectiveAttributes, isQuickSlottableItem, resourceState } from "../systems/procedural/world-procedural-system.ts";
 import { isWalkable } from "../systems/procedural/level-grid-system.ts";
+import { TRAP_CYCLE_MS, trapFrameAt, trapIsDangerous } from "../systems/procedural/world-hazards-system.ts";
 import { describeInventoryDrop } from "./inventory-drag.ts";
 import { gameZoomPresets } from "../content/world/zoom.ts";
 import { projectLogEvents } from "./log-policy.ts";
 import { createAudioManager } from "../systems/audio/audio-system.ts";
 import { createAbilityParticle, createSmokePuff, particleDurationMs, particleExpired, smokePuffDurationMs, type ParticleEffect } from "../systems/animation/particle-effects-system.ts";
+import { projectDamageParticles } from "./damage-particle-projection.ts";
 import { parseGameUrlOptions } from "./url-options.ts";
 import { floorFromTiledRepairMap, serializeFloorToTiled } from "../systems/rendering/tile-map-system.ts";
 import { buildManualTileScenario, getManualTileScenario } from "../systems/procedural/manual-tile-scenarios.ts";
@@ -30,9 +32,11 @@ import { getLatestMovement, getMovementKey, getMoveRepeatDelay, getMoveScheduleD
 import { ControlsArea } from "../ui/ControlsArea.tsx";
 import { useUiMotion, type UiMotionStyle } from "../ui/ui-transition-system.tsx";
 import { getMouseMovementFromSelectedCell, getMousePathFromSelectedCell } from "./mouse-selection.ts";
-import { clearRoguesDungeonStorage, readPreferences, readSlot, readSlotSummary, writePreferences, writeSlot } from "../systems/persistence/save-system.ts";
-import { BabylonWorld, CHEST_COIN_FLIGHT_DURATION_MS, type ChestCoinFlight, type DungeonTheme, type GameViewToUiAnimation } from "../systems/rendering/babylon-render-system.tsx";
-import { TurnPresentationSystem } from "../systems/animation/turn-presentation-system.ts";
+import { clearRoguesDungeonStorage, formatSavedAgo, readPreferences, readSlot, readSlotSummary, readWorldSeed, writePreferences, writeSlot } from "../systems/persistence/save-system.ts";
+import { runUrlForCampaign } from "./run-url-system.ts";
+import { BabylonWorld, type DungeonTheme, type GameViewToUiAnimation } from "../systems/rendering/babylon-render-system.tsx";
+import { ITEM_THROW_DURATION_MS, throwItems, type ItemThrow } from "../systems/animation/item-throw-animation-system.ts";
+import { INTERACTIVE_BUMP_APEX_MS, TurnPresentationSystem } from "../systems/animation/turn-presentation-system.ts";
 import { createQuestGameSession as createGameSession } from "../systems/quests/quest-progression-system.ts";
 import { Tooltip } from "../ui/Tooltip.tsx";
 import { LayoutContext } from "../ui/layout-context.ts";
@@ -98,35 +102,38 @@ function quickSlotAvailable(campaign: Campaign, slot: QuickSlot | null) { const 
 function QuickSlotItem({ campaign, slot, index, drag, dispatch }: { campaign: Campaign; slot: QuickSlot | null; index: number; drag: DragPresentation | null; dispatch(action: Action): unknown }) { const actual = slot?.item && isQuickSlottableItem(slot.item) ? slot.item : null; const available = quickSlotAvailable(campaign, slot); const landing = drag?.destination?.kind === "quick-slot" && drag.destination.index === index; return <SlotItem type="quick" slotType="quickslot" hotkey={index === 0 ? "Q" : "E"} text={actual ? `${actual.name} x ${slot?.quantity ?? 0}` : ""} className={["quick_slot", landing && "drag_landing", drag?.source.kind === "quick-slot" && drag.source.index === index && "drag_departure"].filter(Boolean).join(" ")} dropTarget={{ "data-drop-quick-slot": index }} dragSource={actual ? { "data-drag-kind": "quick-slot", "data-drag-id": actual.id, "data-drag-index": index, "aria-label": `Drag ${actual.name}` } : {}} empty={!actual} unavailable={!available} onClick={available ? () => dispatch({ type: "use-quick-slot", index }) : undefined} tooltip={actual ? `${actual.name}; press ${index === 0 ? "Q" : "E"} to use.` : "Drag a Health Potion or Mana Potion here."} />; }
 export function QuickSlotsView({ campaign, dispatch, drag = null }: WithDispatch & { drag?: DragPresentation | null }) { const slots = campaign.player.quickSlots ?? [null, null]; return <div className="quick_slots_list">{slots.map((slot, index) => <QuickSlotItem key={index} campaign={campaign} slot={slot} index={index} drag={drag} dispatch={dispatch} />)}</div>; }
 export function InventoryViewItems({ campaign, dispatch, drag = null }: WithDispatch & { drag?: DragPresentation | null }) { const stacks = stackInventoryItems(campaign.player.inventory); const emptySlots = Math.max(0, campaign.player.inventoryCapacity - campaign.player.inventory.length); return <ScrollArea className="inventory_scroll">{stacks.map(({ item, quantity }) => { const departure = drag?.source.kind === "inventory" && drag.source.item.id === item.id; const presentation = itemPresentation(item); const displayName = itemDisplayName(item, quantity); return <SlotItem key={item.id} type="inventory" slotType="inventory" text={displayName} icon={presentation.icon} cost={presentation.cost} className={["inventory_item", departure && "drag_departure"].filter(Boolean).join(" ")} onDoubleClick={() => item.category !== "consumable" && dispatch({ type: "equip", itemId: item.id, group: item.group, index: 0 })} dragSource={{ "data-drag-kind": "inventory", "data-drag-id": item.id, "data-inventory-item-id": item.id, "data-inventory-resource": item.consumableResource ?? "", "aria-label": `Drag ${displayName}` }} tooltip={inventoryItemHelp(item)} />; })}{Array.from({ length: emptySlots }, (_, index) => <SlotItem key={`empty-inventory-${index}`} type="inventory" slotType="inventory" className={["inventory_item", drag?.destination?.kind === "inventory" && drag.destination.index === index && "drag_landing"].filter(Boolean).join(" ")} dropTarget={{ "data-drop-inventory-slot": index }} empty disabled tooltip="Empty inventory slot." />)}</ScrollArea>; }
-function MapFixControls({ campaign, slot, onImport, error }: { campaign: Campaign; slot: string | null; onImport(file?: File): void; error: string }) {
-  const exportMap = async () => {
+async function downloadDungeonBundle(entries: Parameters<typeof createStoredZip>[0], name: string) {
+  const bundle = createStoredZip(entries);
+  const url = URL.createObjectURL(bundle); const link = document.createElement("a");
+  link.href = url; link.download = name; link.click(); URL.revokeObjectURL(url);
+}
+async function loadDungeonTilesetAssets() {
+  const base = import.meta.env.BASE_URL;
+  const assetUrl = (path: string) => new URL(`${base}assets/${path}`, window.location.origin).href;
+  const [tileset, image] = await Promise.all([
+    fetch(assetUrl("art/vendors/dungeons-and-pixels-v1.4/tiled-examples/tilesets/tileset-dungeon.tsx")).then((response) => response.ok ? response.text() : Promise.reject(new Error("Dungeon tileset could not be loaded."))),
+    fetch(assetUrl("art/vendors/dungeons-and-pixels-v1.4/tilesets/tileset-dungeon.png")).then((response) => response.ok ? response.arrayBuffer() : Promise.reject(new Error("Dungeon tileset image could not be loaded."))).then((bytes) => new Uint8Array(bytes)),
+  ]);
+  const portableTileset = tileset.replace('source="../../tilesets/tileset-dungeon.png"', 'source="tileset-dungeon.png"');
+  if (portableTileset === tileset) throw new Error("Dungeon tileset image path could not be made portable.");
+  return [["tileset-dungeon.tsx", portableTileset], ["tileset-dungeon.png", image as Uint8Array<ArrayBuffer>]] as Parameters<typeof createStoredZip>[0];
+}
+async function downloadCurrentMap(campaign: Campaign) {
     const name = `rogues-dungeon-world-${campaign.world}-level-${campaign.floor.level}-seed-${campaign.floor.seed}.tmj`;
     const editableMap = serializeFloorToTiled({ campaign });
-    // The bundle keeps the map beside `assets/`, so rewrite the tileset source
-    // to remain valid after extraction anywhere on disk.
-    editableMap.tilesets[0].source = "assets/art/vendors/dungeons-and-pixels-v1.4/tiled-examples/tilesets/tileset-dungeon.tsx";
-    const content = JSON.stringify(editableMap, null, 2);
-    try {
-      const base = import.meta.env.BASE_URL;
-      const assetUrl = (path: string) => new URL(`${base}assets/${path}`, window.location.origin).href;
-      const [tileset, image] = await Promise.all([
-        fetch(assetUrl("tiled-examples/tilesets/tileset-dungeon.tsx")).then((response) => response.ok ? response.text() : Promise.reject(new Error("Dungeon tileset could not be loaded."))),
-        fetch(assetUrl("tilesets/tileset-dungeon.png")).then((response) => response.ok ? response.arrayBuffer() : Promise.reject(new Error("Dungeon tileset image could not be loaded."))).then((bytes) => new Uint8Array(bytes)),
-      ]);
-      const bundle = createStoredZip([
-        [name, content],
-        ["assets/art/vendors/dungeons-and-pixels-v1.4/tiled-examples/tilesets/tileset-dungeon.tsx", tileset],
-        ["assets/art/vendors/dungeons-and-pixels-v1.4/tilesets/tileset-dungeon.png", image],
-      ]);
-      const url = URL.createObjectURL(bundle); const link = document.createElement("a");
-      link.href = url; link.download = name.replace(/\.tmj$/i, ".zip"); link.click(); URL.revokeObjectURL(url);
-    } catch (error) {
-      if (error instanceof Error && error.name === "AbortError") return;
-      const alertMessage = error instanceof Error ? error.message : "Could not create the editable map bundle.";
-      window.alert(alertMessage);
-    }
-  };
+    // The map, TSX, and PNG share the ZIP root, so extracted Tiled projects do
+    // not depend on any repository-specific relative paths.
+    editableMap.tilesets[0].source = "tileset-dungeon.tsx";
+    await downloadDungeonBundle([[name, JSON.stringify(editableMap, null, 2)], ...await loadDungeonTilesetAssets()], name.replace(/\.tmj$/i, ".zip"));
+}
+function MapFixControls({ campaign, slot, onImport, error }: { campaign: Campaign; slot: string | null; onImport(file?: File): void; error: string }) {
+  const exportMap = async () => { try { await downloadCurrentMap(campaign); } catch (error) { window.alert(error instanceof Error ? error.message : "Could not create the editable map bundle."); } };
   return <section className="map_fix_controls" aria-label="Map repair tools"><strong>Map Fix</strong><button tabIndex={-1} type="button" onClick={exportMap}>Open Editable Copy</button><label>Load repaired map<input tabIndex={-1} type="file" accept=".tmj,.json,application/json" onChange={(event) => onImport(event.target.files?.[0])} /></label>{slot && <span>Slot {slot}</span>}{error && <span role="alert">{error}</span>}</section>;
+}
+function MapTestControls({ campaign }: { campaign: Campaign }) {
+  const openCurrentMap = async () => { try { await downloadCurrentMap(campaign); } catch (error) { window.alert(error instanceof Error ? error.message : "Could not create the current map bundle."); } };
+  const openTileset = async () => { try { await downloadDungeonBundle(await loadDungeonTilesetAssets(), "rogues-dungeon-floor-wall-tileset.zip"); } catch (error) { window.alert(error instanceof Error ? error.message : "Could not create the floor/wall tileset bundle."); } };
+  return <section className="map_fix_controls" aria-label="Map test tools"><strong>MapTest</strong><button tabIndex={-1} type="button" onClick={() => void openCurrentMap()}>Open Current Map</button><button tabIndex={-1} type="button" onClick={() => void openTileset()}>Open Floor/Wall Tileset</button></section>;
 }
 const keyboardControlRows = Object.freeze([
   { label: "Abilities:", keys: ["1", "2", "3"] },
@@ -175,7 +182,7 @@ function InputKey({ keyLabel, category = keyboardKeyCategory[keyLabel], mode = "
   const classes = ["input-key", category && `input-key--${category}`, unavailableKey && !colorAvailable && "input-key--unavailable", mode === "feedback" && pressed && "input-key--pressed", mode === "feedback" && pressed && "input-key--active", className].filter(Boolean).join(" ");
   return <kbd className={classes} aria-label={`Keyboard key ${keyLabel}`} aria-disabled={unavailableKey && !available} data-input-mode={mode} onClick={onActivate} onPointerDown={() => available && onPressStart?.(keyLabel)} onPointerUp={() => onPressEnd?.(keyLabel)} onPointerCancel={() => onPressEnd?.(keyLabel)} onPointerEnter={() => onHoverStart?.(keyLabel)} onPointerLeave={() => { onHoverEnd?.(keyLabel); onPressEnd?.(keyLabel); }}>{keyLabel}</kbd>;
 }
-function StatusControls({ campaign, canOverride, orientation, setDeveloperAspect, onTogglePanels, onWait, fps, mobilePanel = "controls", setMobilePanel = () => {}, drag = null }: { campaign: Campaign; canOverride: boolean; orientation: Orientation; setDeveloperAspect(value: Orientation): void; onTogglePanels(): void; onWait(): void; fps: number | null; mobilePanel?: string; setMobilePanel?(value: string): void; drag?: DragPresentation | null }) {
+function StatusControls({ campaign, canOverride, orientation, setDeveloperAspect, onTogglePanels, onWait, fps, urlArgs, setUrlArgs, mapTest, setMapTest, mobilePanel = "controls", setMobilePanel = () => {}, drag = null }: { campaign: Campaign; canOverride: boolean; orientation: Orientation; setDeveloperAspect(value: Orientation): void; onTogglePanels(): void; onWait(): void; fps: number | null; urlArgs: boolean; setUrlArgs(value: boolean): void; mapTest: boolean; setMapTest(value: boolean): void; mobilePanel?: string; setMobilePanel?(value: string): void; drag?: DragPresentation | null }) {
   const { showPivotPoints, setShowPivotPoints } = useContext(LayoutContext);
   const [expanded, setExpanded] = useState(false);
   const [hoveredKey, setHoveredKey] = useState("");
@@ -216,7 +223,7 @@ function StatusControls({ campaign, canOverride, orientation, setDeveloperAspect
         <div className="keyboard_collapsed_controls" aria-hidden={expanded} style={summaryMotion}><div className="keyboard_collapsed_summary" aria-label="Move WASD | Abilities: 123 | Quick: Q E | More ZXC">{collapsedKeyboardGroups.map(({ label, keys }) => <span className="keyboard_collapsed_group" key={label}><span className="status_shortcut"><span>{label}</span>{keys.map((key) => { const role = statusKeyRole(key, label === "Quick:" ? "quick" : label === "Move:" ? "move" : "default"); const available = keyAvailable(key, role); return <InputKey key={key} keyLabel={key} category={role} available={available} colorAvailable={available} onActivate={key === "Z" ? toggleExpanded : key === "C" ? onTogglePanels : undefined} />; })}</span></span>)}</div></div>
         <ControlsArea expanded={expanded} titleVisible={titleVisible} titleText={titleText} onToggle={toggleExpanded}>{keyboardControlRows.map(({ label, keys }) => <div className="keyboard_tray_row" key={label}><div className="keyboard_tray_keys">{keys.map((key) => { const role = statusKeyRole(key, label === "Quick:" ? "quick" : label === "Move:" ? "move" : "default"); const available = keyAvailable(key, role); return <InputKey key={key} keyLabel={key} category={role} mode="feedback" available={available} colorAvailable={available} pressed={pressedKeys.has(key)} className="keyboard_tray_key" onActivate={key === "Z" ? toggleExpanded : key === "X" ? onWait : key === "C" ? onTogglePanels : undefined} onPressStart={(pressedKey) => setPointerPressed(pressedKey, true)} onPressEnd={(pressedKey) => setPointerPressed(pressedKey, false)} {...inputKeyHoverProps} />; })}</div></div>)}</ControlsArea>
       </div>
-      {canOverride && <div className="dev_settings"><span className="dev_settings_label">Dev Settings</span><button tabIndex={-1} onClick={() => setDeveloperAspect(orientation === "landscape" ? "portrait" : "landscape")}>Aspect: {orientation === "landscape" ? "Landscape" : "Portrait"}</button><button tabIndex={-1} type="button" aria-pressed={showPivotPoints} onClick={() => setShowPivotPoints((value) => !value)}>Pivot Points: {showPivotPoints ? "On" : "Off"}</button><output aria-live="off">FPS: {fps ?? "--"}</output></div>}
+      {canOverride && <div className="dev_settings"><span className="dev_settings_label">Dev Settings</span><button tabIndex={-1} onClick={() => setDeveloperAspect(orientation === "landscape" ? "portrait" : "landscape")}>Aspect: {orientation === "landscape" ? "Landscape" : "Portrait"}</button><button tabIndex={-1} type="button" aria-pressed={showPivotPoints} onClick={() => setShowPivotPoints((value) => !value)}>Pivots: {showPivotPoints ? "On" : "Off"}</button><button tabIndex={-1} type="button" aria-pressed={urlArgs} onClick={() => setUrlArgs(!urlArgs)}>Url: {urlArgs ? "On" : "Off"}</button><button tabIndex={-1} type="button" aria-pressed={mapTest} onClick={() => setMapTest(!mapTest)}>MapTest: {mapTest ? "On" : "Off"}</button><output aria-live="off">FPS: {fps ?? "--"}</output></div>}
     </div>
     <div className="mobile_status" role="group" aria-label="Bottom panel"><Tooltip content="Show movement and ability controls."><button tabIndex={-1} type="button" aria-pressed={mobilePanel === "controls"} onClick={() => setMobilePanel("controls")}>Control</button></Tooltip><Tooltip content="Show stats, gear, quest, and log."><button data-ui-pickup-fallback tabIndex={-1} type="button" aria-pressed={mobilePanel === "info"} onClick={() => setMobilePanel("info")}>Info</button></Tooltip></div>
   </StatusBar>;
@@ -224,22 +231,28 @@ function StatusControls({ campaign, canOverride, orientation, setDeveloperAspect
 function itemDropTarget(target: Element | null, campaign: Campaign | null): { destination: DropDestination; targetItem?: Item | null } | null { const quick = target?.closest<HTMLElement>("[data-drop-quick-slot]"); if (quick) { const index = Number(quick.dataset.dropQuickSlot); return { destination: { kind: "quick-slot", index }, targetItem: campaign?.player.quickSlots?.[index]?.item ?? null }; } const slot = target?.closest<HTMLElement>("[data-drop-group]"); if (slot) { const group = slot.dataset.dropGroup as EquipmentGroup; const index = Number(slot.dataset.dropIndex); return { destination: { kind: "slot", group, index }, targetItem: campaign!.player.equipment[group]?.[index] }; } const inventorySlot = target?.closest<HTMLElement>("[data-drop-inventory-slot]"); if (inventorySlot) return { destination: { kind: "inventory", index: Number(inventorySlot.dataset.dropInventorySlot) } }; return null; }
 
 export function Game() {
-  const { orientation, canOverride, setDeveloperAspect } = useContext(LayoutContext);
-  const [summaries, setSummaries] = useState<ReturnType<typeof readSlotSummary>>(() => { try { return readSlotSummary(localStorage); } catch { return ["1", "2", "3"].map((slot) => ({ slot, occupied: false, level: null, xpLevel: null })); } });
-  const [slot, setSlot] = useState<string | null>(null); const [campaign, setCampaign] = useState<Campaign | null>(null); const [worldAlive, setWorldAlive] = useState(false); const [settings, setSettings] = useState(false); const [saveError, setSaveError] = useState(""); const [preview, setPreview] = useState<Attributes | null>(null); const [dragPresentation, setDragPresentation] = useState<DragPresentation | null>(null); const [gains, setGains] = useState<Gains>({}); const [floatingFeedback, setFloatingFeedback] = useState<Feedback[]>([]); const [resourceChangeEffects, setResourceChangeEffects] = useState<ResourceChangeEffect[]>([]); const [particleEffects, setParticleEffects] = useState<ParticleEffect[]>([]); const [chestCoinFlights, setChestCoinFlights] = useState<ChestCoinFlight[]>([]); const [abilityCooldowns, setAbilityCooldowns] = useState<Partial<Record<AbilityId, number>>>({}); const [cameraAnimationToken, setCameraAnimationToken] = useState(0); const [fps, setFps] = useState<number | null>(null);
+  const { orientation, canOverride, showPivotPoints, setDeveloperAspect } = useContext(LayoutContext);
+  const [summaries, setSummaries] = useState<ReturnType<typeof readSlotSummary>>(() => { try { return readSlotSummary(localStorage); } catch { return ["1", "2", "3"].map((slot) => ({ slot, occupied: false, level: null, xpLevel: null, savedAt: undefined })); } });
+  const [summaryNow, setSummaryNow] = useState(() => Date.now());
+  const [slot, setSlot] = useState<string | null>(null); const [campaign, setCampaign] = useState<Campaign | null>(null); const [worldAlive, setWorldAlive] = useState(false); const [stairDepartureStartedAt, setStairDepartureStartedAt] = useState<number | null>(null); const [settings, setSettings] = useState(false); const [menuExiting, setMenuExiting] = useState(false); const [saveError, setSaveError] = useState(""); const [preview, setPreview] = useState<Attributes | null>(null); const [dragPresentation, setDragPresentation] = useState<DragPresentation | null>(null); const [gains, setGains] = useState<Gains>({}); const [floatingFeedback, setFloatingFeedback] = useState<Feedback[]>([]); const [resourceChangeEffects, setResourceChangeEffects] = useState<ResourceChangeEffect[]>([]); const [particleEffects, setParticleEffects] = useState<ParticleEffect[]>([]); const [itemThrows, setItemThrows] = useState<ItemThrow[]>([]); const [abilityCooldowns, setAbilityCooldowns] = useState<Partial<Record<AbilityId, number>>>({}); const [cameraAnimationToken, setCameraAnimationToken] = useState(0); const [fps, setFps] = useState<number | null>(null);
   const [primaryInfoOpen, setPrimaryInfoOpen] = useState(true); const [secondaryInfoOpen, setSecondaryInfoOpen] = useState(true); const [uiAnimations, setUiAnimations] = useState<GameViewToUiAnimation[]>([]); const [pendingUiCredits, setPendingUiCredits] = useState<{ id: string; previous: Campaign }[]>([]);
   const togglePanels = () => { if (primaryInfoOpen && secondaryInfoOpen) setSecondaryInfoOpen(false); else if (primaryInfoOpen) setPrimaryInfoOpen(false); else if (secondaryInfoOpen) setPrimaryInfoOpen(true); else setSecondaryInfoOpen(true); };
-  const [selectedGridSpot, setSelectedGridSpot] = useState<SelectedCell | null>(null); const [mobilePanel, setMobilePanel] = useState("controls");
+  const [selectedGridSpot, setSelectedGridSpot] = useState<SelectedCell | null>(null); const [mobilePanel, setMobilePanel] = useState("controls"); const [mapTest, setMapTest] = useState(false);
   const [dungeonTheme, setDungeonTheme] = useState<DungeonTheme>(1);
   const gainTimers = useRef(new Map<ResourceName, ReturnType<typeof setTimeout>>()); const abilityTimers = useRef(new Set<ReturnType<typeof setTimeout>>()); const abilityCooldownsRef = useRef<Partial<Record<AbilityId, number>>>({}); const sessionGenerationRef = useRef(0);
   const floatingTimers = useRef(new Map<string | undefined, ReturnType<typeof setTimeout>>()); const resourceChangeEffectTimers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   const turnPresentation = useRef(new TurnPresentationSystem()).current;
+  useEffect(() => { if (campaign) return; const interval = window.setInterval(() => setSummaryNow(Date.now()), 60_000); return () => window.clearInterval(interval); }, [campaign]);
   useEffect(() => () => { floatingTimers.current.forEach(clearTimeout); floatingTimers.current.clear(); resourceChangeEffectTimers.current.forEach(clearTimeout); resourceChangeEffectTimers.current.clear(); abilityTimers.current.forEach(clearTimeout); abilityTimers.current.clear(); }, []);
-  const [preferences, setPreferences] = useState<Preferences>(() => { try { return readPreferences(localStorage); } catch { return { zoom: 1, camera: "center", fullscreenDesired: false, sfxVolume: 80, musicVolume: 5, muteAll: false }; } });
+  const [preferences, setPreferences] = useState<Preferences>(() => { try { return readPreferences(localStorage); } catch { return { zoom: 1, camera: "center", fullscreenDesired: false, sfxVolume: 80, musicVolume: 1, muteAll: false, urlArgs: false }; } });
   useEffect(() => { sessionGenerationRef.current++; }, [slot]);
   const [urlOptions] = useState(() => parseGameUrlOptions(window.location.search));
   const randomSeed = urlOptions.seed;
   const [audio] = useState(() => createAudioManager({ search: window.location.search }));
+  useEffect(() => {
+    const next = runUrlForCampaign(window.location.href, preferences.urlArgs, campaign, slot);
+    if (next !== window.location.href) window.history.replaceState(null, "", next);
+  }, [campaign, preferences.urlArgs, slot]);
   useEffect(() => { audio.setPreferences(preferences); }, [audio, preferences]);
   useEffect(() => { void audio.prewarm(); }, [audio]);
   useEffect(() => { const startMusic = () => audio.startMusic(); window.addEventListener("pointerdown", startMusic); window.addEventListener("keydown", startMusic); return () => { window.removeEventListener("pointerdown", startMusic); window.removeEventListener("keydown", startMusic); }; }, [audio]);
@@ -253,7 +266,7 @@ export function Game() {
     if (campaign && previous) for (const entity of previous.floor.entities) {
       const collected = collectedItemIdsRef.current.has(entity.id) || (entity.kind === "item" && collectedItemIdsRef.current.has(entity.item.id));
       if (entity.kind === "crate") continue;
-      if (!collected || campaign.floor.entities.some((current) => current.id === entity.id) || !["item", "potion", "gold", "key"].includes(entity.kind)) continue;
+      if (!collected || campaign.floor.entities.some((current) => current.id === entity.id) || entity.kind === "campfire" || !["item", "potion", "gold", "key"].includes(entity.kind)) continue;
       const id = `${entity.id}:${campaign.floor.time}`;
       const resource = entity.kind === "potion" ? entity.resource : entity.kind === "item" ? entity.item.consumableResource : null;
       const quickSlot = resource ? campaign.player.quickSlots?.findIndex((slot) => slot?.item.consumableResource === resource) ?? -1 : -1;
@@ -262,23 +275,50 @@ export function Game() {
       const target = destination === "counter" ? `[data-ui-counter-icon="${entity.kind}"]` : quickSlot >= 0 ? `[data-drop-quick-slot="${quickSlot}"]` : existingInventoryTarget && resource ? `[data-inventory-resource="${resource}"]` : existingInventoryTarget && entity.kind === "item" ? `[data-inventory-item-id="${entity.item.id}"]` : "[data-drop-inventory-slot=\"0\"]";
       const frame = entity.kind === "gold" ? 3 : entity.kind === "key" ? 5 : entity.kind === "potion" ? entity.resource === "health" ? 6 : 7 : 2;
       audio.playCue(entity.kind === "key" ? "key" : entity.kind === "potion" ? "collect" : "inventory");
-      setUiAnimations((current) => [...current, { id, kind: entity.kind, x: entity.x, y: entity.y, frame, target, destination }]);
+      const mainSizePx = entity.kind === "key" ? 16 : 32;
+      const mainOffsetPx = { x: 0, y: entity.kind === "potion" ? -8 : 0 };
+      setUiAnimations((current) => [...current, { id, kind: entity.kind, x: entity.x, y: entity.y, frame, mainSizePx, mainOffsetPx, target, destination }]);
       setPendingUiCredits((current) => [...current, { id, previous }]);
     }
     collectedItemIdsRef.current.clear();
     campaignRef.current = campaign;
   }, [audio, campaign]);
   const pointerDragRef = useRef<PointerDrag | null>(null);
-  const dispatch = useCallback((action: Action) => { if (action.type === "ability") { const current = sessionRef.current?.getState(); const id = current?.player.abilities[action.index]; if (id && (abilityCooldownsRef.current[id] ?? 0) > performance.now()) return null; const result = sessionRef.current?.dispatch(action); if (result?.accepted && id) { const generation = sessionGenerationRef.current; const cast = result.events.find((event) => event.type === "ability.used"); const origin = cast?.facts.position; if (origin) { const puff = createAbilityParticle(id, origin, cast?.facts.targetId); setParticleEffects((effects) => [...effects.filter((effect) => !particleExpired(effect)), puff]); const resolveTimer = setTimeout(() => { abilityTimers.current.delete(resolveTimer); if (sessionGenerationRef.current !== generation) return; setParticleEffects((effects) => effects.filter((effect) => effect.id !== puff.id)); sessionRef.current?.dispatch({ type: "resolve-ability", abilityId: id, targetId: cast?.facts.targetId }); }, particleDurationMs(puff)); abilityTimers.current.add(resolveTimer); } const until = performance.now() + 1000; abilityCooldownsRef.current = { ...abilityCooldownsRef.current, [id]: until }; setAbilityCooldowns(abilityCooldownsRef.current); const cooldownTimer = setTimeout(() => { abilityTimers.current.delete(cooldownTimer); if (sessionGenerationRef.current !== generation) return; const next = { ...abilityCooldownsRef.current }; delete next[id]; abilityCooldownsRef.current = next; setAbilityCooldowns(next); }, 1000); abilityTimers.current.add(cooldownTimer); } return result; } return sessionRef.current?.dispatch(action); }, []);
   const completeUiAnimation = useCallback((id: string) => {
     setUiAnimations((current) => current.filter((animation) => animation.id !== id));
     setPendingUiCredits((current) => current.filter((credit) => credit.id !== id));
   }, []);
-  const moveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const moveTimer = useRef<ReturnType<typeof setTimeout> | null>(null); const stairDepartureActiveRef = useRef(false);
   const heldMovements = useRef(new Map<string, { direction: Direction }>());
   const heldShift = useRef(new Set<string>());
   const mouseMovement = useRef<Movement | null>(null);
   const previousSelectedGridSpot = useRef<SelectedCell | null>(null);
+  const dispatch = useCallback((action: Action) => { if (stairDepartureActiveRef.current) return null; if (action.type === "move" && !Number.isFinite(action.hazardElapsedMs)) action = { ...action, hazardElapsedMs: performance.now() }; if (action.type === "move") { const current = sessionRef.current?.getState(); const direction = directions[action.direction as Direction]; const now = performance.now(); if (current && turnPresentation.isBumping("player", now)) return null; if (current && direction) { const [dx, dy] = direction; const target = current.floor.entities.find((entity) => entity.x === current.player.x + dx && entity.y === current.player.y + dy); if (target && (target.kind === "enemy" || target.kind === "crate" && !target.opened || target.kind === "chest" && !target.opened)) { turnPresentation.beginBump("player", current.player, { x: dx, y: dy }, now); const generation = sessionGenerationRef.current; const timer = setTimeout(() => { abilityTimers.current.delete(timer); if (generation === sessionGenerationRef.current) sessionRef.current?.dispatch(action); }, INTERACTIVE_BUMP_APEX_MS); abilityTimers.current.add(timer); return { accepted: true, events: [], state: current, ticks: 0 }; } } } if (action.type === "ability") { const current = sessionRef.current?.getState(); const id = current?.player.abilities[action.index]; if (id && (abilityCooldownsRef.current[id] ?? 0) > performance.now()) return null; const result = sessionRef.current?.dispatch(action); if (result?.accepted && id) { const generation = sessionGenerationRef.current; const cast = result.events.find((event) => event.type === "ability.used"); const origin = cast?.facts.position; if (origin) { const puff = createAbilityParticle(id, origin, cast?.facts.targetId); setParticleEffects((effects) => [...effects.filter((effect) => !particleExpired(effect)), puff]); const resolveTimer = setTimeout(() => { abilityTimers.current.delete(resolveTimer); if (sessionGenerationRef.current !== generation) return; setParticleEffects((effects) => effects.filter((effect) => effect.id !== puff.id)); sessionRef.current?.dispatch({ type: "resolve-ability", abilityId: id, targetId: cast?.facts.targetId }); }, particleDurationMs(puff)); abilityTimers.current.add(resolveTimer); } const until = performance.now() + 1000; abilityCooldownsRef.current = { ...abilityCooldownsRef.current, [id]: until }; setAbilityCooldowns(abilityCooldownsRef.current); const cooldownTimer = setTimeout(() => { abilityTimers.current.delete(cooldownTimer); if (sessionGenerationRef.current !== generation) return; const next = { ...abilityCooldownsRef.current }; delete next[id]; abilityCooldownsRef.current = next; setAbilityCooldowns(next); }, 1000); abilityTimers.current.add(cooldownTimer); } return result; } const result = sessionRef.current?.dispatch(action); if (action.type === "move" && result?.accepted) { const trap = result.state.floor.decorations?.find((decoration) => decoration.kind === "trap" && decoration.x === result.state.player.x && decoration.y === result.state.player.y); if (trap && trapIsDangerous(trapFrameAt(action.hazardElapsedMs!))) trapStrikeRef.current = `${result.state.floor.seed}:${trap.id}:${Math.floor(action.hazardElapsedMs! / TRAP_CYCLE_MS)}`; } return result; }, [turnPresentation]);
+  const trapStrikeRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!campaign) return;
+    const strikeWhenSpikesRise = () => {
+      const elapsedMs = performance.now();
+      const trap = campaign.floor.decorations?.find((decoration) => decoration.kind === "trap" && decoration.x === campaign.player.x && decoration.y === campaign.player.y);
+      const key = trap && trapIsDangerous(trapFrameAt(elapsedMs)) ? `${campaign.floor.seed}:${trap.id}:${Math.floor(elapsedMs / TRAP_CYCLE_MS)}` : null;
+      if (key === trapStrikeRef.current) return;
+      trapStrikeRef.current = key;
+      if (key) dispatch({ type: "trap-strike", hazardElapsedMs: elapsedMs });
+    };
+    strikeWhenSpikesRise();
+    const timer = window.setInterval(strikeWhenSpikesRise, 25);
+    return () => window.clearInterval(timer);
+  }, [campaign, dispatch]);
+  const completeStairDeparture = useCallback(() => { stairDepartureActiveRef.current = false; setStairDepartureStartedAt(null); dispatch({ type: "enter-stairs" }); }, [dispatch]);
+  const playStairDescentStep = useCallback(() => { audio.playCue("footstep", performance.now()); }, [audio]);
+  const stairArrivalCampaignRef = useRef<Campaign | null>(null);
+  useEffect(() => {
+    const previous = stairArrivalCampaignRef.current;
+    stairArrivalCampaignRef.current = campaign;
+    if (!previous || previous.floor.seed !== campaign?.floor.seed || (previous.player.x === campaign?.player.x && previous.player.y === campaign?.player.y)) return;
+    const stair = campaign?.floor.entities.find((entity) => entity.kind === "stairs" && entity.x === campaign.player.x && entity.y === campaign.player.y);
+    if (stair) { stairDepartureActiveRef.current = true; setStairDepartureStartedAt(performance.now()); }
+  }, [campaign]);
   const activeMovement = useRef<Movement | null>(null);
   const selectedMousePath = getMousePathFromSelectedCell(selectedGridSpot, campaign);
   const selectedCellReachable = selectedGridSpot ? selectedMousePath !== null : null;
@@ -287,9 +327,29 @@ export function Game() {
     heldMovements.current.clear(); heldShift.current.clear(); mouseMovement.current = null; activeMovement.current = null;
     pointerDragRef.current = null; sessionGenerationRef.current++; sessionRef.current = null;
     gainTimers.current.forEach(clearTimeout); gainTimers.current.clear(); abilityTimers.current.forEach(clearTimeout); abilityTimers.current.clear(); abilityCooldownsRef.current = {}; setAbilityCooldowns({}); setGains({});
-    floatingTimers.current.forEach(clearTimeout); floatingTimers.current.clear(); resourceChangeEffectTimers.current.forEach(clearTimeout); resourceChangeEffectTimers.current.clear(); setFloatingFeedback([]); setResourceChangeEffects([]); setParticleEffects([]); setChestCoinFlights([]); setUiAnimations([]); setPendingUiCredits([]);
-    setSelectedGridSpot(null); setPreview(null); setDragPresentation(null); setSettings(false); setWorldAlive(false); setCampaign(null); setSlot(null);
+    floatingTimers.current.forEach(clearTimeout); floatingTimers.current.clear(); resourceChangeEffectTimers.current.forEach(clearTimeout); resourceChangeEffectTimers.current.clear(); setFloatingFeedback([]); setResourceChangeEffects([]); setParticleEffects([]); setItemThrows([]); setUiAnimations([]); setPendingUiCredits([]);
+    setSelectedGridSpot(null); setPreview(null); setDragPresentation(null); setSettings(false); setMenuExiting(false); setWorldAlive(false); setCampaign(null); setSlot(null);
   }, []);
+  const saveAndQuit = useCallback(() => {
+    if (!campaign || !slot) return;
+    try {
+      writeSlot(localStorage, slot, campaign);
+      setSummaries(readSlotSummary(localStorage));
+      setSaveError("");
+      returnToMainMenu();
+    } catch {
+      setSaveError("Saving is unavailable in this browser session.");
+    }
+  }, [campaign, returnToMainMenu, slot]);
+  useEffect(() => {
+    const saveAndQuitWithEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.repeat || settings || !campaign || !slot) return;
+      event.preventDefault();
+      saveAndQuit();
+    };
+    window.addEventListener("keydown", saveAndQuitWithEscape);
+    return () => window.removeEventListener("keydown", saveAndQuitWithEscape);
+  }, [campaign, saveAndQuit, settings, slot]);
   const syncMovement = useCallback((immediate = true, continuing = false) => {
     if (!worldAlive) return;
     const keyboard = getLatestMovement(heldMovements.current, heldShift.current.size > 0);
@@ -381,7 +441,100 @@ export function Game() {
     if (settings) clearHeldInput();
     return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); window.removeEventListener("blur", clearHeldInput); };
   }, [campaign, dispatch, settings, syncMovement, worldAlive]);
-  const begin = (id: string, repairedFloor: Floor | null = null) => { let existing = null; try { existing = readSlot(localStorage, id); } catch { setSaveError("This saved game is unavailable. Its data was left unchanged."); setSummaries(readSlotSummary(localStorage)); return; } floatingTimers.current.forEach(clearTimeout); floatingTimers.current.clear(); resourceChangeEffectTimers.current.forEach(clearTimeout); resourceChangeEffectTimers.current.clear(); setFloatingFeedback([]); setResourceChangeEffects([]); setParticleEffects([]); setChestCoinFlights([]); setSelectedGridSpot(null); if (preferences.fullscreenDesired && !document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {}); const freshTestCampaign = createCampaign(randomSeed ?? undefined, urlOptions.level, urlOptions.level, { level1TestMode: urlOptions.level1TestMode }); const initial = urlOptions.level1TestMode ? freshTestCampaign : existing ?? freshTestCampaign; if (!existing || urlOptions.level1TestMode) initial.world = urlOptions.world === 1 ? "One" : String(urlOptions.world); const scenario = urlOptions.mapFix ? getManualTileScenario(urlOptions.scenario) : null; const manualFloor = scenario ? buildManualTileScenario(scenario.name, randomSeed ?? 13579, urlOptions.level) : null; if (manualFloor && !repairedFloor) { initial.floor = structuredClone(manualFloor); initial.player.x = manualFloor.start.x; initial.player.y = manualFloor.start.y; initial.realm = `Debug ${manualFloor.scenario}`; } if (repairedFloor) { initial.floor = structuredClone(repairedFloor); initial.player.x = repairedFloor.start.x; initial.player.y = repairedFloor.start.y; initial.realm = `Underground ${repairedFloor.level}`; } const session = createGameSession(initial, { onCommit: (result) => { try { writeSlot(localStorage, id, result.state); setSummaries(readSlotSummary(localStorage)); setSaveError(""); } catch (error) { setSaveError("Saving is unavailable in this browser session."); session.publish("campaign.save.failed", { message: error instanceof Error ? error.message : String(error) }); } } }); session.subscribe((result) => { if (!result.accepted && !result.system && !result.events.some((event) => event.type === "quick-slot.use.rejected")) return; audio.playEvents(result.events); const openedChest = result.events.find((event) => event.type === "chest.opened" && typeof event.facts.id === "string" && event.facts.position && typeof event.facts.position === "object")?.facts; if (openedChest?.id && openedChest.position && typeof openedChest.position === "object") { const from = openedChest.position as { x: number; y: number }; const flights = result.state.floor.entities.filter((entity) => entity.kind === "gold" && entity.id.startsWith(`chest-gold-${openedChest.id}-`)).map((coin) => ({ id: coin.id, from, to: { x: coin.x, y: coin.y }, startedAt: performance.now() })); setChestCoinFlights(flights); const timer = setTimeout(() => setChestCoinFlights([]), CHEST_COIN_FLIGHT_DURATION_MS); abilityTimers.current.add(timer); } if (result.events.some((event) => event.type === "resource.changed" && event.facts.resource === "health" && event.facts.cause === "enemy-attack" && event.facts.current! < event.facts.previous!)) setCameraAnimationToken((token) => token + 1); for (const event of result.events) if (event.type === "item.collected" && typeof event.facts.itemId === "string") collectedItemIdsRef.current.add(event.facts.itemId); const moved = result.events.find((event) => event.type === "player.moved" && typeof event.facts.from === "object" && event.facts.from !== null); if (moved) { const puff = createSmokePuff(moved.facts.from as { x: number; y: number }); setParticleEffects((current) => [...current.filter((effect) => !particleExpired(effect)), puff]); setTimeout(() => setParticleEffects((current) => current.filter((effect) => effect.id !== puff.id)), smokePuffDurationMs); } result.state.log = projectLogEvents(result.state.log, result.events); const feedback = projectFloatingFeedback(result.events); if (feedback.length) { setFloatingFeedback((current) => [...current, ...feedback].slice(-24)); for (const effect of feedback) { const timer = setTimeout(() => { setFloatingFeedback((current) => removeFloatingFeedback(current, effect.id)); floatingTimers.current.delete(effect.id); }, effect.duration); floatingTimers.current.set(effect.id, timer); } } const resourceEffects = projectResourceChangeEffects(result.events); if (resourceEffects.length) { setResourceChangeEffects((current) => [...current, ...resourceEffects]); for (const effect of resourceEffects) { clearTimeout(resourceChangeEffectTimers.current.get(effect.id)); const timer = setTimeout(() => { setResourceChangeEffects((current) => removeResourceChangeEffect(current, effect.id)); resourceChangeEffectTimers.current.delete(effect.id); }, effect.duration); resourceChangeEffectTimers.current.set(effect.id, timer); } } for (const event of result.events) { const facts = event.facts; if ((event.type === "resource.changed" && facts.current! > facts.previous!) || (event.type === "xp.gained" && facts.current! > facts.previous!)) { const name = event.type === "xp.gained" ? "xp" : facts.resource!; setGains((current) => ({ ...current, [name]: { from: facts.previous!, to: facts.current!, max: facts.currentMax ?? (name === "xp" ? undefined : initial.progression.attributes[name]) ?? 100 } })); clearTimeout(gainTimers.current.get(name)); gainTimers.current.set(name, setTimeout(() => setGains((current) => { const next = { ...current }; delete next[name]; return next; }), 420)); } } if (result.events.some((event) => event.type === "player.died")) { returnToMainMenu(); return; } setCampaign(result.state); }); sessionRef.current = session; setSlot(id); setCampaign(initial); };
+  const begin = (id: string, repairedFloor: Floor | null = null) => {
+    let existing: Campaign | null = null;
+    try { existing = readSlot(localStorage, id); }
+    catch { setSaveError("This saved game is unavailable. Its data was left unchanged."); setSummaries(readSlotSummary(localStorage)); return; }
+    floatingTimers.current.forEach(clearTimeout); floatingTimers.current.clear();
+    resourceChangeEffectTimers.current.forEach(clearTimeout); resourceChangeEffectTimers.current.clear();
+    setFloatingFeedback([]); setResourceChangeEffects([]); setParticleEffects([]); setItemThrows([]); setSelectedGridSpot(null);
+    if (preferences.fullscreenDesired && !document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => {});
+    const worldSeed = randomSeed ?? readWorldSeed(localStorage);
+    const freshTestCampaign = createRunCampaign(worldSeed, Number(id), urlOptions.run, urlOptions.level, urlOptions.level, { level1TestMode: urlOptions.level1TestMode });
+    const initial = urlOptions.level1TestMode ? freshTestCampaign : existing ?? freshTestCampaign;
+    if (!existing || urlOptions.level1TestMode) initial.world = urlOptions.world === 1 ? "One" : String(urlOptions.world);
+    const scenario = urlOptions.mapFix ? getManualTileScenario(urlOptions.scenario) : null;
+    const manualFloor = scenario ? buildManualTileScenario(scenario.name, randomSeed ?? 13579, urlOptions.level) : null;
+    if (manualFloor && !repairedFloor) {
+      initial.floor = structuredClone(manualFloor); initial.player.x = manualFloor.start.x; initial.player.y = manualFloor.start.y; initial.realm = `Debug ${manualFloor.scenario}`;
+    }
+    if (repairedFloor) {
+      initial.floor = structuredClone(repairedFloor); initial.player.x = repairedFloor.start.x; initial.player.y = repairedFloor.start.y; initial.realm = `Underground ${repairedFloor.level}`;
+    }
+    const session = createGameSession(initial, {
+      onCommit: (result) => {
+        try { writeSlot(localStorage, id, result.state); setSummaries(readSlotSummary(localStorage)); setSaveError(""); }
+        catch (error) { setSaveError("Saving is unavailable in this browser session."); session.publish("campaign.save.failed", { message: error instanceof Error ? error.message : String(error) }); }
+      },
+    });
+    session.subscribe((result) => {
+      if (!result.accepted && !result.system && !result.events.some((event) => event.type === "quick-slot.use.rejected")) return;
+      audio.playEvents(result.events);
+      const openedContainer = result.events.find((event) => (event.type === "chest.opened" || event.type === "crate.opened") && typeof event.facts.id === "string" && event.facts.position && typeof event.facts.position === "object")?.facts;
+      if (openedContainer?.id && openedContainer.position && typeof openedContainer.position === "object") {
+        const origin = openedContainer.position as { x: number; y: number };
+        const items = result.state.floor.entities
+          .filter((entity) => entity.kind === "gold" && (entity.id.startsWith(`chest-gold-${openedContainer.id}-`) || entity.id.startsWith(`crate-gold-${openedContainer.id}-`)))
+          .map((coin) => ({ id: coin.id, kind: "gold" as const, destination: { x: coin.x, y: coin.y } }));
+        setItemThrows(throwItems(origin, items));
+        const timer = setTimeout(() => setItemThrows([]), ITEM_THROW_DURATION_MS);
+        abilityTimers.current.add(timer);
+      }
+      if (result.events.some((event) => event.type === "resource.changed" && event.facts.resource === "health" && event.facts.cause === "enemy-attack" && event.facts.current! < event.facts.previous!)) setCameraAnimationToken((token) => token + 1);
+      for (const event of result.events) if (event.type === "item.collected" && typeof event.facts.itemId === "string") collectedItemIdsRef.current.add(event.facts.itemId);
+      const moved = result.events.find((event) => event.type === "player.moved" && typeof event.facts.from === "object" && event.facts.from !== null);
+      if (moved) {
+        const puff = createSmokePuff(moved.facts.from as { x: number; y: number });
+        setParticleEffects((current) => [...current.filter((effect) => !particleExpired(effect)), puff]);
+        setTimeout(() => setParticleEffects((current) => current.filter((effect) => effect.id !== puff.id)), smokePuffDurationMs);
+      }
+      const damageParticles = projectDamageParticles(result.events);
+      if (damageParticles.length) {
+        setParticleEffects((current) => [...current.filter((effect) => !particleExpired(effect)), ...damageParticles]);
+        const timer = setTimeout(() => {
+          abilityTimers.current.delete(timer);
+          const ids = new Set(damageParticles.map((effect) => effect.id));
+          setParticleEffects((current) => current.filter((effect) => !ids.has(effect.id)));
+        }, particleDurationMs(damageParticles[0]!));
+        abilityTimers.current.add(timer);
+      }
+      result.state.log = projectLogEvents(result.state.log, result.events);
+      const feedback = projectFloatingFeedback(result.events);
+      if (feedback.length) {
+        setFloatingFeedback((current) => [...current, ...feedback].slice(-24));
+        for (const effect of feedback) {
+          const timer = setTimeout(() => { setFloatingFeedback((current) => removeFloatingFeedback(current, effect.id)); floatingTimers.current.delete(effect.id); }, effect.duration);
+          floatingTimers.current.set(effect.id, timer);
+        }
+      }
+      const resourceEffects = projectResourceChangeEffects(result.events);
+      if (resourceEffects.length) {
+        setResourceChangeEffects((current) => [...current, ...resourceEffects]);
+        for (const effect of resourceEffects) {
+          clearTimeout(resourceChangeEffectTimers.current.get(effect.id));
+          const timer = setTimeout(() => { setResourceChangeEffects((current) => removeResourceChangeEffect(current, effect.id)); resourceChangeEffectTimers.current.delete(effect.id); }, effect.duration);
+          resourceChangeEffectTimers.current.set(effect.id, timer);
+        }
+      }
+      for (const event of result.events) {
+        const facts = event.facts;
+        if ((event.type === "resource.changed" && facts.current! > facts.previous!) || (event.type === "xp.gained" && facts.current! > facts.previous!)) {
+          const name = event.type === "xp.gained" ? "xp" : facts.resource!;
+          setGains((current) => ({ ...current, [name]: { from: facts.previous!, to: facts.current!, max: facts.currentMax ?? (name === "xp" ? undefined : initial.progression.attributes[name]) ?? 100 } }));
+          clearTimeout(gainTimers.current.get(name));
+          gainTimers.current.set(name, setTimeout(() => setGains((current) => { const next = { ...current }; delete next[name]; return next; }), 420));
+        }
+      }
+      if (result.events.some((event) => event.type === "player.died")) { returnToMainMenu(); return; }
+      setCampaign(result.state);
+    });
+    sessionRef.current = session; setSlot(id); setCampaign(initial);
+  };
+  const beginFromMenu = (id: string) => {
+    if (menuExiting) return;
+    setMenuExiting(true);
+    window.setTimeout(() => begin(id), 125);
+  };
   const [mapFixError, setMapFixError] = useState("");
   const importRepairMap = async (file?: File) => {
     if (!file || !campaign || !urlOptions.mapFix) return;
@@ -400,18 +553,19 @@ export function Game() {
   }, [campaign, slot, urlOptions.map, urlOptions.mapFix, urlOptions.slot]);
   const newGameLabel = randomSeed === null ? "New Game" : `New Game · Seed ${randomSeed}`;
   const uiCampaign = useMemo(() => pendingUiCredits[0]?.previous ?? campaign, [campaign, pendingUiCredits]);
-  if (!campaign) return <><MenuScreen><img className="menu-screen__logo" src={`${import.meta.env.BASE_URL}assets/art/menu/rogues-dungeon-logo.png`} alt="Rogue's Dungeon" /><MainMenuWindow><h1 className="visually-hidden">Rogue's Dungeon</h1><h2 id="main-menu-window__heading">Choose Your Descent</h2><div className="main-menu-window__saved-game-list" aria-labelledby="main-menu-window__heading">{summaries.map((entry) => <button tabIndex={-1} key={entry.slot} disabled={entry.invalid} onClick={() => begin(entry.slot)}><b>Saved Game {entry.slot}</b><span>{entry.invalid ? "Unavailable" : entry.occupied ? "Level " + String(entry.level).padStart(2, "0") + " · XP " + String(entry.xpLevel).padStart(2, "0") : newGameLabel}</span></button>)}</div><button tabIndex={-1} type="button" onClick={() => setSettings(true)}>Settings</button>{saveError && <p role="alert">{saveError}</p>}</MainMenuWindow></MenuScreen>{settings && <SettingsWindow origin="menu" onClose={() => setSettings(false)} onReturn={() => setSettings(false)} onClearLocalStorage={clearLocalStorage} preferences={preferences} setPreference={setPreference} mutedByUrl={audio.hardMuted} />}</>;
+  if (!campaign) return <><MenuScreen><img className="menu-screen__logo" src={`${import.meta.env.BASE_URL}assets/art/menu/rogues-dungeon-logo.png`} alt="Rogue's Dungeon" /><MainMenuWindow exiting={menuExiting}><h1 className="visually-hidden">Rogue's Dungeon</h1><h2 id="main-menu-window__heading">Choose Your Descent</h2><div className="main-menu-window__saved-game-list" aria-labelledby="main-menu-window__heading">{summaries.map((entry) => <button tabIndex={-1} key={entry.slot} disabled={entry.invalid} onClick={() => beginFromMenu(entry.slot)}><b>Saved Game {entry.slot}</b><span>{entry.invalid ? "Unavailable" : entry.occupied ? "Level " + String(entry.level).padStart(2, "0") + " · XP " + String(entry.xpLevel).padStart(2, "0") + " · " + formatSavedAgo(entry.savedAt, summaryNow) : newGameLabel}</span></button>)}</div><button tabIndex={-1} type="button" onClick={() => setSettings(true)}>Settings</button>{saveError && <p role="alert">{saveError}</p>}</MainMenuWindow></MenuScreen>{settings && <SettingsWindow origin="menu" onClose={() => setSettings(false)} onSaveAndQuit={() => setSettings(false)} onClearLocalStorage={clearLocalStorage} preferences={preferences} setPreference={setPreference} mutedByUrl={audio.hardMuted} />}</>;
   const activeUiCampaign = uiCampaign ?? campaign;
   return <GameScreen orientation={orientation} onPointerDown={handlePointerDown}>
     <TitleBar campaign={campaign} visibleCounters={pendingUiCredits[0]?.previous.counters} preferences={preferences} setPreference={setPreference} onFullscreen={toggleFullscreen} onSettings={() => setSettings(true)} fullscreenActual={fullscreenActual} />
     {urlOptions.mapFix && <MapFixControls campaign={campaign} slot={slot} onImport={importRepairMap} error={mapFixError} />}
-<section className="game-screen__middle" data-primary-open={primaryInfoOpen} data-secondary-open={secondaryInfoOpen}><WorldViewRegion primaryOpen={primaryInfoOpen} secondaryOpen={secondaryInfoOpen}><BabylonWorld campaign={campaign} theme={dungeonTheme} zoom={preferences.zoom} camera={preferences.camera} cameraAnimationToken={cameraAnimationToken} mouseInteraction floatingFeedback={floatingFeedback} resourceChangeEffects={resourceChangeEffects} particleEffects={particleEffects} chestCoinFlights={chestCoinFlights} uiAnimations={uiAnimations} selectedCell={selectedGridSpot} selectedCellReachable={selectedCellReachable} turnPresentation={turnPresentation} onSelectedCellChange={setSelectedGridSpot} onWorldAliveChange={setWorldAlive} onWallAdjacentBarrelOffscreen={(setId) => Boolean(dispatch({ type: "return-barrel", setId })?.accepted)} onUiAnimationComplete={completeUiAnimation} onFpsChange={canOverride ? setFps : undefined} onZoom={stepZoom} /></WorldViewRegion><InformationPanels campaign={activeUiCampaign} theme={dungeonTheme} dispatch={dispatch} drag={dragPresentation} preview={preview} gains={gains} cooldowns={abilityCooldowns} primaryOpen={primaryInfoOpen} secondaryOpen={secondaryInfoOpen} turnPresentation={turnPresentation} onTogglePrimary={() => setPrimaryInfoOpen((value) => !value)} onToggleSecondary={() => setSecondaryInfoOpen((value) => !value)} /></section>
-<StatusControls campaign={campaign} canOverride={canOverride} orientation={orientation} setDeveloperAspect={setDeveloperAspect} onTogglePanels={togglePanels} fps={fps} mobilePanel={mobilePanel} setMobilePanel={setMobilePanel} drag={dragPresentation} onWait={() => dispatch({ type: "wait" })} />
+    {canOverride && mapTest && <MapTestControls campaign={campaign} />}
+<section className="game-screen__middle" data-primary-open={primaryInfoOpen} data-secondary-open={secondaryInfoOpen}><WorldViewRegion primaryOpen={primaryInfoOpen} secondaryOpen={secondaryInfoOpen}><BabylonWorld campaign={campaign} theme={dungeonTheme} zoom={preferences.zoom} camera={preferences.camera} cameraAnimationToken={cameraAnimationToken} stairDepartureStartedAt={stairDepartureStartedAt} mouseInteraction showPivotPoints={showPivotPoints} floatingFeedback={floatingFeedback} resourceChangeEffects={resourceChangeEffects} particleEffects={particleEffects} itemThrows={itemThrows} uiAnimations={uiAnimations} selectedCell={selectedGridSpot} selectedCellReachable={selectedCellReachable} turnPresentation={turnPresentation} onSelectedCellChange={setSelectedGridSpot} onWorldAliveChange={setWorldAlive} onStairDepartureComplete={completeStairDeparture} onStairDescentStep={playStairDescentStep} onWallAdjacentBarrelOffscreen={(setId) => Boolean(dispatch({ type: "return-barrel", setId })?.accepted)} onUiAnimationComplete={completeUiAnimation} onFpsChange={canOverride ? setFps : undefined} onZoom={stepZoom} /></WorldViewRegion><InformationPanels campaign={activeUiCampaign} theme={dungeonTheme} dispatch={dispatch} drag={dragPresentation} preview={preview} gains={gains} cooldowns={abilityCooldowns} primaryOpen={primaryInfoOpen} secondaryOpen={secondaryInfoOpen} turnPresentation={turnPresentation} onTogglePrimary={() => setPrimaryInfoOpen((value) => !value)} onToggleSecondary={() => setSecondaryInfoOpen((value) => !value)} /></section>
+<StatusControls campaign={campaign} canOverride={canOverride} orientation={orientation} setDeveloperAspect={setDeveloperAspect} onTogglePanels={togglePanels} fps={fps} drag={dragPresentation} urlArgs={preferences.urlArgs} setUrlArgs={(urlArgs) => setPreference({ urlArgs })} mapTest={mapTest} setMapTest={setMapTest} mobilePanel={mobilePanel} setMobilePanel={setMobilePanel} onWait={() => dispatch({ type: "wait" })} />
 <section className="mobile_bottom"><MobileControls campaign={campaign} dispatch={dispatch} hidden={mobilePanel !== "controls"} /><MobileInformationPanels campaign={activeUiCampaign} theme={dungeonTheme} dispatch={dispatch} drag={dragPresentation} preview={preview} gains={gains} cooldowns={abilityCooldowns} hidden={mobilePanel !== "info"} turnPresentation={turnPresentation} /></section>
     <ItemDragPreview campaign={campaign} drag={dragPresentation} />
     {canOverride && orientation === "portrait" && <button tabIndex={-1} className="dev_aspect_return" onClick={() => setDeveloperAspect("landscape")}>Dev: Return to Landscape</button>}
     {saveError && <div className="save_error">{saveError}</div>}
     <LevelUpWindow campaign={campaign} chooseUpgrade={(stat) => dispatch({ type: "choose-upgrade", stat })} describeAttribute={(stat) => attributeHelp[stat]} />
-    {settings && <SettingsWindow origin="game" onClose={() => setSettings(false)} onReturn={() => { try { writeSlot(localStorage, slot!, campaign); setSaveError(""); } catch { setSaveError("Saving is unavailable in this browser session."); } returnToMainMenu(); }} onClearLocalStorage={clearLocalStorage} preferences={preferences} setPreference={setPreference} mutedByUrl={audio.hardMuted} />}
+    {settings && <SettingsWindow origin="game" onClose={() => setSettings(false)} onSaveAndQuit={saveAndQuit} onClearLocalStorage={clearLocalStorage} preferences={preferences} setPreference={setPreference} mutedByUrl={audio.hardMuted} />}
   </GameScreen>;
 }

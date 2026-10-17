@@ -14,9 +14,12 @@ export function trapFrameAt(elapsedMs: number) {
     : Math.floor(cycleOffset / TRAP_FRAME_DURATION_MS);
 }
 
-/** Only the moving middle of the trap animation can deal damage. */
+/**
+ * The raised spikes occupy frames 1 through 4. Frame 5 is the retracted
+ * transition, so stepping on it is safe even though the trap is still moving.
+ */
 export function trapIsDangerous(frame: number) {
-  return Number.isInteger(frame) && frame > 0 && frame < TRAP_FRAME_COUNT - 1;
+  return Number.isInteger(frame) && frame >= 1 && frame <= 4;
 }
 
 /** Match an enemy strike by applying the same minimum-damage and defense rule. */

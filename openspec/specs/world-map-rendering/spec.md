@@ -6,7 +6,7 @@ Render the game view and minimap from the same world geometry with selectable ca
 ## Requirements
 
 ### Requirement: Keep world views geometrically consistent
-The game view and minimap SHALL derive terrain, walls, object coordinates, and actor coordinates from the same active realm. During character movement presentation, both views SHALL use the same interpolated player and actor coordinates. The game view camera SHALL frame from that interpolated player coordinate in Center, Deadzone, and Screen modes while retaining each mode's existing framing policy. The minimap SHALL provide a simplified low-resolution representation of the realm rather than unrelated artwork.
+The game view and minimap SHALL derive terrain, walls, object coordinates, actor coordinates, and linked puzzle-object states from the same active realm. During sub-grid movement presentation, both views SHALL use the same interpolated player, actor, and pushable-barrel coordinates. The game-view camera SHALL frame from the interpolated player coordinate in Center, Deadzone, and Screen modes while retaining each mode's existing framing policy. The minimap SHALL provide a simplified low-resolution representation of the realm rather than unrelated artwork.
 
 #### Scenario: Show the same player and exit
 - **WHEN** both views render the active realm
@@ -27,6 +27,16 @@ The game view and minimap SHALL derive terrain, walls, object coordinates, and a
 #### Scenario: Follow interpolated player movement
 - **WHEN** the player moves or retargets during a 250 millisecond movement presentation
 - **THEN** Center, Deadzone, and Screen camera modes each frame from the player's current interpolated coordinate while preserving their established centering, deadzone, or screen-page behavior
+
+#### Scenario: Show a linked puzzle set
+- **WHEN** both views render a Floor Trigger Door Barrel Set
+- **THEN** the barrel, floor trigger, and door occupy matching map coordinates in both views
+- **AND** each view distinguishes active from inactive trigger and open from closed door states
+
+#### Scenario: Interpolate a pushed barrel
+- **WHEN** a player pushes a barrel between committed grid cells
+- **THEN** the game view and minimap show that barrel at the same interpolated coordinate throughout its 250 millisecond movement
+- **AND** the trigger and door update their state from the committed object-set position
 
 #### Scenario: Descend to another realm
 - **WHEN** the player completes a dungeon
@@ -124,3 +134,40 @@ Changing a game-camera mode or its framing SHALL NOT change minimap geometry or 
 #### Scenario: Reframe the game camera
 - **WHEN** the main game camera is resized or switched
 - **THEN** the minimap continues to show the same full active map and player coordinate
+
+### Requirement: Order world visuals through defined render passes
+The game view SHALL render walkable terrain first, floor-attached decals second, and walls, props, pickups, stairs, barrels, enemies, and the player in one shared world-depth pass. The minimap SHALL derive matching world coordinates and mover positions without adopting game-view occlusion behavior.
+
+#### Scenario: Draw a floor trigger under a barrel
+- **WHEN** an active floor trigger and its barrel share one tile
+- **THEN** the trigger renders above walkable terrain and below the barrel, wall tiles, and characters
+
+#### Scenario: Render matching world positions in both views
+- **WHEN** the game view and minimap render a floor containing walls, a player, enemies, and a barrel
+- **THEN** both views use the same world coordinates and presented mover positions for those entries
+
+### Requirement: Sort shared world visuals by ground-contact depth
+The shared world-depth pass SHALL order each visual by its ground-contact pixel Y coordinate. Entries with the same Y coordinate SHALL use a deterministic tie-break, and an entity shadow SHALL render immediately before that entity's main sprite.
+
+#### Scenario: Pass a character south of a wall
+- **WHEN** a player, enemy, or barrel has a ground-contact position south of a wall's front edge
+- **THEN** that entity renders in front of the wall
+
+#### Scenario: Pass a character north of a wall
+- **WHEN** a player, enemy, or barrel has a ground-contact position north of a wall's front edge
+- **THEN** the wall renders in front of that entity
+
+#### Scenario: Move an entity with a shadow
+- **WHEN** a player, rat, skeleton, or barrel is visible while stationary or moving between grid cells
+- **THEN** its shadow and main sprite use the same presented position and the shadow renders directly beneath its main sprite
+
+### Requirement: Preserve explicit depth exceptions
+Walkable terrain, floor-attached decals, screen-space UI and diagnostics, and effects with an explicitly documented owner-relative depth SHALL NOT enter the shared world-depth sort. An owner-relative effect SHALL retain its declared position above or below its owner regardless of unrelated world Y positions.
+
+#### Scenario: Render a player heal effect
+- **WHEN** the player Heal effect is active near another world visual with a different Y coordinate
+- **THEN** the effect remains at its documented depth above the player
+
+#### Scenario: Render the targeting reticle
+- **WHEN** the player points at a visible game-view cell
+- **THEN** the reticle remains a screen-space overlay and does not change world-visual ordering

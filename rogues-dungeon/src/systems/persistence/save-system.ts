@@ -16,12 +16,23 @@ import { normalizeQuest } from "../quests/quest-progression-system.ts";
 const PREFIX = "rogues-dungeon.slot.";
 const BACKUP_PREFIX = "rogues-dungeon.slot.v1-backup.";
 const PREFERENCE_KEY = "rogues-dungeon.preferences.v1";
+const WORLD_SEED_KEY = "rogues-dungeon.world-seed.v1";
 export const SLOT_IDS = Object.freeze(["1", "2", "3"]);
-export const DEFAULT_PREFERENCES: Readonly<Preferences> = Object.freeze({ zoom: 1, camera: "center", fullscreenDesired: false, sfxVolume: 80, musicVolume: 5, muteAll: false });
+export const DEFAULT_PREFERENCES: Readonly<Preferences> = Object.freeze({ zoom: 1, camera: "center", fullscreenDesired: false, sfxVolume: 80, musicVolume: 1, muteAll: false, urlArgs: false });
 const DEFAULT_ABILITIES: readonly (AbilityId | null)[] = Object.freeze(["heal", "wand", null]);
 
 function normalizeAbilityBindings(value: { player?: { abilities?: (AbilityId | null)[] } }) {
   return Array.isArray(value?.player?.abilities) ? value.player.abilities.slice(0, 3) : [...DEFAULT_ABILITIES];
+}
+export function readWorldSeed(storage: StorageAccess) {
+  const raw = storage.getItem(WORLD_SEED_KEY);
+  if (raw !== null && /^(0|[1-9]\d*)$/.test(raw)) {
+    const value = Number(raw);
+    if (Number.isSafeInteger(value) && value <= 0xffffffff) return value;
+  }
+  const seed = Math.floor(Math.random() * 0x1_0000_0000) >>> 0;
+  storage.setItem(WORLD_SEED_KEY, String(seed));
+  return seed;
 }
 
 export function isValidCampaign(input: unknown): input is Campaign { const value = candidate(input); return Boolean(value?.version === 3 && value.progression?.attributes && (value.floor?.cells || value.floor?.map) && value.player?.equipment && Array.isArray(value.player.inventory)); }
@@ -149,6 +160,9 @@ export function writeSlot(storage: StorageAccess, slot: string | number, campaig
   normalizeQuickSlots(campaign);
   normalizeStackableLocations(campaign);
   campaign.quest = normalizeQuest(campaign.quest);
+  campaign.slot = Number(slot);
+  campaign.run = Number.isInteger(campaign.run) && campaign.run! > 0 ? campaign.run : 1;
+  campaign.worldSeed = Number.isInteger(campaign.worldSeed) && campaign.worldSeed! >= 0 ? campaign.worldSeed : campaign.floor.seed;
   storage.setItem(PREFIX + slot, JSON.stringify({ ...campaign, player: { ...campaign.player, abilities: normalizeAbilityBindings(campaign), quickSlots: campaign.player.quickSlots }, savedAt: Date.now() }));
 }
 export function deleteSlot(storage: StorageAccess, slot: string | number) { if (!SLOT_IDS.includes(String(slot))) throw new Error("Unknown Saved Game."); storage.removeItem(PREFIX + slot); }
@@ -156,12 +170,22 @@ export function clearRoguesDungeonStorage(storage: StorageCollection) {
   const keys = [];
   for (let index = 0; index < storage.length; index++) {
     const key = storage.key(index);
-    if (key === PREFERENCE_KEY || key?.startsWith(PREFIX) || key?.startsWith(BACKUP_PREFIX)) keys.push(key);
+    if (key === WORLD_SEED_KEY || key === PREFERENCE_KEY || key?.startsWith(PREFIX) || key?.startsWith(BACKUP_PREFIX)) keys.push(key);
   }
   keys.forEach((key) => storage.removeItem(key));
 }
-export function readSlotSummary(storage: StorageAccess) { return SLOT_IDS.map((slot) => { try { const state = readSlot(storage, slot); return { slot, occupied: Boolean(state), level: state?.floor.level ?? state?.floor.depth ?? null, xpLevel: state?.progression.level ?? null }; } catch (error) { return { slot, occupied: true, invalid: true, error: error instanceof Error ? error.message : String(error) }; } }); }
+export function formatSavedAgo(savedAt: number | undefined, now = Date.now()) {
+  const elapsed = Math.max(0, now - (Number.isFinite(savedAt) ? savedAt! : now));
+  const rounded = (unit: number) => Math.max(1, Math.round(elapsed / unit));
+  if (elapsed < 60_000) return `${rounded(1_000)} secs ago`;
+  if (elapsed < 3_600_000) return `${rounded(60_000)} mins ago`;
+  if (elapsed < 86_400_000) return `${rounded(3_600_000)} hours ago`;
+  if (elapsed < 7 * 86_400_000) return `${rounded(86_400_000)} days ago`;
+  if (elapsed < 365 * 86_400_000) return `${rounded(7 * 86_400_000)} weeks ago`;
+  return `${rounded(365 * 86_400_000)} years ago`;
+}
+export function readSlotSummary(storage: StorageAccess) { return SLOT_IDS.map((slot) => { try { const state = readSlot(storage, slot); return { slot, occupied: Boolean(state), level: state?.floor.level ?? state?.floor.depth ?? null, xpLevel: state?.progression.level ?? null, savedAt: state?.savedAt }; } catch (error) { return { slot, occupied: true, invalid: true, error: error instanceof Error ? error.message : String(error) }; } }); }
 function normalizeVolume(value: unknown, fallback: number) { return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 100 ? value : fallback; }
-export function normalizePreferences(input: unknown): Preferences { const value = typeof input === "object" && input !== null ? input as Record<string, unknown> : {}; return { zoom: typeof value.zoom === "number" && gameZoomPresets.includes(value.zoom) ? value.zoom : DEFAULT_PREFERENCES.zoom, camera: typeof value.camera === "string" && ["center", "deadzone", "screen"].includes(value.camera) ? value.camera as Preferences["camera"] : DEFAULT_PREFERENCES.camera, fullscreenDesired: value?.fullscreenDesired === true, sfxVolume: normalizeVolume(value?.sfxVolume, DEFAULT_PREFERENCES.sfxVolume), musicVolume: normalizeVolume(value?.musicVolume, DEFAULT_PREFERENCES.musicVolume), muteAll: value?.muteAll === true }; }
+export function normalizePreferences(input: unknown): Preferences { const value = typeof input === "object" && input !== null ? input as Record<string, unknown> : {}; return { zoom: typeof value.zoom === "number" && gameZoomPresets.includes(value.zoom) ? value.zoom : DEFAULT_PREFERENCES.zoom, camera: typeof value.camera === "string" && ["center", "deadzone", "screen"].includes(value.camera) ? value.camera as Preferences["camera"] : DEFAULT_PREFERENCES.camera, fullscreenDesired: value?.fullscreenDesired === true, sfxVolume: normalizeVolume(value?.sfxVolume, DEFAULT_PREFERENCES.sfxVolume), musicVolume: normalizeVolume(value?.musicVolume, DEFAULT_PREFERENCES.musicVolume), muteAll: value?.muteAll === true, urlArgs: value?.urlArgs === true }; }
 export function readPreferences(storage: StorageAccess) { try { return normalizePreferences(JSON.parse(storage.getItem(PREFERENCE_KEY) ?? "null")); } catch { return { ...DEFAULT_PREFERENCES }; } }
 export function writePreferences(storage: StorageAccess, value: unknown) { const normalized = normalizePreferences(value); storage.setItem(PREFERENCE_KEY, JSON.stringify(normalized)); return normalized; }

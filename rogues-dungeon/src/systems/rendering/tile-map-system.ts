@@ -13,8 +13,10 @@ export const TILED_TILE_SIZE = 32;
 export const DUNGEON_TILESET_SOURCE = "../../assets/art/vendors/dungeons-and-pixels-v1.4/tiled-examples/tilesets/tileset-dungeon.tsx";
 // The upper-left room's 4-by-3 interior is the shared walkable-floor family.
 // These IDs are deliberately independent of a visual theme: every theme uses
-// the same 12-by-9 atlas layout.
-export const DUNGEON_FLOOR_TILE_GIDS = Object.freeze([14, 15, 16, 17, 26, 27, 28, 29, 38, 39, 40, 41]);
+// the same 12-by-9 atlas layout. The omitted variants contain bright green
+// moss at a tile edge, which reads as a seam when adjacent floor cells use a
+// cleaner variant.
+export const DUNGEON_FLOOR_TILE_GIDS = Object.freeze([14, 26, 27, 29, 38, 39, 40]);
 
 function dungeonFloorTileGid(x: number, y: number) {
   const hash = Math.imul(x, 374761393) ^ Math.imul(y, 668265263);

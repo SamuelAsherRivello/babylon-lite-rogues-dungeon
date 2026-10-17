@@ -84,9 +84,16 @@ test("@smoke Tab never changes focus in the menu, game, or settings", async ({ p
       expect(await page.evaluate((element) => document.activeElement === element, before)).toBe(true);
     }
     expect(await page.locator("button, input, select, a[href], canvas").evaluateAll((elements) => elements.every((element) => (element as HTMLElement).tabIndex === -1))).toBe(true);
+    expect(await page.locator(".world-view, .world-view *").evaluateAll((elements) => elements.every((element) => (element as HTMLElement).tabIndex === -1))).toBe(true);
     await before.dispose();
   };
   await assertTabDoesNothing();
+  await page.evaluate(() => {
+    const lateControl = document.createElement("button");
+    lateControl.textContent = "Late control";
+    document.body.append(lateControl);
+  });
+  await expect.poll(() => page.getByRole("button", { name: "Late control" }).evaluate((element) => element.tabIndex)).toBe(-1);
   await page.getByRole("button", { name: /Saved Game 1/ }).click();
   await expect(page.getByRole("button", { name: "Settings", exact: true })).toBeVisible();
   await assertTabDoesNothing();

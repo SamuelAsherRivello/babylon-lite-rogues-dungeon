@@ -10,4 +10,12 @@ Turn presentation supplies shared sub-grid coordinates only for the player, enem
 
 The floor trigger is a floor-panel layer: it renders above terrain and below walls, props, pickups, barrels, doors, enemies, and the player. Its sprite is anchored half a tile lower than the cell center, which keeps the panel on the floor beneath the object activating it.
 
+## World depth order
+
+The game view uses three render passes. Walkable terrain renders first. Floor-attached decals such as triggers render next. Floor traps render above those decals, and settled combat particles render above floor traps. Walls, other decorations, props, pickups, stairs, barrels, enemies, player, moving coins, and non-owner-fixed particles share the world-depth pass.
+
+The shared pass sorts by a visual's ground-contact pixel Y coordinate. Wall rows use their front edge. Moving entities use their presented sub-grid position. Equal Y positions use a category tie-break and then a stable ID. A composite entity has adjacent orders, with its shadow immediately before its main art. Player, rat, skeleton, and barrel all use that contract.
+
+The targeting reticle, tooltip, diagnostics, and pivot markers remain screen overlays. Heal smoke is fixed above its player and does not compete with unrelated world Y positions. The minimap receives the same terrain and presented mover coordinates but does not use game-view occlusion ordering.
+
 Zoom presets are 0.25, 0.5, 1, 2, and 4. At 1, a 32-unit tile is intended to occupy 32 CSS pixels; renderer backing density is handled separately. Babylon Lite is WebGPU-only. Unsupported WebGPU surfaces display the existing initialization message and do not fall back to another renderer. Auxiliary canvas APIs available in the installed package include `createSurface`, `resizeSurface`, and `disposeSurface`; renderers may bind directly to a surface.

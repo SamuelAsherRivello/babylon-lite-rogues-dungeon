@@ -4,16 +4,38 @@ import test from 'node:test';
 import { contentConfig, getRenderingPolicy, pixelPerfectOptions } from '../src/content/babylon/config.ts';
 import { getInitializationMessage } from '../src/content/babylon/initialization.ts';
 import { gameZoomPresets, getRenderedTileCssSize, getTileCssSize } from '../src/content/world/zoom.ts';
-import { sortGridRenderEntries } from '../src/systems/rendering/grid-render-order-system.ts';
+import { GRID_RENDER_PASS, orderWorldRenderEntries, sortGridRenderEntries } from '../src/systems/rendering/grid-render-order-system.ts';
+import { DUNGEON_FLOOR_TILE_GIDS } from '../src/systems/rendering/tile-map-system.ts';
 
-test('sorts grid visuals by layer and then vertical position', () => {
+test('sorts grid visuals by pass, ground-contact Y, stable tie-break, and ID', () => {
   const entries = sortGridRenderEntries([
-    { id: 'player', layer: 1, y: 4 },
-    { id: 'lower-particle', layer: 1, y: 5 },
-    { id: 'background', layer: 0, y: 99 },
-    { id: 'upper-particle', layer: 1, y: 3 },
+    { id: 'player', pass: GRID_RENDER_PASS.world, y: 160, tieBreak: 20 },
+    { id: 'same-y-shadow', pass: GRID_RENDER_PASS.world, y: 160, tieBreak: 10 },
+    { id: 'terrain', pass: GRID_RENDER_PASS.terrain, y: 999 },
+    { id: 'trigger', pass: GRID_RENDER_PASS.floorDecal, y: 32 },
+    { id: 'overlay', pass: GRID_RENDER_PASS.overlay, y: 0 },
+    { id: 'north-wall', pass: GRID_RENDER_PASS.world, y: 128, tieBreak: 0 },
   ]);
-  assert.deepEqual(entries.map(({ id }) => id), ['background', 'upper-particle', 'player', 'lower-particle']);
+  assert.deepEqual(entries.map(({ id }) => id), ['terrain', 'trigger', 'north-wall', 'same-y-shadow', 'player', 'overlay']);
+});
+
+test('assigns deterministic shared orders to world visuals only', () => {
+  const ordered = orderWorldRenderEntries([
+    { id: 'terrain', pass: GRID_RENDER_PASS.terrain, y: 0 },
+    { id: 'south-actor', pass: GRID_RENDER_PASS.world, y: 192, tieBreak: 20 },
+    { id: 'north-wall', pass: GRID_RENDER_PASS.world, y: 160, tieBreak: 0 },
+    { id: 'same-y-shadow', pass: GRID_RENDER_PASS.world, y: 192, tieBreak: 10 },
+  ]);
+  assert.deepEqual(ordered.map(({ entry, order }) => [entry.id, order]), [['north-wall', 100], ['same-y-shadow', 102], ['south-actor', 104]]);
+});
+
+test('documents the world render passes and depth exceptions', async () => {
+  const documentation = await readFile(new URL('../documentation/world-rendering.md', import.meta.url), 'utf8');
+  assert.match(documentation, /## World depth order/);
+  assert.match(documentation, /Walkable terrain renders first/);
+  assert.match(documentation, /ground-contact pixel Y coordinate/);
+  assert.match(documentation, /shadow immediately before its main art/);
+  assert.match(documentation, /Heal smoke is fixed above its player/);
 });
 
 test('keeps Babylon Lite Pixel Perfect settings and WebGPU-only initialization', () => {
@@ -26,6 +48,10 @@ test('keeps Babylon Lite Pixel Perfect settings and WebGPU-only initialization',
   assert.equal(pixelPerfectOptions.texture.invertY, false, 'Tiled images keep their authored top row at the top of the game world');
   assert.match(getInitializationMessage(false, new Error('unsupported')), /requires WebGPU/);
   assert.match(getInitializationMessage(true, new Error('#47')), /requires WebGPU/);
+});
+
+test('selects clean source floor variants so moss pixels cannot resemble tile seams', () => {
+  assert.deepEqual(DUNGEON_FLOOR_TILE_GIDS, [14, 26, 27, 29, 38, 39, 40]);
 });
 
 test('uses Zoom presets whose 32-unit tile stays independent of backing density', () => {
@@ -53,12 +79,25 @@ test('mounts the dungeon and minimap in Babylon Lite from the same world compone
   assert.match(source, /minimap = false/);
   assert.match(source, /centerSprite2DView\(layer\.view, cameraTransform\.positionPx\[0\], cameraTransform\.positionPx\[1\]/);
   assert.match(source, /playerPositionOf\(state\.player\)/);
+  assert.match(source, /playerDepthPositionOf\(state\.player, now\)/);
   assert.match(source, /player: playerPosition, previousCenter/);
   assert.match(source, /positionOf\(actor\.id, actor\)/);
   assert.match(source, /disposeSpriteRenderer\(renderer\)/);
   assert.match(source, /createDynamicTexture\(engine, 32, 32/);
   assert.match(source, /updateDynamicTexture\(engine, debugTexture/);
   assert.match(source, /const debugLayer = createSprite2DLayer/);
+  assert.match(source, /const wallLayers = Array\.from\(\{ length: model\.height \}/);
+  assert.match(source, /applyWorldDepth\(worldDepthEntries\)/);
+  assert.match(source, /addLayerDepth\(`wall-row-\$\{y\}`/);
+  assert.match(source, /addCharacterDepth\("player", groundContactY\(playerDepthPosition\), playerSprite, turnPresentation\?\.bumpDepthTieBreakOf\("player", now\) \?\? 0\)/);
+  assert.match(source, /addCharacterDepth\(actor\.id, groundContactY\(position\), character, turnPresentation\?\.bumpDepthTieBreakOf\(actor\.id, now\) \?\? 0\)/);
+  assert.match(source, /addCharacterDepth\(entity\.id, groundContactY\(position\), barrel\)/);
+  assert.match(source, /terrainLayer\.order = TERRAIN_RENDER_ORDER/);
+  assert.match(source, /triggerLayers\[i\]\.order = FLOOR_DECAL_RENDER_ORDER/);
+  assert.match(source, /debugLayer\.order = OVERLAY_RENDER_ORDER/);
+  assert.match(source, /pivotMarkerLayer\.order = OVERLAY_RENDER_ORDER \+ 1/);
+  assert.match(source, /effect\?\.kind === "heal" \|\| \(damage && progress < 1\)\) particleLayers\[i\]\.order = OVERLAY_RENDER_ORDER - 1/);
+  assert.match(source, /else if \(damage\) particleLayers\[i\]\.order = LANDED_DAMAGE_PARTICLE_RENDER_ORDER/);
   assert.match(source, /world\.diagnostics/);
   assert.match(source, /while \(terrainHandles\.length < world\.grounds\.length\)/);
   assert.match(source, /while \(wallHandles\.length < world\.walls\.length\)/);

@@ -22,6 +22,7 @@ export function parseGameUrlOptions(search = "") {
   return Object.freeze({
     world: positiveParam(params, "world", 1),
     level: positiveParam(params, "level", 1),
+    run: positiveParam(params, "run", 1),
     slot: slotValue !== null && VALID_SAVE_SLOTS.includes(slotValue) ? slotValue : null,
     seed: unsignedParam(params, "seed", unsignedParam(params, "randomSeed")),
     mute: params.get("mute") === "1",
