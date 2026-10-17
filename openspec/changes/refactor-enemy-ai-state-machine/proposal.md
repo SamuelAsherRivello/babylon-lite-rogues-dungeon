@@ -10,6 +10,7 @@ Enemy behavior currently combines awareness, cooldown, movement, collision, and 
 - Give pursuing enemies bounded cardinal A* routing around terrain and occupied cells.
 - Resolve enemy intentions from a turn snapshot and commit them in stable ID order with destination reservations.
 - Preserve the current immediate loss-of-awareness behavior: an enemy returns to idle without searching or remembering the player's position.
+- Preserve configured enemy attack rules, including existing ranged attacks; cardinal adjacency remains the melee rule.
 - Migrate saved enemies that lack AI state into a valid idle state without discarding a campaign.
 
 ## Capabilities

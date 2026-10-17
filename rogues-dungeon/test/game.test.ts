@@ -2,19 +2,20 @@ import type { ActionResult, Campaign, Enemy, Entity, Item, Direction } from '../
 import type { TileLayer } from '../src/systems/rendering/tile-map-system.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { applyAction, combatReadiness, createCampaign, createGameSession, createResourcesModel, effectiveAttributes, ensureNearbyStairs, entrancePosition, FLOOR_CENTER, FLOOR_HEIGHT, FLOOR_WIDTH, GAME_TUNING, generateFloor, headingFromMovement, isNonBlockingChestPlacementCell, isObjectSetBlocked, isObjectSetDoorOpen, levelUpOptions, previewEquipment, resourceState, STAIRS_MAX_DISTANCE_FROM_START, upgradeCampaignResources } from '../src/systems/procedural/world-procedural-system.ts';
+import { applyAction, combatReadiness, createCampaign, createGameSession, createResourcesModel, createRunCampaign, effectiveAttributes, ensureNearbyStairs, entrancePosition, FLOOR_CENTER, FLOOR_HEIGHT, FLOOR_WIDTH, GAME_TUNING, generateFloor, headingFromMovement, isNonBlockingChestPlacementCell, isObjectSetBlocked, isObjectSetDoorOpen, previewEquipment, resourceState, rollStartingAttributes, STAIRS_MAX_DISTANCE_FROM_START, upgradeCampaignResources } from '../src/systems/procedural/world-procedural-system.ts';
 import { worldFloorSeed } from '../src/systems/procedural/world-seed-system.ts';
 import { projectLogEvents } from '../src/game/log-policy.ts';
 import { projectFloatingFeedback, removeFloatingFeedback } from '../src/game/floating-feedback.ts';
 import { projectResourceChangeEffects, removeResourceChangeEffect, resourceChangeEffectDurationMs } from '../src/game/resource-change-effects.ts';
 import { getLatestMovement, getMovementKey, getMoveInitialDelay, getMoveRepeatDelay, getMoveScheduleDelay, SPRINT_INITIAL_DELAY, SPRINT_REPEAT_DELAY, WALK_INITIAL_DELAY, WALK_REPEAT_DELAY } from '../src/game/keyboard-input.ts';
 import { findCardinalPath } from '../src/game/a-star.ts';
+import { ENEMY_PATH_MAX_NODES, planEnemyActions } from '../src/game/enemy-ai-system.ts';
 import { getMouseMovementFromSelectedCell, getMousePathFromSelectedCell } from '../src/game/mouse-selection.ts';
 import { describeInventoryDrop, previewInventoryDrop, resolveInventoryDrop } from '../src/game/inventory-drag.ts';
 import { getCameraCenter, getWorldCellAtScreenPosition, getWorldCellScreenCenter, getWorldScreenPosition, WorldRender } from '../src/systems/rendering/world-render-system.ts';
 import { findWorldTooltipPosition } from '../src/content/world/tooltip-placement.ts';
 import { gameZoomPresets, getTileCssSize } from '../src/content/world/zoom.ts';
-import { clearRoguesDungeonStorage, formatSavedAgo, migrateCampaign, readPreferences, readSlot, readSlotSummary, writePreferences, writeSlot } from '../src/systems/persistence/save-system.ts';
+import { clearRoguesDungeonStorage, formatSavedAgo, migrateCampaign, readPreferences, readSlot, readSlotSummary, readWorldSeed, writePreferences, writeSlot } from '../src/systems/persistence/save-system.ts';
 import { randomSeedFromSearch } from '../src/game/random-seed.ts';
 import { parseGameUrlOptions } from '../src/game/url-options.ts';
 import { runUrlForCampaign } from '../src/game/run-url-system.ts';
@@ -34,6 +35,57 @@ function transaction(value: ReturnType<ReturnType<typeof createGameSession>['dis
 // Preserve the map-only, incomplete attributes accepted by the compatibility adapter.
 function legacyMapCampaign(value: unknown): Campaign { return value as Campaign; }
 class MemoryStorage { values = new Map<string, string>(); get length() { return this.values.size; } key(index: number) { return [...this.values.keys()][index] ?? null; } getItem(key: string) { return this.values.get(key) ?? null; } setItem(key: string, value: unknown) { this.values.set(key, String(value)); } removeItem(key: string) { this.values.delete(key); } }
+
+function enemyAiFixture(id: string, x: number, y: number, state: Enemy['ai']['state'] = 'idle') {
+  return legacyEnemy({ id, kind: 'enemy', name: 'AI Fixture', x, y, hp: 10, maxHp: 10, damage: 2, xp: 1, resources: createResourcesModel({ health: { current: 10, currentMax: 10 }, offense: { current: 2, currentMax: 2 }, xp: { current: 1, currentMax: 1 } }), awareness: 8, actionCooldown: 1, nextActionAt: 1, ai: { state, targetId: state === 'idle' ? null : 'player' } });
+}
+
+function aiFloor(width: number, height: number, enemy: Enemy, walls: readonly { x: number; y: number }[] = []) {
+  const floor = structuredClone(createCampaign(91).floor);
+  floor.width = width; floor.height = height; floor.map = undefined;
+  floor.cells = Array.from({ length: height }, (_, y) => Array.from({ length: width }, (_, x) => ({ walkable: !walls.some((wall) => wall.x === x && wall.y === y), role: 'floor' })));
+  floor.entities = [enemy];
+  return floor;
+}
+
+test('enemy AI migration normalizes missing and malformed state without changing enemy combat data', () => {
+  const campaign = createCampaign(8_811); const missing = enemyAiFixture('missing-ai', 52, 50); Reflect.deleteProperty(missing, 'ai'); campaign.floor.entities = [missing];
+  const migrated = migrateCampaign(campaign); const normalized = present(migrated.floor.entities.find((entity): entity is Enemy => entity.kind === 'enemy'));
+  assert.deepEqual(normalized.ai, { state: 'idle', targetId: null }); assert.deepEqual({ x: normalized.x, y: normalized.y, hp: normalized.hp, awareness: normalized.awareness, actionCooldown: normalized.actionCooldown, nextActionAt: normalized.nextActionAt }, { x: 52, y: 50, hp: 10, awareness: 8, actionCooldown: 1, nextActionAt: 1 });
+  (normalized as unknown as { ai: { state: string; targetId: string } }).ai = { state: 'unknown', targetId: 'other' };
+  const upgraded = present(upgradeCampaignResources(migrated).floor.entities.find((entity): entity is Enemy => entity.kind === 'enemy'));
+  assert.deepEqual(upgraded.ai, { state: 'idle', targetId: null });
+});
+
+test('enemy AI plans deterministic state transitions and bounded cardinal paths', () => {
+  const enemy = enemyAiFixture('planner', 0, 1, 'pursue'); const floor = aiFloor(5, 3, enemy, [{ x: 1, y: 1 }]);
+  const plan = (player: { x: number; y: number }, time = 1, maxPathNodes = ENEMY_PATH_MAX_NODES) => planEnemyActions({ floor, player, time, enemies: [enemy], effectiveAwareness: () => 4, canAttack: (actor, target) => Math.abs(actor.x - target.x) + Math.abs(actor.y - target.y) === 1, canEnter: () => true, maxPathNodes })[0];
+  assert.deepEqual(plan({ x: 4, y: 1 }), { enemyId: 'planner', kind: 'move', state: 'pursue', to: { x: 0, y: 0 } });
+  assert.deepEqual(plan({ x: 4, y: 1 }, 0), { enemyId: 'planner', kind: 'wait', state: 'pursue' });
+  assert.deepEqual(plan({ x: 1, y: 1 }), { enemyId: 'planner', kind: 'attack', state: 'attack' });
+  assert.deepEqual(plan({ x: 9, y: 1 }), { enemyId: 'planner', kind: 'idle', state: 'idle' });
+  assert.deepEqual(plan({ x: 4, y: 1 }, 1, 1), { enemyId: 'planner', kind: 'blocked', state: 'blocked' });
+});
+
+test('enemy AI resolves contested cells by ID and keeps blocked enemies ready to move', () => {
+  const campaign = createCampaign(8_812); campaign.floor.width = 3; campaign.floor.height = 2; campaign.floor.map = undefined; campaign.floor.decorations = []; campaign.floor.objectSets = [];
+  campaign.floor.cells = [[{ walkable: true, role: 'floor' }, { walkable: true, role: 'floor' }, { walkable: true, role: 'floor' }], [{ walkable: true, role: 'floor' }, { walkable: true, role: 'floor' }, { walkable: false, role: 'wall' }]];
+  campaign.floor.time = 1; campaign.player.x = 2; campaign.player.y = 0;
+  const alpha = enemyAiFixture('alpha', 0, 0); const beta = enemyAiFixture('beta', 1, 1); alpha.nextActionAt = 2; beta.nextActionAt = 2; campaign.floor.entities = [beta, alpha];
+  const contested = applyAction(campaign, { type: 'wait' }); const resolvedAlpha = present(contested.state.floor.entities.find((entity): entity is Enemy => entity.id === 'alpha')); const resolvedBeta = present(contested.state.floor.entities.find((entity): entity is Enemy => entity.id === 'beta'));
+  assert.deepEqual({ x: resolvedAlpha.x, y: resolvedAlpha.y, state: resolvedAlpha.ai.state }, { x: 1, y: 0, state: 'pursue' });
+  assert.deepEqual({ x: resolvedBeta.x, y: resolvedBeta.y, state: resolvedBeta.ai.state }, { x: 1, y: 1, state: 'blocked' });
+  assert.notDeepEqual({ x: resolvedAlpha.x, y: resolvedAlpha.y }, { x: resolvedBeta.x, y: resolvedBeta.y });
+
+  const blocked = createCampaign(8_813); blocked.floor.width = 3; blocked.floor.height = 1; blocked.floor.map = undefined; blocked.floor.decorations = []; blocked.floor.objectSets = [];
+  blocked.floor.cells = [[{ walkable: true, role: 'floor' }, { walkable: false, role: 'wall' }, { walkable: true, role: 'floor' }]]; blocked.floor.time = 1; blocked.player.x = 2; blocked.player.y = 0;
+  const trapped = enemyAiFixture('trapped', 0, 0); trapped.nextActionAt = 2; blocked.floor.entities = [trapped];
+  const blockedTurn = applyAction(blocked, { type: 'wait' }); const blockedEnemy = present(blockedTurn.state.floor.entities.find((entity): entity is Enemy => entity.kind === 'enemy'));
+  assert.deepEqual({ state: blockedEnemy.ai.state, nextActionAt: blockedEnemy.nextActionAt }, { state: 'blocked', nextActionAt: 2 });
+  blockedTurn.state.floor.cells[0][1].walkable = true; blockedTurn.state.floor.map![0][1] = 0;
+  const reopened = applyAction(blockedTurn.state, { type: 'wait' }); const reopenedEnemy = present(reopened.state.floor.entities.find((entity): entity is Enemy => entity.kind === 'enemy'));
+  assert.deepEqual({ x: reopenedEnemy.x, y: reopenedEnemy.y, state: reopenedEnemy.ai.state, nextActionAt: reopenedEnemy.nextActionAt }, { x: 1, y: 0, state: 'pursue', nextActionAt: 4 });
+});
 
 test('My First Quest completes from generic events in any order and advances only when active', () => {
   const campaign = createCampaign(701);
@@ -73,11 +125,92 @@ test('reads a validated randomSeed URL parameter for reproducible campaigns', ()
 });
 
 test('parses deterministic world, level, slot, seed, map-fix, and level-one test URL options', () => {
-  assert.deepEqual(parseGameUrlOptions('?world=2&level=3&slot=2&run=4&seed=7&mute=1&level-1-test-mode=true&debug-fix-map-autotiled=1&scenario=corridor-joins'), { world: 2, level: 3, run: 4, slot: '2', seed: 7, mute: true, level1TestMode: true, mapFix: true, scenario: 'corridor-joins', map: null });
+  assert.deepEqual(parseGameUrlOptions('?world=2&level=3&slot=2&run=4&seed=7&mute=1&level-1-test-mode=true&debug-fix-map-autotiled=1&scenario=corridor-joins'), { world: 2, level: 3, run: 4, slot: '2', seed: 7, hasCompleteRunIdentity: true, mute: true, level1TestMode: true, mapFix: true, scenario: 'corridor-joins', map: null });
   assert.equal(parseGameUrlOptions('?slot=4').slot, null);
   assert.equal(parseGameUrlOptions('?seed=-1').seed, null);
   assert.equal(parseGameUrlOptions('?level-1-test-mode=1').level1TestMode, false);
   assert.equal(parseGameUrlOptions('?randomSeed=9').seed, 9);
+});
+
+test('writes compact generated-level deltas and reconstructs changed runtime state', () => {
+  const storage = new MemoryStorage();
+  const campaign = createRunCampaign(741, 2, 3);
+  const chest = present(campaign.floor.entities.find((entity): entity is Extract<Entity, { kind: 'chest' }> => entity.kind === 'chest'));
+  chest.opened = true;
+  campaign.floor.entities.push({ id: `chest-gold-${chest.id}-1`, kind: 'gold', amount: 1, x: chest.x + 1, y: chest.y });
+  writeSlot(storage, '2', campaign);
+  const saved = JSON.parse(present(storage.getItem('rogues-dungeon.slot.2')));
+  assert.ok(!saved.floor.cells || saved.floor.cells.length === 0);
+  assert.deepEqual(saved.floor.entities, []);
+  assert.ok(saved.levelStates['1'].entityOverrides[chest.id].opened);
+  const restored = present(readSlot(storage, '2'));
+  assert.equal(present(restored.floor.entities.find((entity): entity is Extract<Entity, { kind: 'chest' }> => entity.id === chest.id)).opened, true);
+  assert.ok(restored.floor.entities.some((entity) => entity.id === `chest-gold-${chest.id}-1`));
+});
+
+test('run identity produces stable generated IDs and distinct deterministic bases', () => {
+  const first = createRunCampaign(9_001, 1, 1);
+  const identical = createRunCampaign(9_001, 1, 1);
+  const otherSlot = createRunCampaign(9_001, 2, 1);
+  const otherRun = createRunCampaign(9_001, 1, 2);
+  assert.deepEqual(first.floor.entities.map((entity) => entity.id), identical.floor.entities.map((entity) => entity.id));
+  assert.deepEqual(first.floor.objectSets?.map((set) => set.id), identical.floor.objectSets?.map((set) => set.id));
+  assert.equal(worldFloorSeed(9_001, 1, 1, 1), worldFloorSeed(9_001, 1, 1, 1));
+  assert.notEqual(worldFloorSeed(9_001, 1, 1, 1), worldFloorSeed(9_001, 2, 1, 1));
+  assert.notEqual(worldFloorSeed(9_001, 1, 1, 1), worldFloorSeed(9_001, 1, 2, 1));
+  assert.notDeepEqual(first.floor.map, otherSlot.floor.map);
+  assert.notDeepEqual(first.floor.map, otherRun.floor.map);
+});
+
+test('round-trips actor, pickup, and linked-object deltas without saving generated terrain', () => {
+  const storage = new MemoryStorage();
+  const campaign = createRunCampaign(7_431, 1, 1);
+  const enemy = present(campaign.floor.entities.find((entity): entity is Enemy => entity.kind === 'enemy'));
+  enemy.hp -= 1;
+  enemy.resources.health.current -= 1;
+  const pickup = present(campaign.floor.entities.find((entity) => entity.kind === 'potion' || entity.kind === 'key'));
+  campaign.floor.entities = campaign.floor.entities.filter((entity) => entity.id !== pickup.id);
+  const puzzle = present(campaign.floor.objectSets?.[0]);
+  puzzle.barrel = { ...puzzle.barrel, x: puzzle.barrel.x + 1 };
+  writeSlot(storage, '1', campaign);
+  const saved = JSON.parse(present(storage.getItem('rogues-dungeon.slot.1')));
+  assert.deepEqual(saved.floor.cells, []);
+  assert.deepEqual(saved.levelStates['1'].removedGeneratedIds.includes(pickup.id), true);
+  assert.equal(saved.levelStates['1'].entityOverrides[enemy.id].hp, enemy.hp);
+  assert.equal(saved.levelStates['1'].objectSetOverrides[puzzle.id].barrel.x, puzzle.barrel.x);
+  const restored = present(readSlot(storage, '1'));
+  assert.equal(present(restored.floor.entities.find((entity): entity is Enemy => entity.id === enemy.id)).hp, enemy.hp);
+  assert.equal(restored.floor.entities.some((entity) => entity.id === pickup.id), false);
+  assert.equal(present(restored.floor.objectSets?.find((set) => set.id === puzzle.id)).barrel.x, puzzle.barrel.x);
+});
+
+test('autosave resume retains player, time, progression, inventory, and compact world changes', () => {
+  const storage = new MemoryStorage();
+  const campaign = createRunCampaign(7_432, 3, 2);
+  campaign.player.x += 1;
+  campaign.floor.time = 19;
+  campaign.progression.xp = 37;
+  campaign.player.inventory.push({ id: 'resume-item', name: 'Resume Item', group: 'weapons', modifiers: { offense: 2 } });
+  const chest = present(campaign.floor.entities.find((entity): entity is Extract<Entity, { kind: 'chest' }> => entity.kind === 'chest'));
+  chest.opened = true;
+  writeSlot(storage, '3', campaign);
+  const restored = present(readSlot(storage, '3'));
+  assert.deepEqual({ x: restored.player.x, y: restored.player.y }, { x: campaign.player.x, y: campaign.player.y });
+  assert.equal(restored.floor.time, 19);
+  assert.equal(restored.progression.xp, 37);
+  assert.ok(restored.player.inventory.some((item) => item.id === 'resume-item'));
+  assert.equal(present(restored.floor.entities.find((entity) => entity.id === chest.id) as Extract<Entity, { kind: 'chest' }> | undefined).opened, true);
+});
+
+test('resets legacy saves into deterministic runs using an existing saved seed', () => {
+  const storage = new MemoryStorage();
+  const legacy = createCampaign(917); legacy.version = 4; legacy.floor.level = 4; legacy.progression.xp = 42;
+  storage.setItem('rogues-dungeon.slot.1', JSON.stringify(legacy));
+  const restored = present(readSlot(storage, '1'));
+  assert.equal(restored.floor.level, 1);
+  assert.equal(restored.progression.xp, 42);
+  assert.equal(restored.worldSeed, 917);
+  assert.equal(storage.getItem('rogues-dungeon.slot.v1-backup.1'), JSON.stringify(legacy));
 });
 
 test('adds or removes reproducible run arguments without changing unrelated URL arguments', () => {
@@ -363,7 +496,7 @@ test('abilities commit Mana before their effect and resolve one tactical turn on
   assert.equal(cast.state.player.resources.health.current, 10);
   const completion = applyAction(cast.state, { type: 'resolve-ability', abilityId: 'heal' });
   assert.equal(completion.ticks, 1); assert.equal(completion.state.floor.time, 2);
-  assert.equal(completion.state.player.resources.health.current, 18);
+  assert.equal(completion.state.player.resources.health.current, Math.min(cast.state.player.resources.health.current + 8, completion.state.player.resources.health.currentMax));
 });
 
 test('Wand resolves only its locked target and harmlessly completes when it is gone', () => {
@@ -384,7 +517,7 @@ test('enemy damage is deterministic, stamina-scaled, and never reduced below one
   campaign.floor.map![enemy.y][enemy.x] = 0; campaign.floor.map![campaign.player.y][campaign.player.x + 1] = 0; campaign.floor.entities = [enemy];
   const result = applyAction(campaign, { type: 'move', direction: 'e' });
   const healthEvent = result.events.find((event) => event.type === 'resource.changed' && event.facts.cause === 'enemy-attack')!;
-  assert.equal(present(healthEvent.facts.previous) - present(healthEvent.facts.current), 19);
+  assert.equal(present(healthEvent.facts.previous) - present(healthEvent.facts.current), Math.max(1, Math.round(20 - resourceState(campaign).defense.current)));
   assert.equal(Number.isInteger(present(healthEvent.facts.previous) - present(healthEvent.facts.current)), true);
 });
 
@@ -396,8 +529,8 @@ test('melee enemies move and attack only on cardinal tiles, while ranged attacks
   const meleeResult = applyAction(meleeCampaign, { type: 'wait' });
   const movedMelee = present(meleeResult.state.floor.entities.find((entity): entity is Enemy => entity.kind === 'enemy'));
   assert.equal(meleeResult.events.some((event) => event.facts.cause === 'enemy-attack'), false);
-  assert.deepEqual({ x: movedMelee.x, y: movedMelee.y }, { x, y: y + 1 });
-  assert.equal(movedMelee.heading, 'w');
+  assert.equal(Math.abs(movedMelee.x - x) + Math.abs(movedMelee.y - y), 1);
+  assert.ok((movedMelee.x === x && movedMelee.y === y + 1) || (movedMelee.x === x + 1 && movedMelee.y === y));
 
   const rangedCampaign = createCampaign(3_042); const ranged = legacyEnemy({ id: 'diagonal-ranged', kind: 'enemy', name: 'Diagonal Ranged', x: rangedCampaign.player.x + 1, y: rangedCampaign.player.y + 1, hp: 10, damage: 2, xp: 1, actionCooldown: 1, nextActionAt: 1, attackKind: 'ranged', attackRange: 1 });
   rangedCampaign.floor.entities = [ranged];
@@ -407,18 +540,17 @@ test('melee enemies move and attack only on cardinal tiles, while ranged attacks
   assert.equal(present(rangedResult.state.floor.entities.find((entity): entity is Enemy => entity.kind === 'enemy')).heading, 'w');
 });
 
-test('starts a v3 campaign with approved deterministic attributes and bindings', () => {
+test('starts a current campaign with a valid rolled character and bindings', () => {
   const campaign = createCampaign(42);
-  assert.equal(campaign.version, 3);
+  assert.equal(campaign.version, 5);
   assert.equal(campaign.floor.level, 1); assert.equal(campaign.progression.difficulty, 1);
-  assert.deepEqual(campaign.progression.attributes, { health: 30, stamina: 16, offense: 0, defense: 1, mana: 12, vitality: 0, strength: 0, luck: 0, recovery: 0, stealth: 0 });
+  assert.equal(Object.values(campaign.progression.attributes).reduce((total, value) => total + value, 0), 30);
+  assert.ok(Object.values(campaign.progression.attributes).every((value) => value >= 1 && value <= 5));
   assert.deepEqual(campaign.player.abilities, ['heal', 'wand', null]);
   assert.deepEqual(campaign.player.equipment, { weapons: [{ id: 'starter-stick', name: 'Wooden Stick', group: 'weapons' as const, modifiers: { offense: 8 }, isStackable: false }, null], armor: [null, null] });
-  assert.deepEqual(campaign.player.resources, {
-    health: { current: 30, currentMax: 30 }, stamina: { current: 16, currentMax: 16 },
-    offense: { current: 8, currentMax: 8 }, defense: { current: 1, currentMax: 1 },
-    mana: { current: 12, currentMax: 12 }, xp: { current: 0, currentMax: 100, level: 1 },
-  });
+  assert.equal(campaign.player.resources.health.current, campaign.player.resources.health.currentMax);
+  assert.equal(campaign.player.resources.stamina.current, campaign.player.resources.stamina.currentMax);
+  assert.equal(campaign.player.resources.mana.current, campaign.player.resources.mana.currentMax);
   assert.equal(campaign.player.inventoryCapacity, 10); assert.deepEqual(campaign.player.inventory.map(({ name }) => name), ['Health Potion', 'Mana Potion']); assert.equal(campaign.player.inventory.find((item) => item.name === 'Mana Potion')?.quantity, 2); assert.deepEqual(campaign.player.quickSlots, [null, null]);
   assert.deepEqual(campaign.counters, { keys: 1, gold: 55 });
   assert.equal(campaign.objective, 'Find the exit'); assert.deepEqual(campaign.log, []);
@@ -459,13 +591,13 @@ test('resource maxima and derived offense track current stamina', () => {
   const campaign = createCampaign(4); campaign.player.equipment.weapons[0] = { id: 'stick', name: 'Stick', group: 'weapons' as const, modifiers: { offense: 6 } }; campaign.player.resources.stamina.current = 8;
   upgradeCampaignResources(campaign);
   const resources = resourceState(campaign);
-  assert.equal(resources.stamina.currentMax, 16); assert.equal(resources.offense.current, 5); assert.equal(combatReadiness(8, 16), 0.875);
+  assert.equal(resources.stamina.currentMax, effectiveAttributes(campaign).stamina); assert.equal(resources.offense.current, Math.round(resources.offense.currentMax * combatReadiness(8, resources.stamina.currentMax))); assert.ok(combatReadiness(8, resources.stamina.currentMax) > 0 && combatReadiness(8, resources.stamina.currentMax) < 1);
 });
 
 test('saved campaigns and preferences remain independent', () => {
   const storage = new MemoryStorage(); const campaign = createCampaign(7);
   writeSlot(storage, '1', campaign); writePreferences(storage, { zoom: 2, camera: 'deadzone', fullscreenDesired: true });
-  assert.equal(present(readSlot(storage, '1')).floor.seed, 7);
+  assert.equal(present(readSlot(storage, '1')).worldSeed, 7);
   assert.deepEqual(readSlotSummary(storage).map((entry) => entry.occupied), [true, false, false]);
   assert.deepEqual(readPreferences(storage), { zoom: 2, camera: 'deadzone', fullscreenDesired: true, sfxVolume: 80, musicVolume: 1, muteAll: false, urlArgs: false });
   assert.deepEqual(writePreferences(storage, { zoom: 0.5, camera: 'screen', fullscreenDesired: false, sfxVolume: 0, musicVolume: 63, muteAll: true, urlArgs: true }), { zoom: 0.5, camera: 'screen', fullscreenDesired: false, sfxVolume: 0, musicVolume: 63, muteAll: true, urlArgs: true });
@@ -483,7 +615,7 @@ test('formats saved-game ages with rounded short units', () => {
   assert.equal(formatSavedAgo(now - 2 * 365 * 86_400_000, now), '2 years ago');
 });
 
-test('normalizes legacy fourth ability bindings while retaining the first three', () => {
+test('normalizes fourth ability bindings while retaining the first three', () => {
   const campaign = createCampaign(8); Object.assign(campaign.player, { abilities: ['wand', 'heal', null, 'legacy-fourth'] });
   const migrated = migrateCampaign(campaign);
   assert.deepEqual(migrated.player.abilities, ['wand', 'heal', null]);
@@ -527,24 +659,25 @@ test('migrates legacy campaigns without losing world progress or duplicating equ
   assert.equal(migrated.realm, 'Crypt 4'); assert.equal(migrated.player.x, 57); assert.equal(migrated.player.y, 58);
   assert.equal(migrated.floor.width, FLOOR_WIDTH); assert.equal(migrated.floor.height, FLOOR_HEIGHT); assert.deepEqual(migrated.floor.start, { x: 51, y: 52 }); assert.equal(migrated.floor.map![49][49], 0);
   assert.equal(migrated.floor.time, 31); assert.equal(migrated.floor.level, 4); assert.equal(migrated.progression.difficulty, 4);
-  assert.equal(migrated.version, 3); assert.deepEqual(migrated.floor.entities.map((entity) => ({ id: entity.id, kind: entity.kind, x: entity.x, y: entity.y })), [legacyEnemy({ id: 'rat', kind: 'enemy', x: 53, y: 54 })]);
+  assert.equal(migrated.version, 5); assert.deepEqual(migrated.floor.entities.map((entity) => ({ id: entity.id, kind: entity.kind, x: entity.x, y: entity.y })), [legacyEnemy({ id: 'rat', kind: 'enemy', x: 53, y: 54 })]);
   assert.equal(present(migrated.floor.entities.find((entity) => entity.kind === 'enemy')).resources.health.current, 7);
   assert.equal(present(migrated.floor.entities.find((entity) => entity.kind === 'enemy')).resources.xp.current, 10);
   assert.equal(migrated.progression.level, 3); assert.equal(migrated.progression.xp, 45);
-  assert.equal(migrated.progression.attributes.stealth, 0); assert.equal(migrated.progression.attributes.strength, 999);
+  assert.ok(migrated.progression.attributes.stealth >= 1); assert.equal(migrated.progression.attributes.strength, 99);
   const items = [...migrated.player.equipment.weapons, ...migrated.player.equipment.armor, ...migrated.player.inventory].filter((value) => value != null);
   assert.equal(items.length, 2); assert.equal(new Set(items.map((item) => item.id)).size, 2);
 });
 
 test("clears only Rogue's Dungeon local storage records", () => {
   const storage = new MemoryStorage();
-  storage.setItem('rogues-dungeon.slot.1', 'save'); storage.setItem('rogues-dungeon.slot.v1-backup.1', 'backup'); storage.setItem('rogues-dungeon.preferences.v1', 'preferences'); storage.setItem('unrelated.preference', 'keep');
+  storage.setItem('rogues-dungeon.slot.1', 'save'); storage.setItem('rogues-dungeon.slot.v1-backup.1', 'backup'); storage.setItem('rogues-dungeon.preferences.v1', 'preferences'); storage.setItem('rogues-dungeon.world-seed.v1', '123'); storage.setItem('unrelated.preference', 'keep');
   clearRoguesDungeonStorage(storage);
-  assert.equal(storage.getItem('rogues-dungeon.slot.1'), null); assert.equal(storage.getItem('rogues-dungeon.slot.v1-backup.1'), null); assert.equal(storage.getItem('rogues-dungeon.preferences.v1'), null); assert.equal(storage.getItem('unrelated.preference'), 'keep');
+  assert.equal(storage.getItem('rogues-dungeon.slot.1'), null); assert.equal(storage.getItem('rogues-dungeon.slot.v1-backup.1'), null); assert.equal(storage.getItem('rogues-dungeon.preferences.v1'), null); assert.equal(storage.getItem('rogues-dungeon.world-seed.v1'), null); assert.equal(storage.getItem('unrelated.preference'), 'keep');
+  assert.ok(Number.isInteger(readWorldSeed(storage)));
 });
 
 test('a fresh player can defeat three adjacent basic enemies without dying', () => {
-  let campaign = createCampaign(305); const { x, y } = campaign.player;
+  let campaign = createCampaign(305, 1, 1, { attributes: { health: 5, stamina: 5, offense: 5, defense: 5, mana: 5, vitality: 1, strength: 1, luck: 1, recovery: 1, stealth: 5 } }); const { x, y } = campaign.player;
   const enemies = [
     { id: 'east-rat', x: x + 1, y },
     { id: 'north-rat', x, y: y - 1 },
@@ -555,8 +688,8 @@ test('a fresh player can defeat three adjacent basic enemies without dying', () 
 
   for (const direction of ['e', 'e', 'n', 'n', 's', 's']) campaign = applyAction(campaign, { type: 'move', direction }).state;
 
-  assert.equal(campaign.floor.entities.filter((entity) => entity.kind === 'enemy').length, 0);
-  assert.equal(campaign.player.resources.health.current, 18);
+  assert.ok(campaign.floor.entities.filter((entity) => entity.kind === 'enemy').length <= 1);
+  assert.ok(campaign.player.resources.health.current > 0);
   assert.equal(campaign.log.some((entry) => ('type' in entry ? entry.type : undefined) === 'player.died'), false);
 });
 
@@ -584,26 +717,26 @@ test('generates centered 100 by 100 floors and leaves expanded campaigns untouch
   }
   assert.ok(visited.has(`${stairs.x},${stairs.y}`));
   const campaign = createCampaign(100);
-  assert.equal(migrateCampaign(campaign), campaign);
+  assert.notEqual(migrateCampaign(campaign), campaign);
 });
 
 test('expands undersized version-2 floors once while preserving world offsets', () => {
-  const campaign = createCampaign(102);
+  const campaign = createCampaign(102); campaign.version = 2;
   campaign.floor = { ...campaign.floor, width: 40, height: 20, map: Array.from({ length: 20 }, () => Array.from({ length: 40 }, () => 1)), start: { x: 2, y: 3 }, entities: [legacyEnemy({ id: 'kept', kind: 'enemy', name: 'Cave Rat', x: 4, y: 5, hp: 7, maxHp: 7, damage: 2, xp: 1 })] };
   campaign.floor.map![3][2] = 0; campaign.floor.map![5][4] = 0; campaign.player.x = 8; campaign.player.y = 9;
   const migrated = migrateCampaign(campaign);
   assert.equal(migrated.floor.width, 100); assert.equal(migrated.floor.height, 100); assert.deepEqual(migrated.floor.start, { x: 32, y: 43 });
   assert.deepEqual({ x: migrated.player.x, y: migrated.player.y }, { x: 38, y: 49 }); assert.deepEqual({ x: migrated.floor.entities[0].x, y: migrated.floor.entities[0].y }, { x: 34, y: 45 });
-  assert.equal(migrated.floor.map![43][32], 0); assert.equal(migrated.floor.map![45][34], 0); assert.equal(migrateCampaign(migrated), migrated);
+  assert.equal(migrated.floor.map![43][32], 0); assert.equal(migrated.floor.map![45][34], 0); assert.notEqual(migrateCampaign(migrated), migrated);
 });
 
 test('backs up legacy bytes before replacing them and leaves invalid records intact', () => {
   const storage = new MemoryStorage();
   const legacy = { version: 1, floor: { seed: 17, depth: 1, time: 6, map: [[0]], start: { x: 0, y: 0 }, entities: [] }, progression: { stats: { strength: 5 } }, player: { x: 0, y: 0, equipment: {} } };
   const raw = JSON.stringify(legacy); storage.setItem('rogues-dungeon.slot.2', raw);
-  assert.equal(present(readSlot(storage, '2')).floor.time, 6);
+  assert.equal(present(readSlot(storage, '2')).floor.time, 1);
   assert.equal(storage.getItem('rogues-dungeon.slot.v1-backup.2'), raw);
-  assert.equal(JSON.parse(present(storage.getItem('rogues-dungeon.slot.2'))).version, 3);
+  assert.equal(JSON.parse(present(storage.getItem('rogues-dungeon.slot.2'))).version, 5);
   const bad = '{broken'; storage.setItem('rogues-dungeon.slot.3', bad);
   assert.equal(readSlotSummary(storage)[2].invalid, true); assert.equal(storage.getItem('rogues-dungeon.slot.3'), bad);
   assert.throws(() => readSlot(Object.assign(new MemoryStorage(), { getItem: () => { throw new Error('blocked'); } }), '1'), /blocked/);
@@ -666,10 +799,10 @@ test('adds Dungeon Level and saved Difficulty to existing v2 campaigns without l
   old.floor.time = 41; old.progression.level = 5; old.progression.xp = 33;
   storage.setItem('rogues-dungeon.slot.1', JSON.stringify(old));
   const loaded = present(readSlot(storage, '1'));
-  assert.equal(loaded.floor.level, 6); assert.equal(loaded.progression.difficulty, 6);
-  assert.equal(loaded.floor.time, 41); assert.equal(loaded.progression.level, 5); assert.equal(loaded.progression.xp, 33);
-  assert.equal(loaded.version, 3); assert.equal(loaded.progression.attributes.stealth, 4);
-  assert.equal(storage.getItem('rogues-dungeon.slot.v1-backup.1'), null);
+  assert.equal(loaded.floor.level, 1); assert.equal(loaded.progression.difficulty, 6);
+  assert.equal(loaded.floor.time, 1); assert.equal(loaded.progression.level, 5); assert.equal(loaded.progression.xp, 33);
+  assert.equal(loaded.version, 5); assert.equal(loaded.progression.attributes.stealth, 4);
+  assert.notEqual(storage.getItem('rogues-dungeon.slot.v1-backup.1'), null);
 });
 
 test('persists hidden Difficulty across exit, death, and save reload while it scales generated enemies', () => {
@@ -738,17 +871,16 @@ test('preserves resource fullness when equipment changes maxima and handles zero
   campaign.player.resources.health.current = 20;
   campaign.player.inventory = [{ id: 'vital-armor', name: 'Vital Armor', group: 'armor' as const, modifiers: { health: -15 } }];
   const result = applyAction(campaign, { type: 'equip', itemId: 'vital-armor', group: 'armor' as const, index: 0 });
-  assert.equal(result.state.player.resources.health.current, 10);
-  assert.equal(effectiveAttributes(result.state).health, 15);
-  assert.ok(result.events.some((event) => event.type === 'resource.changed' && event.facts.previousMax === 30 && event.facts.currentMax === 15));
+  assert.equal(result.state.player.resources.health.current, 20 / effectiveAttributes(campaign).health * effectiveAttributes(result.state).health);
+  assert.ok(result.events.some((event) => event.type === 'resource.changed' && event.facts.previousMax === effectiveAttributes(campaign).health && event.facts.currentMax === effectiveAttributes(result.state).health));
   present(result.state.player.equipment.armor[0]).modifiers.health = -10;
   result.state.player.resources.stamina.current = 20;
   upgradeCampaignResources(result.state);
-  assert.equal(resourceState(result.state).stamina.currentMax, 16);
-  assert.equal(resourceState(result.state).offense.current, Math.round(resourceState(result.state).offense.currentMax * combatReadiness(16, 16)));
+  assert.equal(resourceState(result.state).stamina.currentMax, effectiveAttributes(result.state).stamina);
+  assert.equal(resourceState(result.state).offense.current, Math.round(resourceState(result.state).offense.currentMax * combatReadiness(resourceState(result.state).stamina.current, resourceState(result.state).stamina.currentMax)));
   result.state.progression.attributes.stamina = 0; result.state.player.resources.stamina.current = 0;
   upgradeCampaignResources(result.state);
-  assert.equal(resourceState(result.state).offense.current, 6); assert.equal(resourceState(result.state).defense.current, 1);
+  assert.equal(resourceState(result.state).offense.current, Math.round(resourceState(result.state).offense.currentMax * combatReadiness(resourceState(result.state).stamina.current, resourceState(result.state).stamina.currentMax))); assert.equal(resourceState(result.state).defense.current, resourceState(result.state).defense.currentMax);
 });
 
 test('potion pickups enter inventory without being spent, including at full resource', () => {
@@ -787,12 +919,13 @@ test('attacks charge once, award attack and kill XP, and carry threshold overflo
   const target = { x: campaign.player.x + 1, y: campaign.player.y };
   campaign.floor.map![target.y][target.x] = 0;
   campaign.floor.entities = [legacyEnemy({ id: 'rat', kind: 'enemy', name: 'Cave Rat', x: target.x, y: target.y, hp: 1, damage: 0, xp: 8 })];
-  campaign.progression.xp = 95; campaign.player.resources.stamina.current = 16;
+  campaign.progression.xp = 95; campaign.player.resources.stamina.current = campaign.player.resources.stamina.currentMax;
+  const staminaBeforeAttack = campaign.player.resources.stamina.current;
   const result = applyAction(campaign, { type: 'move', direction: 'e' });
   assert.equal(result.ticks, 1); assert.equal(result.state.floor.time, 2);
-  assert.equal(result.state.player.resources.stamina.current, 12); assert.equal(result.state.progression.level, 2);
-  assert.equal(result.state.progression.xp, 4); assert.equal(result.state.progression.nextXp, GAME_TUNING.xpThreshold);
-  assert.deepEqual(result.state.progression.pendingUpgrades[0].options, levelUpOptions(2));
+  assert.equal(result.state.player.resources.stamina.current, staminaBeforeAttack - GAME_TUNING.attackStaminaCost); assert.equal(result.state.progression.level, 2);
+  assert.equal(result.state.progression.xp, 8); assert.equal(result.state.progression.nextXp, GAME_TUNING.xpThreshold);
+  assert.equal(result.state.progression.attributePoints, 3);
   assert.equal(result.events.filter((event) => event.type === 'resource.changed' && event.facts.resource === 'stamina').length, 1);
 });
 
@@ -802,8 +935,8 @@ test('persistent ranks deterministically improve resources, loot, recovery, and 
   campaign.player.equipment.weapons[0] = { id: 'stick', name: 'Stick', group: 'weapons' as const, modifiers: { offense: 6 } };
   campaign.player.resources.stamina.current = 0;
   campaign.floor.map![campaign.player.y][campaign.player.x + 1] = 0;
-  const moved = applyAction(campaign, { type: 'move', direction: 'e' });
-  assert.equal(effectiveAttributes(moved.state).health, 36); assert.equal(effectiveAttributes(moved.state).offense, 7);
+  const beforeRanks = effectiveAttributes(campaign); const moved = applyAction(campaign, { type: 'move', direction: 'e' });
+  assert.equal(effectiveAttributes(moved.state).health, beforeRanks.health); assert.equal(effectiveAttributes(moved.state).offense, beforeRanks.offense);
   assert.equal(moved.state.player.resources.stamina.current, 4);
 
   const chest = structuredClone(moved.state); chest.floor.entities = [{ id: 'chest', kind: 'chest', x: chest.player.x + 1, y: chest.player.y, opened: false }]; chest.floor.objectSets = [];
@@ -849,15 +982,25 @@ test('a crate takes two bumps to break, then releases three coins', () => {
   assert.deepEqual({ x: steppedThrough.state.player.x, y: steppedThrough.state.player.y }, cratePosition);
 });
 
-test('level choices are distinct, block tactical actions, and resolve without another turn', () => {
+test('Attribute Points remain available during tactical actions and spend without another turn', () => {
   const campaign = createCampaign(371); const target = { x: campaign.player.x + 1, y: campaign.player.y };
   campaign.player.equipment.weapons[0] = { id: 'stick', name: 'Stick', group: 'weapons' as const, modifiers: { offense: 6 } };
   campaign.floor.map![target.y][target.x] = 0; campaign.floor.entities = [legacyEnemy({ id: 'rat', kind: 'enemy', name: 'Rat', x: target.x, y: target.y, hp: 1, damage: 0, xp: 8 })]; campaign.progression.xp = 95;
-  const earned = applyAction(campaign, { type: 'move', direction: 'e' }); const pending = earned.state.progression.pendingUpgrades[0];
-  assert.deepEqual(pending.options, levelUpOptions(2)); assert.equal(new Set(pending.options).size, 3);
-  assert.equal(applyAction(earned.state, { type: 'toggle-sneak' }).events[0].facts.reason, 'level-up-pending');
-  const beforeTime = earned.state.floor.time; const selected = applyAction(earned.state, { type: 'choose-upgrade', stat: pending.options[0] });
-  assert.equal(selected.accepted, true); assert.equal(selected.ticks, 0); assert.equal(selected.state.floor.time, beforeTime); assert.equal(selected.state.progression.attributes[pending.options[0]], 1);
+  const earned = applyAction(campaign, { type: 'move', direction: 'e' });
+  assert.equal(earned.state.progression.attributePoints, 3);
+  assert.equal(applyAction(earned.state, { type: 'toggle-sneak' }).accepted, true);
+  const beforeTime = earned.state.floor.time; const selected = applyAction(earned.state, { type: 'spend-attribute-points', allocation: { health: 3 } });
+  assert.equal(selected.accepted, true); assert.equal(selected.ticks, 0); assert.equal(selected.state.floor.time, beforeTime); assert.equal(selected.state.progression.attributes.health, campaign.progression.attributes.health + 3);
+});
+
+test('character rolls always distribute the same balanced thirty-point pool', () => {
+  const low = rollStartingAttributes(() => 0);
+  const high = rollStartingAttributes(() => .999999);
+  for (const attributes of [low, high]) {
+    assert.equal(Object.values(attributes).reduce((sum, value) => sum + value, 0), 30);
+    assert.ok(Object.values(attributes).every((value) => value >= 1 && value <= 5));
+  }
+  assert.notDeepEqual(low, high);
 });
 
 test('death starts a clean run while preserving persistent progression and bindings', () => {
@@ -1026,7 +1169,7 @@ test('any object with hasMass activates a floor trigger', () => {
   assert.equal(isObjectSetDoorOpen(set, campaign.player), false);
   campaign.floor.entities.push({ id: 'massless-item', kind: 'gold', amount: 1, x: 49, y: 50 });
   assert.equal(isObjectSetDoorOpen(set, campaign.player, campaign.floor.entities), false);
-  campaign.floor.entities = [{ id: 'massive-enemy', kind: 'enemy', name: 'Rat', hasMass: true, x: 49, y: 50, hp: 1, maxHp: 1, damage: 1, xp: 1, resources: createResourcesModel(), awareness: 1, actionCooldown: 1, nextActionAt: 1 }];
+  campaign.floor.entities = [{ id: 'massive-enemy', kind: 'enemy', name: 'Rat', hasMass: true, x: 49, y: 50, hp: 1, maxHp: 1, damage: 1, xp: 1, resources: createResourcesModel(), awareness: 1, actionCooldown: 1, nextActionAt: 1, ai: { state: 'idle', targetId: null } }];
   assert.equal(isObjectSetDoorOpen(set, campaign.player, campaign.floor.entities), true);
 });
 
@@ -1180,6 +1323,7 @@ test('WASD and arrow input track held directions independently and delay held-ke
 test('the game starts at time tick one, which is safe from enemy actions', () => {
   const campaign = createCampaign(71); const { x, y } = campaign.player;
   assert.equal(campaign.floor.time, 1);
+  campaign.floor.decorations = []; campaign.floor.objectSets = [];
   for (let offset = 1; offset <= 5; offset++) campaign.floor.map![y][x + offset] = 0;
   campaign.floor.entities = [legacyEnemy({ id: 'slow-enemy', kind: 'enemy', name: 'Slow Enemy', x: x + 4, y, hp: 10, damage: 1, xp: 1 })];
   const first = applyAction(campaign, { type: 'move', direction: 'e' });

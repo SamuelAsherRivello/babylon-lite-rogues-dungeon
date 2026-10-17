@@ -29,6 +29,18 @@ test('assigns deterministic shared orders to world visuals only', () => {
   assert.deepEqual(ordered.map(({ entry, order }) => [entry.id, order]), [['north-wall', 100], ['same-y-shadow', 102], ['south-actor', 104]]);
 });
 
+test('keeps a wall boundary behind south-side objects and characters', () => {
+  const ordered = orderWorldRenderEntries([
+    { id: 'wall-row-7', pass: GRID_RENDER_PASS.world, y: 256, tieBreak: 0 },
+    { id: 'torch-on-wall', pass: GRID_RENDER_PASS.world, y: 256, tieBreak: 10 },
+    { id: 'stair-at-wall-front', pass: GRID_RENDER_PASS.world, y: 256, tieBreak: 20 },
+    { id: 'potion-at-wall-front', pass: GRID_RENDER_PASS.world, y: 256, tieBreak: 40 },
+    { id: 'barrel-shadow', pass: GRID_RENDER_PASS.world, y: 288, tieBreak: 50 },
+    { id: 'barrel-main', pass: GRID_RENDER_PASS.world, y: 288, tieBreak: 51 },
+  ]);
+  assert.deepEqual(ordered.map(({ entry }) => entry.id), ['wall-row-7', 'torch-on-wall', 'stair-at-wall-front', 'potion-at-wall-front', 'barrel-shadow', 'barrel-main']);
+});
+
 test('documents the world render passes and depth exceptions', async () => {
   const documentation = await readFile(new URL('../documentation/world-rendering.md', import.meta.url), 'utf8');
   assert.match(documentation, /## World depth order/);
@@ -92,6 +104,7 @@ test('mounts the dungeon and minimap in Babylon Lite from the same world compone
   assert.match(source, /addCharacterDepth\("player", groundContactY\(playerDepthPosition\), playerSprite, turnPresentation\?\.bumpDepthTieBreakOf\("player", now\) \?\? 0\)/);
   assert.match(source, /addCharacterDepth\(actor\.id, groundContactY\(position\), character, turnPresentation\?\.bumpDepthTieBreakOf\(actor\.id, now\) \?\? 0\)/);
   assert.match(source, /addCharacterDepth\(entity\.id, groundContactY\(position\), barrel\)/);
+  assert.match(source, /groundContactY\(\{ y \}: Position\) \{ return y \* 32 \+ 32; \}/);
   assert.match(source, /terrainLayer\.order = TERRAIN_RENDER_ORDER/);
   assert.match(source, /triggerLayers\[i\]\.order = FLOOR_DECAL_RENDER_ORDER/);
   assert.match(source, /debugLayer\.order = OVERLAY_RENDER_ORDER/);

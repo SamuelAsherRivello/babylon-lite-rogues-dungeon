@@ -107,5 +107,5 @@ export function UiIrisTransition({ phase, label = "Loading world", onPhaseComple
     return () => window.clearTimeout(timer);
   }, [onPhaseComplete, phase]);
   const covered = phase === "closing" || phase === "closed";
-  return <div className={`ui_iris_transition ui_iris_transition--${phase}`} style={{ "--ui-transition-duration": `${defaultIrisTransition.durationMs}ms` }} aria-live="polite" aria-busy={covered}>{covered && <span>{label}</span>}</div>;
+  return <div className={`ui_iris_transition ui_iris_transition--${phase}`} style={{ "--ui-transition-duration": `${defaultIrisTransition.durationMs}ms` } as CSSProperties} aria-live="polite" aria-busy={covered}>{covered && <span>{label}</span>}</div>;
 }

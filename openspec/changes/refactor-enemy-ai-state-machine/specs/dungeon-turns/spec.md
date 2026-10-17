@@ -3,7 +3,7 @@
 ## MODIFIED Requirements
 
 ### Requirement: Resolve tactical enemy actions
-Living enemies SHALL persist an `idle`, `pursue`, `attack`, or `blocked` tactical state with individual awareness and cooldown data. After an accepted player turn, each due enemy SHALL select at most one deterministic action from a shared turn snapshot. An aware enemy SHALL use a cardinal route toward the player, attack when cardinally adjacent, and return to idle immediately when awareness is lost. The resolver SHALL commit move intents in stable enemy-ID order and prevent two enemies from entering the same cell.
+Living enemies SHALL persist an `idle`, `pursue`, `attack`, or `blocked` tactical state with individual awareness and cooldown data. After an accepted player turn, each due enemy SHALL select at most one deterministic action from a shared turn snapshot. An aware enemy SHALL use a cardinal route toward the player, attack when its configured attack rule is met (with melee attacks requiring cardinal adjacency), and return to idle immediately when awareness is lost. The resolver SHALL commit move intents in stable enemy-ID order and prevent two enemies from entering the same cell.
 
 #### Scenario: Eligible enemy routes around a blocker
 - **WHEN** an aware, due enemy has no direct cardinal step to the player but has a cardinal route around blocking terrain or entities
@@ -12,6 +12,10 @@ Living enemies SHALL persist an `idle`, `pursue`, `attack`, or `blocked` tactica
 #### Scenario: Enemy attacks from cardinal adjacency
 - **WHEN** an aware, due enemy is cardinally adjacent to the player
 - **THEN** it enters attack state and performs one attack without moving
+
+#### Scenario: Enemy retains its configured ranged attack rule
+- **WHEN** an aware, due ranged enemy can attack the player under its existing range rule
+- **THEN** it enters attack state and performs that attack without moving
 
 #### Scenario: Enemy loses awareness
 - **WHEN** an enemy in pursue, attack, or blocked state no longer has the player in effective awareness range

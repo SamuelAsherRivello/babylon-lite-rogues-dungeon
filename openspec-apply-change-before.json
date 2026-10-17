@@ -1,0 +1,38 @@
+{
+  "title": "Improve openspec-apply-change",
+  "target": {
+    "kind": "skill",
+    "path": "C:\\Users\\srive\\.agents\\skills\\openspec-apply-change",
+    "entryPath": "C:\\Users\\srive\\.agents\\skills\\openspec-apply-change\\SKILL.md",
+    "name": "openspec-apply-change",
+    "relativePath": "C:/Users/srive/.agents/skills/openspec-apply-change"
+  },
+  "summary": "Raise the evaluation from grade C (81/100) with a focus on the highest-signal structural and budget issues first.",
+  "goals": [
+    "Reduce repeated instruction text and move detail into deferred supporting files."
+  ],
+  "measurementGoals": [
+    "token-usage-observer",
+    "task-outcome-scorecard",
+    "latency-efficiency"
+  ],
+  "requiredFixes": [
+    {
+      "id": "invoke_cost_tokens-budget-high",
+      "message": "invoke_cost_tokens is excessive relative to the current Codex baseline.",
+      "remediation": [
+        "Reduce repeated instruction text and move detail into deferred supporting files."
+      ]
+    }
+  ],
+  "recommendedFixes": [
+    {
+      "id": "trigger_cost_tokens-budget-high",
+      "message": "trigger_cost_tokens is heavy relative to the current Codex baseline.",
+      "remediation": [
+        "Reduce repeated instruction text and move detail into deferred supporting files."
+      ]
+    }
+  ],
+  "suggestedPrompt": "Use the skill-creator guidance to improve openspec-apply-change. Keep the structure compact and move bulky details into references or scripts. Define success measures with these toolsets: token-usage-observer, task-outcome-scorecard, latency-efficiency. Address invoke_cost_tokens-budget-high: invoke_cost_tokens is excessive relative to the current Codex baseline. Address trigger_cost_tokens-budget-high: trigger_cost_tokens is heavy relative to the current Codex baseline."
+}

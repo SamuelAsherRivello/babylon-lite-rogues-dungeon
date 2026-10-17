@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import viteConfig from '../../vite.config.ts';
 import { aspectRatioPresets, classifyPlatform, defaultLayout, fitViewport, layoutForPlatform, validateLayout } from '../src/ui/layout.ts';
+import { statusCapMarker } from '../src/game/status-cap-marker.ts';
 
 test("builds Rogue's Dungeon from its GitHub Pages base", () => {
   assert.equal(viteConfig.root, 'rogues-dungeon'); assert.equal(viteConfig.base, '/babylon-lite-rogues-dungeon/');
@@ -11,6 +12,12 @@ test('fits both landscape and portrait command-desk surfaces', () => {
   assert.equal(defaultLayout.label, '16:9'); assert.equal(aspectRatioPresets.portrait.label, '9:16');
   for (const layout of [defaultLayout, { orientation: 'portrait' as const, ...aspectRatioPresets.portrait }]) { const fitted = fitViewport(900, 900, layout); assert.ok(fitted.width <= 900 && fitted.height <= 900); assert.equal(fitted.x * 2 + fitted.width, 900); }
   assert.throws(() => validateLayout({ orientation: 'portrait', width: 16, height: 9 }));
+});
+test('status capacity markers make creation ranks legible without reaching the full track early', () => {
+  assert.equal(statusCapMarker(1), 10);
+  assert.equal(statusCapMarker(5), 50);
+  assert.ok(statusCapMarker(14) > 50 && statusCapMarker(14) < 99);
+  assert.equal(statusCapMarker(99), 99);
 });
 test('recovers a wall-adjacent barrel only when its current and starting cells are both offscreen', async () => {
   const renderer = await readFile(new URL('../src/systems/rendering/babylon-render-system.tsx', import.meta.url), 'utf8');
@@ -145,7 +152,7 @@ test('saves and quits on Escape during play while Settings keeps Escape for clos
 test('uses randomSeed to seed only a newly selected save slot', async () => {
   const game = await readFile(new URL('../src/game/game.tsx', import.meta.url), 'utf8');
   assert.match(game, /parseGameUrlOptions\(window\.location\.search\)/);
-  assert.match(game, /const initial = urlOptions\.level1TestMode \? freshTestCampaign : existing \?\? freshTestCampaign/);
+  assert.match(game, /const initial = unsavedUrlRun \|\| urlOptions\.level1TestMode \? freshTestCampaign : existing \?\? freshTestCampaign/);
   assert.match(game, /New Game · Seed \$\{randomSeed\}/);
 });
 test('supports deterministic direct-slot map-fix URLs', async () => {
@@ -273,12 +280,12 @@ test('dims keyboard inputs while their ability or quick slot is being dragged', 
   assert.match(css, /\.input-key--unavailable \{ --input-key-color:var\(--slot-disabled-color\)/);
 });
 
-test('renders the Stealth stat and level-up chooser from game-rule state', async () => {
-  const [game, levelUpWindow] = await Promise.all(['../src/game/game.tsx', '../src/game/windows/level-up-window.tsx'].map((path) => readFile(new URL(path, import.meta.url), 'utf8')));
+test('renders the Stealth stat and progression dialog from game-rule state', async () => {
+  const [game, progressionWindow] = await Promise.all(['../src/game/game.tsx', '../src/game/windows/progression-window.tsx'].map((path) => readFile(new URL(path, import.meta.url), 'utf8')));
   assert.match(game, /\["vitality", "strength", "luck", "recovery", "stealth"\]/);
-  assert.match(levelUpWindow, /export function LevelUpWindow/);
-  assert.match(game, /choose-upgrade/);
-  assert.match(levelUpWindow, /Level \{pending\.level\}: Choose a Stat/);
+  assert.match(progressionWindow, /export function ProgressionWindow/);
+  assert.match(game, /spend-attribute-points/);
+  assert.match(progressionWindow, /Attribute Points/);
 });
 
 test('uses delta values to pulse only when an attribute turns red or green', async () => {
@@ -291,4 +298,15 @@ test('uses delta values to pulse only when an attribute turns red or green', asy
   assert.match(css, /\.delta_value_red \{ color:#df6161; \}/);
   assert.match(css, /\.delta_value_pulse \{ animation:delta_value_pulse 300ms ease-out; \}/);
   assert.match(css, /@keyframes delta_value_pulse \{ 0%,100% \{ transform:scale\(1\); \} 50% \{ transform:scale\(2\); \} \}/);
+});
+
+test('adds a nested How To Play reference dialog to Settings', async () => {
+  const [game, settingsWindow, helpWindow, dialog, css] = await Promise.all(['src/game/game.tsx', 'src/game/windows/settings-window.tsx', 'src/game/windows/how-to-play-window.tsx', 'src/ui/Dialog.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
+  for (const topic of ['Basics', 'Combat', 'Exploration', 'Items and gear', 'Abilities and stamina', 'Progression', 'Saving and controls']) assert.match(helpWindow, new RegExp(`\\["${topic}"`));
+  assert.match(helpWindow, /title="How To Play"/); assert.match(helpWindow, /role="tablist"/); assert.match(helpWindow, /aria-selected=\{selectedTopic === index\}/);
+  assert.match(settingsWindow, /How To Play/); assert.match(settingsWindow, /onOpenHowToPlay/); assert.match(settingsWindow, /dismissible=\{!helpOpen\}/);
+  assert.match(settingsWindow, /bounds=\{bounds\}/); assert.match(settingsWindow, /onOpenHowToPlay\(dialogBounds\(event\.currentTarget\.closest\("\.settings-window"\)!\)\)/); assert.match(helpWindow, /bounds=\{bounds\}/);
+  assert.match(game, /const \[howToPlay, setHowToPlay\] = useState\(false\)/); assert.match(game, /<HowToPlayWindow origin="menu"/); assert.match(game, /<HowToPlayWindow origin="game"/);
+  assert.match(dialog, /dismissible = true/); assert.match(dialog, /export interface DialogBounds/); assert.match(dialog, /function dialogBounds\(element: Element\)/); assert.match(dialog, /width: bounds\.width, height: bounds\.height/); assert.match(dialog, /if \(!dismissible\) return undefined/); assert.match(dialog, /onClick=\{dismissible \? requestClose : undefined\}/);
+  assert.match(css, /\.dialog_backdrop:has\(\.how-to-play-window\) \{ z-index:4; \}/); assert.match(css, /\.dialog--bounded \{ box-sizing:border-box; max-width:none; max-height:none; \}/); assert.match(css, /\.how-to-play-window__topics \{ display:flex; flex-wrap:wrap;/);
 });

@@ -18,9 +18,12 @@ export interface QuickSlot { item: Item; quantity: number }
 export type Equipment = Record<EquipmentGroup, (Item | null)[]>;
 export type AbilityId = "heal" | "wand";
 export interface TerrainCell { walkable: boolean; role: string; protected?: boolean }
+export type EnemyAiState = "idle" | "pursue" | "attack" | "blocked";
+export interface EnemyAi { state: EnemyAiState; targetId: "player" | null }
 export interface Enemy extends MassBearingPosition {
   id: string; kind: "enemy"; name: string; hp: number; maxHp: number; damage: number; xp: number;
   resources: Resources; awareness: number; actionCooldown: number; nextActionAt: number; heading?: CharacterHeading;
+  ai: EnemyAi;
   /** Melee attacks require cardinal adjacency. Ranged attacks may target diagonals within their range. */
   attackKind?: "melee" | "ranged"; attackRange?: number;
 }
@@ -44,11 +47,19 @@ export interface WorldDecoration extends Position { id: string; kind: "torch" | 
 export interface Floor {
   seed: number; width: number; height: number; cells: TerrainCell[][]; map?: number[][];
   start: Position; entities: Entity[]; time: number; level: number; depth?: number; generatorVersion?: string;
-  scenario?: string;
+  scenario?: string; progressionXpAwarded?: boolean;
   generation?: { seed: number; generator: string | null; passes?: { id: string; diagnostics: number }[] };
   tiledGrounds?: number[]; tiledWalls?: number[];
   decorations?: WorldDecoration[];
   objectSets?: ObjectSet[];
+}
+/** The persisted difference between a deterministic base floor and its current runtime state. */
+export interface LevelStateDelta {
+  time: number;
+  removedGeneratedIds: string[];
+  entityOverrides: Record<string, Entity>;
+  spawnedEntities: Entity[];
+  objectSetOverrides: Record<string, ObjectSet>;
 }
 export type QuestItemId = "walk-through-stairs" | "collect-health-potion" | "collect-coin";
 export interface QuestItem { id: QuestItemId; title: string; complete: boolean }
@@ -56,10 +67,12 @@ export interface Quest { id: "my-first-quest"; title: "My First Quest"; items: Q
 export interface Campaign {
   version: number; world: string; realm: string; floor: Floor;
   /** Inputs used to regenerate this run's floors deterministically. */
-  worldSeed?: number; slot?: number; run?: number;
-  /** Previously visited floors, keyed by level, so a return stair restores its dungeon. */
+  worldSeed?: number; slot?: number; run?: number; generatorVersion?: string;
+  /** Compact state for visited generated levels, keyed by level. */
+  levelStates?: Record<string, LevelStateDelta>;
+  /** Legacy snapshot compatibility. New campaigns never write this field. */
   floors?: Record<string, Floor>;
-  progression: { attributes: Attributes; level: number; xp: number; nextXp: number; totalKills: number; difficulty: number; pendingUpgrades: { level: number; options: AttributeName[] }[] };
+  progression: { attributes: Attributes; level: number; xp: number; nextXp: number; totalKills: number; difficulty: number; attributePoints: number };
   player: MassBearingPosition & { resources: Resources; equipment: Equipment; inventory: Item[]; inventoryCapacity: number; abilities: (AbilityId | null)[]; quickSlots?: [QuickSlot | null, QuickSlot | null]; sneaking: boolean; heading?: CharacterHeading };
   starterConsumablesSeeded?: boolean;
   counters: { keys: number; gold: number }; objective: string; quest?: Quest; log: LogEntry[]; savedAt?: number;
@@ -74,7 +87,7 @@ export type Action =
   | { type: "return-barrel"; setId: string }
   | { type: "wait" }
   | { type: "toggle-sneak" }
-  | { type: "choose-upgrade"; stat: AttributeName }
+  | { type: "spend-attribute-points"; allocation: Partial<Record<AttributeName, number>> }
   | { type: "ability"; index: number }
   | { type: "resolve-ability"; abilityId: AbilityId; targetId?: string }
   | { type: "assign-ability"; from: number; to: number }
@@ -89,7 +102,7 @@ export interface EventFacts {
   reason?: string; previous?: number; current?: number; previousMax?: number; currentMax?: number;
   resource?: ResourceName; position?: Position; targetPosition?: Position; damage?: number;
   target?: string; targetId?: string; previousHealth?: number; currentHealth?: number;
-  amount?: number; cause?: string; level?: number; threshold?: number; options?: AttributeName[];
+  amount?: number; cause?: string; level?: number; threshold?: number; points?: number;
   stat?: AttributeName; active?: boolean; from?: Position | number; to?: Position | number;
   realm?: string; itemId?: string; name?: string; item?: string; lootTier?: number; xp?: number;
   action?: string; source?: string | { group: EquipmentGroup; index: number } | { quickSlot: number };

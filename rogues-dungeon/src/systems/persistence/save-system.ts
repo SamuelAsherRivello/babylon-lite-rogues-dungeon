@@ -8,7 +8,7 @@ interface LegacyCampaign extends Omit<Campaign, "player" | "progression"> {
 }
 // Preserve the existing shallow save guards; normalization owns legacy fields.
 function candidate(value: unknown): Partial<Campaign> | null { return typeof value === "object" && value !== null ? value as Partial<Campaign> : null; }
-import { createCampaign, createResourcesModel, effectiveAttributes, ensureNearbyStairs, FLOOR_HEIGHT, FLOOR_WIDTH, GENERATOR_VERSION, isResourcesModel, normalizeQuickSlots, normalizeStackableLocations, upgradeCampaignResources } from "../procedural/world-procedural-system.ts";
+import { compactCampaignForSave, createCampaign, createResourcesModel, createRunCampaign, effectiveAttributes, ensureNearbyStairs, FLOOR_HEIGHT, FLOOR_WIDTH, GENERATOR_VERSION, isResourcesModel, normalizeQuickSlots, normalizeStackableLocations, restoreCompactCampaign, upgradeCampaignResources } from "../procedural/world-procedural-system.ts";
 import { gameZoomPresets } from "../../content/world/zoom.ts";
 import { createSemanticCells, ensureSemanticCells, semanticCellsFromMap } from "../procedural/level-grid-system.ts";
 import { normalizeQuest } from "../quests/quest-progression-system.ts";
@@ -24,19 +24,29 @@ const DEFAULT_ABILITIES: readonly (AbilityId | null)[] = Object.freeze(["heal", 
 function normalizeAbilityBindings(value: { player?: { abilities?: (AbilityId | null)[] } }) {
   return Array.isArray(value?.player?.abilities) ? value.player.abilities.slice(0, 3) : [...DEFAULT_ABILITIES];
 }
-export function readWorldSeed(storage: StorageAccess) {
+function validWorldSeed(value: unknown): value is number { return Number.isSafeInteger(value) && Number(value) >= 0 && Number(value) <= 0xffffffff; }
+function legacyWorldSeed(storage: StorageAccess) {
+  for (const slot of SLOT_IDS) {
+    try {
+      const saved = JSON.parse(storage.getItem(PREFIX + slot) ?? "null") as { floor?: { seed?: unknown } } | null;
+      if (validWorldSeed(saved?.floor?.seed)) return Number(saved!.floor!.seed);
+    } catch { /* Invalid saves do not supply a migration seed. */ }
+  }
+  return null;
+}
+export function readWorldSeed(storage: StorageAccess, fallback: number | null = null) {
   const raw = storage.getItem(WORLD_SEED_KEY);
   if (raw !== null && /^(0|[1-9]\d*)$/.test(raw)) {
     const value = Number(raw);
     if (Number.isSafeInteger(value) && value <= 0xffffffff) return value;
   }
-  const seed = Math.floor(Math.random() * 0x1_0000_0000) >>> 0;
+  const seed = fallback ?? Math.floor(Math.random() * 0x1_0000_0000) >>> 0;
   storage.setItem(WORLD_SEED_KEY, String(seed));
   return seed;
 }
 
-export function isValidCampaign(input: unknown): input is Campaign { const value = candidate(input); return Boolean(value?.version === 3 && value.progression?.attributes && (value.floor?.cells || value.floor?.map) && value.player?.equipment && Array.isArray(value.player.inventory)); }
-function isV2Campaign(input: unknown): input is Campaign { const value = candidate(input); return Boolean(value?.version === 2 && value.progression?.attributes && (value.floor?.cells || value.floor?.map) && value.player?.equipment && Array.isArray(value.player.inventory)); }
+export function isValidCampaign(input: unknown): input is Campaign { const value = candidate(input); return Boolean(value?.version === 5 && value.progression?.attributes && value.floor && value.player?.equipment && Array.isArray(value.player.inventory)); }
+function isV2Campaign(input: unknown): input is Campaign { const value = candidate(input); return Boolean((value?.version === 2 || value?.version === 3 || value?.version === 4) && value.progression?.attributes && (value.floor?.cells || value.floor?.map) && value.player?.equipment && Array.isArray(value.player.inventory)); }
 function validV1(input: unknown): input is LegacyCampaign { const value = candidate(input) as Partial<LegacyCampaign> | null; return Boolean(value?.version === 1 && value.progression?.stats && value.floor?.map && value.player?.equipment); }
 function oldItem(item: LegacyItem, id: string): Item {
   const group = /head|body|leg/i.test(item?.slot ?? "") ? "armor" : "weapons";
@@ -78,9 +88,11 @@ function resourceFraction(resources: ResourceInput | undefined, attributes: Lega
 }
 function currentAttributesFromLegacy(attributes: LegacyAttributes = {}) {
   return {
+    health: Math.max(1, Number(attributes.health ?? 1)), stamina: Math.max(1, Number(attributes.stamina ?? 1)),
+    offense: Math.max(1, Number(attributes.offense ?? 1)), defense: Math.max(1, Number(attributes.defense ?? 1)), mana: Math.max(1, Number(attributes.mana ?? 1)),
     vitality: Math.max(0, Number(attributes.vitality ?? 0)), strength: Math.max(0, Number(attributes.strength ?? 0)),
     luck: Math.max(0, Number(attributes.luck ?? 0)), recovery: Math.max(0, Number(attributes.recovery ?? 0)),
-    stealth: Math.max(0, Number(attributes.stealth ?? attributes.agility ?? 0)),
+    stealth: Math.max(1, Number(attributes.stealth ?? attributes.agility ?? 1)),
   };
 }
 function rebuildBalanceProfile(campaign: Campaign, legacyAttributes: LegacyAttributes, legacyResources: ResourceInput | undefined) {
@@ -90,18 +102,26 @@ function rebuildBalanceProfile(campaign: Campaign, legacyAttributes: LegacyAttri
   campaign.player.resources = createResourcesModel(Object.fromEntries((["health", "stamina", "mana"] as const).map((name) => [name, { current: caps[name] * resourceFraction(legacyResources, legacyAttributes, name), currentMax: caps[name] }])));
 }
 export function migrateCampaign(value: unknown): Campaign {
-  if (isValidCampaign(value) || isV2Campaign(value)) {
+  if (isValidCampaign(value)) {
+    const campaign = structuredClone(value);
+    if (!Array.isArray(campaign.floor.cells) || campaign.floor.cells.length === 0) return restoreCompactCampaign(campaign);
+    if (campaign.floor.cells.length !== FLOOR_HEIGHT || (campaign.floor.cells[0]?.length ?? 0) !== FLOOR_WIDTH) expandUndersizedFloor(campaign);
+    campaign.player.abilities = normalizeAbilityBindings(campaign);
+    campaign.quest = normalizeQuest(campaign.quest);
+    return upgradeCampaignResources(campaign);
+  }
+  if (isV2Campaign(value)) {
     const level = Number.isInteger(value.floor.level) ? value.floor.level : Number.isInteger(value.floor.depth) ? value.floor.depth! : 1;
     const difficulty = Number.isInteger(value.progression.difficulty) ? value.progression.difficulty : level;
     const needsResourceMigration = !isResourcesModel(value.player.resources) || (value.floor.entities ?? []).some((entity) => entity.kind === "enemy" && !isResourcesModel(entity.resources));
     const needsSemanticMigration = !Array.isArray(value.floor.cells);
     const sourceCells = value.floor.cells ?? semanticCellsFromMap(value.floor.map ?? []);
     const needsFloorMigration = sourceCells.length < FLOOR_HEIGHT || (sourceCells[0]?.length ?? 0) < FLOOR_WIDTH;
-    const needsBalanceMigration = value.version !== 3 || !Object.hasOwn(value.progression.attributes, "stealth") || !Array.isArray(value.progression.pendingUpgrades) || (value.floor.entities ?? []).some((entity) => entity.kind === "enemy" && (!Number.isFinite(entity.actionCooldown) || !Number.isFinite(entity.nextActionAt)));
+    const needsBalanceMigration = value.version !== 5 || !Object.hasOwn(value.progression.attributes, "stealth") || !Number.isFinite(value.progression.attributePoints) || (value.floor.entities ?? []).some((entity) => entity.kind === "enemy" && (!Number.isFinite(entity.actionCooldown) || !Number.isFinite(entity.nextActionAt)));
     const needsAbilityMigration = !Array.isArray(value.player.abilities) || value.player.abilities.length !== 3;
     const needsQuestMigration = !value.quest;
     if (value.floor.level === level && value.progression.difficulty === difficulty && !needsSemanticMigration && !needsResourceMigration && !needsFloorMigration && !needsBalanceMigration && !needsAbilityMigration && !needsQuestMigration) { value.quest = normalizeQuest(value.quest); return upgradeCampaignResources(value); }
-    const next = { ...structuredClone(value), version: 3, floor: { ...structuredClone(value.floor), level }, progression: { ...structuredClone(value.progression), difficulty, pendingUpgrades: structuredClone(value.progression.pendingUpgrades ?? []) }, player: { ...structuredClone(value.player), abilities: normalizeAbilityBindings(value) }, realm: value.realm ?? `Underground ${level}`, quest: normalizeQuest(value.quest) };
+    const next = { ...structuredClone(value), version: 5, floor: { ...structuredClone(value.floor), level }, progression: { ...structuredClone(value.progression), difficulty, attributePoints: Math.max(0, Number(value.progression.attributePoints ?? 0)) }, player: { ...structuredClone(value.player), abilities: normalizeAbilityBindings(value) }, realm: value.realm ?? `Underground ${level}`, quest: normalizeQuest(value.quest) };
     ensureSemanticCells(next.floor);
     expandUndersizedFloor(next);
     if (needsBalanceMigration) rebuildBalanceProfile(next, value.progression.attributes, value.player.resources);
@@ -121,7 +141,7 @@ export function migrateCampaign(value: unknown): Campaign {
   const stats = value.progression.stats;
   const oldHealth = stats.health ?? stats.vitality ?? value.player.maxHp ?? 25;
   const oldStamina = stats.stamina ?? 25;
-  next.progression = { attributes: { ...next.progression.attributes, ...currentAttributesFromLegacy(stats) }, level: value.progression.level ?? 1, xp: value.progression.xp ?? 0, nextXp: 100, totalKills: value.progression.totalKills ?? 0, difficulty: level, pendingUpgrades: [] };
+  next.progression = { attributes: { ...next.progression.attributes, ...currentAttributesFromLegacy(stats) }, level: value.progression.level ?? 1, xp: value.progression.xp ?? 0, nextXp: 100, totalKills: value.progression.totalKills ?? 0, difficulty: level, attributePoints: 0 };
   const legacyResources: ResourceInput = { health: value.player.resources?.health ?? value.player.hp ?? oldHealth, stamina: value.player.resources?.stamina ?? oldStamina, mana: value.player.resources?.mana ?? 20 }; next.player.resources = createResourcesModel(Object.fromEntries(Object.entries(legacyResources).map(([name, value]) => [name, typeof value === "number" ? { current: value } : value])));
   const legacy = legacyEquipmentItems(value.player.equipment);
   const armor = legacy.filter((item) => item.group === "armor"); const weapons = legacy.filter((item) => item.group === "weapons");
@@ -139,18 +159,20 @@ export function migrateCampaign(value: unknown): Campaign {
 export function readSlot(storage: StorageAccess, slot: string | number) {
   if (!SLOT_IDS.includes(String(slot))) throw new Error("Unknown Saved Game.");
   const raw = storage.getItem(PREFIX + slot); if (!raw) return null;
-  const original: unknown = JSON.parse(raw); const campaign = migrateCampaign(original); const originalVersion = candidate(original)?.version;
+  const original: unknown = JSON.parse(raw); const originalVersion = candidate(original)?.version;
+  if (originalVersion !== 5) {
+    const legacy = migrateCampaign(original);
+    const worldSeed = readWorldSeed(storage, legacyWorldSeed(storage));
+    const campaign = createRunCampaign(worldSeed, Number(slot), 1, legacy.progression.difficulty ?? 1, 1, { attributes: structuredClone(legacy.progression.attributes) });
+    campaign.progression = structuredClone(legacy.progression);
+    campaign.player.abilities = legacy.player.abilities.slice(0, 3);
+    campaign.quest = normalizeQuest(legacy.quest);
+    storage.setItem(BACKUP_PREFIX + slot, raw);
+    writeSlot(storage, slot, campaign);
+    return campaign;
+  }
+  const campaign = migrateCampaign(original);
   if (campaign?.floor?.generatorVersion === GENERATOR_VERSION) ensureNearbyStairs(campaign.floor);
-  if (originalVersion === 3 && campaign?.floor?.generatorVersion !== GENERATOR_VERSION) {
-    storage.removeItem(PREFIX + slot);
-    return null;
-  }
-  if (campaign !== original) {
-    // Write the rollback copy first, then replace the primary record. If either
-    // storage operation fails, the original slot data remains recoverable.
-    if (originalVersion === 1) storage.setItem(BACKUP_PREFIX + slot, raw);
-    storage.setItem(PREFIX + slot, JSON.stringify({ ...campaign, savedAt: Date.now() }));
-  }
   return campaign;
 }
 export function writeSlot(storage: StorageAccess, slot: string | number, campaign: Campaign) {
@@ -163,7 +185,8 @@ export function writeSlot(storage: StorageAccess, slot: string | number, campaig
   campaign.slot = Number(slot);
   campaign.run = Number.isInteger(campaign.run) && campaign.run! > 0 ? campaign.run : 1;
   campaign.worldSeed = Number.isInteger(campaign.worldSeed) && campaign.worldSeed! >= 0 ? campaign.worldSeed : campaign.floor.seed;
-  storage.setItem(PREFIX + slot, JSON.stringify({ ...campaign, player: { ...campaign.player, abilities: normalizeAbilityBindings(campaign), quickSlots: campaign.player.quickSlots }, savedAt: Date.now() }));
+  const compact = compactCampaignForSave(campaign);
+  storage.setItem(PREFIX + slot, JSON.stringify({ ...compact, player: { ...compact.player, abilities: normalizeAbilityBindings(compact), quickSlots: compact.player.quickSlots }, savedAt: Date.now() }));
 }
 export function deleteSlot(storage: StorageAccess, slot: string | number) { if (!SLOT_IDS.includes(String(slot))) throw new Error("Unknown Saved Game."); storage.removeItem(PREFIX + slot); }
 export function clearRoguesDungeonStorage(storage: StorageCollection) {

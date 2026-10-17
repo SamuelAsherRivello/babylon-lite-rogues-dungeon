@@ -30,6 +30,7 @@ When the main menu opens, the audio manager begins loading every known music and
 | Non-diegetic | An inventory-bound pickup starts its UI flight | `sfx/inventory.ogg` | `sfx100v2_items_02.ogg` | Immediate inventory confirmation |
 | Diegetic | Chest opens | `sfx/chest.ogg` | `sfx100v2_lock_open_01.ogg` | Brief latch sound |
 | Diegetic | Player enters stairs to descend | `sfx/stairs.ogg` | `sfx100v2_door_01.ogg` | Stone transition cue |
+| Non-diegetic | Character gains a level | `sfx/ui_accept.ogg` | bundled UI accept | Brief level-gain chime |
 | Non-diegetic | Compatible equipment drop is accepted | `sfx/ui_accept.ogg` | `sfx100v2_switch_01.ogg` | Quiet confirmation |
 | Non-diegetic | Equipment drop is rejected | `sfx/ui_reject.ogg` | `sfx100v2_switch_02.ogg` | Soft rejection tick |
 | Non-diegetic | Ability activation succeeds | `sfx/ability.ogg` | `sfx100v2_items_01.ogg` | Brief UI confirmation |

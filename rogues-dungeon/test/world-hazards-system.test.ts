@@ -44,8 +44,9 @@ test("strikes a player who remains on raised spikes, including on later cycles",
   campaign.player.y = trap.y;
   const first = applyAction(campaign, { type: "trap-strike", hazardElapsedMs: 150 });
   const second = applyAction(first.state, { type: "trap-strike", hazardElapsedMs: 4_200 });
-  assert.equal(first.state.player.resources.health.current, campaign.player.resources.health.current - 2);
-  assert.equal(second.state.player.resources.health.current, first.state.player.resources.health.current - 2);
+  const damage = trapStrikeDamage(campaign.player.resources.defense.current);
+  assert.equal(first.state.player.resources.health.current, campaign.player.resources.health.current - damage);
+  assert.equal(second.state.player.resources.health.current, first.state.player.resources.health.current - damage);
 });
 
 test("strikes enemies standing on a trap during dangerous frames", () => {

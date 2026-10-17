@@ -51,7 +51,7 @@ test("ability particles make Heal faster and larger while carrying Wand to its l
   assert.deepEqual(particlePosition(wand, { x: 6, y: 7 }, 100 + smokePuffDurationMs / 2), { x: 4, y: 5 });
 });
 
-test("damage particles arc to the shadow baseline, grow opaque, and persist on the floor", () => {
+test("damage particles arc to the shadow baseline, then fade and expire independently", () => {
   const particles = createDamageParticles({ x: 3, y: 4 }, () => 0, 100);
   assert.equal(particles.length, 4);
   assert.equal(particleDurationMs(particles[0]!), DAMAGE_PARTICLE_PERSISTENCE_MS);
@@ -67,6 +67,9 @@ test("damage particles arc to the shadow baseline, grow opaque, and persist on t
   assert.equal(particleOpacity(particles[0]!, 225), .4);
   assert.equal(particleOpacity(particles[0]!, 350), .8);
   assert.equal(particleExpired(particles[0]!, 350), false);
+  assert.ok(particleOpacity(particles[0]!, 100 + DAMAGE_PARTICLE_PERSISTENCE_MS / 2) < .5);
+  assert.equal(particleExpired(particles[0]!, 100 + DAMAGE_PARTICLE_PERSISTENCE_MS - 1), false);
+  assert.equal(particleExpired(particles[0]!, 100 + DAMAGE_PARTICLE_PERSISTENCE_MS), true);
   assert.equal(particleFrame(particles[0]!, 350), 4);
 });
 

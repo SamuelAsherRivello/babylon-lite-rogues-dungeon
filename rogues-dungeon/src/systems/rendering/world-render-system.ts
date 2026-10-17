@@ -4,10 +4,12 @@ interface WangEntry extends Position { mask: number; worldX: number; worldY: num
 interface WangModel { tileSize: number; terrain: WangEntry[]; walls: WangEntry[]; diagnostics: Omit<WangEntry, "frame">[]; wallDiagnostics: Omit<WangEntry, "frame">[] }
 interface WorldOptions { map?: number[][] | null; cells?: TerrainCell[][] | null; entities?: Entity[]; decorations?: WorldDecoration[]; objectSets?: FloorTriggerDoorBarrelSet[]; player: MassBearingPosition; start?: Position; tileSize?: number; view?: string; detail?: string; groundTiles?: number[] | null; wallTiles?: number[] | null }
 interface Projection { center: Position; viewportWidth: number; viewportHeight: number; tileCssSize: number }
+export interface WorldCellBounds { minX: number; maxX: number; minY: number; maxY: number }
 function isLegacyGrid(grid: RenderGrid): grid is number[][] { return Array.isArray(grid) && (grid.length === 0 || typeof grid[0]?.[0] === "number"); }
 import { buildDungeonWangTerrain, buildDungeonWangWalls } from "./tile-map-system.ts";
 
 const wangTerrainCache = new WeakMap<RenderGrid, WangModel>();
+const tiledPresentationCache = new WeakMap<RenderGrid, WeakMap<readonly number[], WeakMap<readonly number[], WangModel>>>();
 
 function getWangTerrain(grid: RenderGrid, tileSize: number): WangModel {
   const legacyGrid = isLegacyGrid(grid);
@@ -50,12 +52,29 @@ function applyTiledFrames(model: WangModel, grid: RenderGrid, groundTiles: numbe
   };
 }
 
+/** Compile immutable tile frames once per floor grid and Tiled layer identity. */
+export function compileStaticWorldPresentation(grid: RenderGrid, tileSize: number, groundTiles: number[] | null, wallTiles: number[] | null): WangModel {
+  const computed = getWangTerrain(grid, tileSize);
+  if (!groundTiles && !wallTiles) return computed;
+  // A partially supplied layer is uncommon and cannot use the two-layer
+  // identity cache without inventing a sentinel that could hide later edits.
+  if (!groundTiles || !wallTiles) return applyTiledFrames(computed, grid, groundTiles, wallTiles, tileSize);
+  let groundCache = tiledPresentationCache.get(grid);
+  if (!groundCache) { groundCache = new WeakMap(); tiledPresentationCache.set(grid, groundCache); }
+  let wallCache = groundCache.get(groundTiles);
+  if (!wallCache) { wallCache = new WeakMap(); groundCache.set(groundTiles, wallCache); }
+  const cached = wallCache.get(wallTiles);
+  if (cached?.tileSize === tileSize) return cached;
+  const compiled = applyTiledFrames(computed, grid, groundTiles, wallTiles, tileSize);
+  wallCache.set(wallTiles, compiled);
+  return compiled;
+}
+
 /** Build renderer-neutral geometry/placement for either world view. */
 export const WorldRender = Object.freeze({
   Render({ map = null, cells = null, entities = [], decorations = [], objectSets = [], player, start = player, tileSize = 32, view = "game", detail = "full", groundTiles = null, wallTiles = null }: WorldOptions) {
     const grid = (cells ?? map)!;
-    const computed = getWangTerrain(grid, tileSize);
-    const { terrain, walls, diagnostics, wallDiagnostics } = groundTiles || wallTiles ? applyTiledFrames(computed, grid, groundTiles, wallTiles, tileSize) : computed;
+    const { terrain, walls, diagnostics, wallDiagnostics } = compileStaticWorldPresentation(grid, tileSize, groundTiles, wallTiles);
     const actors = entities.filter((entry) => entry.kind === "enemy").map((entry) => ({ id: entry.id, kind: entry.name === "Skeleton" ? "skeleton" : "rat", heading: entry.heading ?? "e", x: entry.x, y: entry.y, worldX: entry.x * tileSize + tileSize / 2, worldY: entry.y * tileSize + tileSize / 2 }));
     const objects = entities.filter((entry) => ["item", "potion", "key", "gold", "chest", "crate", "campfire", "stairs", "discovery"].includes(entry.kind)).map((entry) => ({ id: entry.id, kind: entry.kind, direction: entry.kind === "stairs" ? entry.direction : undefined, resource: entry.kind === "potion" ? entry.resource : null, opened: entry.kind === "chest" || entry.kind === "crate" ? Boolean(entry.opened) : false, openFrame: entry.kind === "crate" ? entry.openFrame : undefined, x: entry.x, y: entry.y, worldX: entry.x * tileSize + tileSize / 2, worldY: entry.y * tileSize + tileSize / 2 }));
     const puzzleObjects = objectSets.flatMap((set) => {
@@ -70,6 +89,15 @@ export const WorldRender = Object.freeze({
     return { view, detail, tileSize, width: grid[0]?.length ?? 0, height: grid.length, terrain, grounds: terrain, walls, diagnostics, wallDiagnostics, actors, objects, puzzleObjects, wallDecorations, markers: { player: { x: player.x, y: player.y }, exit: objects.find((entry) => entry.kind === "stairs") ?? null } };
   },
 });
+
+/** Inclusive camera bounds with a cell margin for sprites crossing tile edges. */
+export function getVisibleWorldCellBounds(center: Position, visibleWidth: number, visibleHeight: number, margin = 1): WorldCellBounds {
+  return { minX: Math.floor(center.x - visibleWidth / 2) - margin, maxX: Math.ceil(center.x + visibleWidth / 2) + margin, minY: Math.floor(center.y - visibleHeight / 2) - margin, maxY: Math.ceil(center.y + visibleHeight / 2) + margin };
+}
+
+export function isWorldCellVisible(position: Position, bounds: WorldCellBounds) {
+  return position.x >= bounds.minX && position.x <= bounds.maxX && position.y >= bounds.minY && position.y <= bounds.maxY;
+}
 
 function clampCameraAxis(value: number, visibleSpan: number, mapSpan: number | undefined) {
   if (!Number.isFinite(mapSpan) || mapSpan! < visibleSpan) return value;

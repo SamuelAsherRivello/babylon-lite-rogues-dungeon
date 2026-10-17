@@ -14,7 +14,9 @@ The floor trigger is a floor-panel layer: it renders above terrain and below wal
 
 The game view uses three render passes. Walkable terrain renders first. Floor-attached decals such as triggers render next. Floor traps render above those decals, and settled combat particles render above floor traps. Walls, other decorations, props, pickups, stairs, barrels, enemies, player, moving coins, and non-owner-fixed particles share the world-depth pass.
 
-The shared pass sorts by a visual's ground-contact pixel Y coordinate. Wall rows use their front edge. Moving entities use their presented sub-grid position. Equal Y positions use a category tie-break and then a stable ID. A composite entity has adjacent orders, with its shadow immediately before its main art. Player, rat, skeleton, and barrel all use that contract.
+The shared pass sorts by a visual's ground-contact pixel Y coordinate. Wall rows use their front edge. Moving entities use their presented sub-grid position. Static props, pickups, stairs, doors, torches, and moving coins use the bottom edge of their occupied cell even when their artwork is offset or oscillates. Equal Y positions use a category tie-break and then a stable ID. A composite entity has adjacent orders, with its shadow immediately before its main art. Player, rat, skeleton, barrel, chest, and pickup pairs all use that contract.
+
+Walkable floor art remains in its fixed terrain pass behind every wall. It does not enter the world-depth sort and cannot change the order of a wall, prop, pickup, or character at a boundary.
 
 The targeting reticle, tooltip, diagnostics, and pivot markers remain screen overlays. Heal smoke is fixed above its player and does not compete with unrelated world Y positions. The minimap receives the same terrain and presented mover coordinates but does not use game-view occlusion ordering.
 

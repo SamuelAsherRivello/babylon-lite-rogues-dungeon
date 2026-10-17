@@ -65,6 +65,27 @@ test("@smoke anchors settings to its menu panel or live game view", async ({ pag
   await expect(page.locator(".settings-window")).toHaveCount(0);
 });
 
+test("@smoke opens How To Play above Settings and returns without advancing time", async ({ page }) => {
+  await page.goto("/babylon-lite-rogues-dungeon/?mute=1");
+  await page.getByRole("button", { name: /Saved Game 1/ }).click();
+  const roll = page.getByRole("button", { name: "Roll", exact: true });
+  if (await roll.isVisible()) { await roll.click(); await page.getByRole("button", { name: "Confirm", exact: true }).click(); }
+  await expect(page.locator(".game-screen")).toBeVisible();
+  await page.keyboard.press("x");
+  await expect.poll(() => page.evaluate(() => localStorage.getItem("rogues-dungeon.slot.1"))).not.toBeNull();
+  const time = await page.evaluate(() => JSON.parse(localStorage.getItem("rogues-dungeon.slot.1")!).floor.time);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("button", { name: "How To Play", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "How To Play" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
+  await page.getByRole("tab", { name: "Combat", exact: true }).click();
+  await expect(page.getByRole("tabpanel", { name: "Combat" })).toContainText("Walk into an enemy to attack it.");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("dialog", { name: "How To Play" })).toHaveCount(0);
+  await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("rogues-dungeon.slot.1")!).floor.time)).toBe(time);
+});
+
 test("@smoke opens the named manual tile scenario and exports its editable map", async ({ page }) => {
   await page.goto("/babylon-lite-rogues-dungeon/?world=1&level=1&slot=1&seed=13579&mute=1&debug-fix-map-autotiled=1&scenario=corridor-joins");
   await expect(page.getByRole("button", { name: "Open Editable Copy" })).toBeVisible();

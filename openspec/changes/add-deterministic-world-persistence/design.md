@@ -14,11 +14,11 @@ The new format must support three independent Saved Games without an online serv
 - Save only the mutable difference from a regenerated base level.
 - Preserve exact chest/drop, actor, puzzle, and pickup state while a run is active.
 - Keep deterministic URL details opt-in and useful for local testing.
-- Preserve a player’s in-progress legacy campaign until it ends.
+- Preserve supported long-term progression while replacing legacy active runs.
 
 **Non-Goals:**
 
-- Retroactively make legacy full-floor runs reproducible from the new identity.
+- Resume legacy full-floor runs after the migration.
 - Change game balance, procedural-layout algorithms, rendering, or the player-facing death flow.
 - Sync saves across browsers or accounts.
 - Persist animations, input state, drag previews, camera interpolation, or other presentation state.
@@ -49,15 +49,15 @@ Generated pickups and defeated generated actors remain in a removal set until th
 
 Alternative considered: reference generated entities by array index or coordinate alone. Rejected because generator refactors can reorder collections and moving objects makes coordinates insufficient identifiers.
 
-### Treat legacy full-floor saves as a bounded compatibility mode
+### Reset legacy full-floor saves into deterministic runs
 
-The migration adds run identity metadata with run one, but leaves legacy `floors` readable for an active legacy run because old randomly seeded floors cannot in general be rebuilt from the new identity. Autosaves preserve that legacy snapshot only until the player dies or otherwise begins a fresh run. The fresh run drops legacy floor snapshots and uses deltas exclusively. Failed migration never overwrites the original raw save.
+The migration keeps supported persistent progression, derives the installation seed from the lowest-numbered valid legacy Saved Game, and replaces each legacy active run with deterministic Level 1. It writes an original-payload backup before replacing the primary record. Legacy floor layout, player position, gear, inventory, and run state do not remain playable.
 
-Alternative considered: attempt to translate every old snapshot into a delta. Rejected because the old base seed series is not the new derivation series; translation would either lose state or require storing a base snapshot indefinitely under another name.
+Alternative considered: keep a legacy snapshot-backed mode. Rejected because it prolongs the incompatible save format and makes saved-run behavior differ by campaign age.
 
 ### Synchronize deterministic URL data only through the developer preference
 
-Add `urlArgs: false` to persisted preferences. When enabled and an active deterministic campaign exists, URL replacement writes `world`, `level`, `slot`, `run`, and `seed`, preserving unrelated recognized arguments such as `mute`. When disabled, it removes those five arguments. Parsing remains optional so an explicit complete URL is usable for deterministic test setup without exposing the values to ordinary players.
+Add `urlArgs: false` to persisted preferences. When enabled and an active deterministic campaign exists, URL replacement writes `world`, `level`, `slot`, `run`, and `seed`, preserving unrelated recognized arguments such as `mute`. When disabled, it removes those five arguments. A complete valid identity URL starts an unsaved deterministic test run, so it does not read or overwrite the matching Saved Game.
 
 Alternative considered: always display identity in the URL. Rejected because it reveals generation internals in normal play and makes routine links noisy.
 
@@ -66,13 +66,13 @@ Alternative considered: always display identity in the URL. Rejected because it 
 - [Generator behavior changes without a version bump can apply valid deltas to a different base] → Centralize the version constant with the derivation contract and require a compatibility/migration decision whenever generation changes.
 - [A missed mutable entity category silently resets after reload] → Define deltas at all state-changing action boundaries and add focused round-trip tests per category.
 - [Delta construction becomes more costly than serializing a floor] → Update deltas at mutation time where practical; retain a base-versus-runtime comparison only as a guarded validation/test helper.
-- [Legacy snapshot mode retains larger saves temporarily] → Bound it to the in-progress legacy run and remove it when that run ends.
+- [Legacy players lose active-run state on update] → Preserve supported persistent progression and keep a raw migration backup.
 - [Manipulated URL arguments can request unsupported identity values] → Parse defensively, validate positive integer fields, and fall back to stored campaign values rather than corrupting saves.
 
 ## Migration Plan
 
 1. Bump the stored campaign schema and add backward-compatible parsing for the currently supported snapshot format.
-2. On a valid legacy save, preserve its snapshot-backed active run, add default run metadata, and keep the original raw record when migration fails.
+2. On a valid legacy save, keep supported persistent progression, derive the shared world seed from the lowest valid Saved Game, back up the raw payload, and replace the active run with deterministic Level 1.
 3. Create/read the installation world seed independently of campaign slots; clearing local storage removes it with the associated campaigns and preferences.
-4. On the next fresh run for each Saved Game, discard legacy floor snapshots and persist newly generated levels as deltas.
-5. Keep the reader capable of recognizing both formats for one supported migration period. Rollback consists of retaining the original versioned payload; no server deployment or destructive data conversion is involved.
+4. Parse a complete identity URL as an unsaved deterministic test run that bypasses slot reads and writes.
+5. Rollback consists of restoring the raw migration backup; no server deployment is involved.

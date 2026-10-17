@@ -19,12 +19,15 @@ function positiveParam<T extends number | null>(params: URLSearchParams, name: s
 export function parseGameUrlOptions(search = "") {
   const params = new URLSearchParams(search);
   const slotValue = params.get("slot");
+  const slot = slotValue !== null && VALID_SAVE_SLOTS.includes(slotValue) ? slotValue : null;
+  const seed = unsignedParam(params, "seed", unsignedParam(params, "randomSeed"));
   return Object.freeze({
     world: positiveParam(params, "world", 1),
     level: positiveParam(params, "level", 1),
     run: positiveParam(params, "run", 1),
-    slot: slotValue !== null && VALID_SAVE_SLOTS.includes(slotValue) ? slotValue : null,
-    seed: unsignedParam(params, "seed", unsignedParam(params, "randomSeed")),
+    slot,
+    seed,
+    hasCompleteRunIdentity: params.has("world") && params.has("level") && params.has("slot") && params.has("run") && params.has("seed") && slot !== null && seed !== null,
     mute: params.get("mute") === "1",
     level1TestMode: params.get("level-1-test-mode") === "true",
     mapFix: params.get(MAP_FIX_FLAG) === "1",

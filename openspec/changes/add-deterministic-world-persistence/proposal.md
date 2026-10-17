@@ -13,7 +13,8 @@ Campaign saves currently retain complete generated floor snapshots, including th
 - Require stable generated IDs for mutable objects, pickups, enemies, and puzzle objects.
 - Persist object state, changed living actors, dynamic spawned pickups, and removals of generated objects. Do not persist presentation-only state.
 - Add a persisted developer setting, "Url Args", that keeps ordinary player URLs clean by default and, when enabled, writes world, level, slot, run, and seed arguments to the current URL.
-- **BREAKING**: Existing full-floor saves migrate to run 1. The implementation may retain those snapshots only as a one-time migration source, not as the ongoing save format.
+- **BREAKING**: Existing full-floor saves reset their active run to a new deterministic run 1. The migration retains supported persistent progression but does not retain legacy floor, gear, or run state.
+- Treat a complete world, level, slot, run, and seed URL as an unsaved deterministic test run, so it never reads or overwrites a Saved Game.
 
 ## Capabilities
 

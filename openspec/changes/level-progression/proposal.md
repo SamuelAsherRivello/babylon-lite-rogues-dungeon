@@ -29,6 +29,7 @@ Rogue's Dungeon has XP and a level field, but its current level-up flow is easy 
 - `resource-meters`: make the player level prominent and readable in XP, define scaled attribute capacity markers, and expose live resource values through tooltips.
 - `tooltip-presentation`: extend resource UI tooltips with current and maximum values.
 - `game-audio`: add the level-gain chime to the event-based sound catalog.
+- `pixel-game-presentation`: replace the forced level-up modal and rename the primary HUD card from Resources to Status.
 
 ## Impact
 

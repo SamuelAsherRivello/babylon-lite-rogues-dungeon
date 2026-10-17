@@ -13,7 +13,7 @@ const cardHelp: Partial<Record<string, string>> = {
   Minimap: "Shows explored map and your position.",
   Quest: "Your current objective.",
   Log: "Recent dungeon and combat events.",
-  Resources: "Tracks Health, Stamina, Mana, and XP.",
+  Status: "Tracks Health, Stamina, Mana, and XP.",
   Attributes: "Character stats and current values.",
   Abilities: "Assigned abilities; each costs Mana.",
   Equipment: "Equipped items change your attributes.",

@@ -37,16 +37,25 @@ Zoom, Camera, desired Fullscreen, and the Url Args developer setting SHALL be st
 - **THEN** supported defaults are used without preventing a new or resumed game
 
 ### Requirement: Migrate supported legacy campaigns without deletion
-Supported legacy campaigns SHALL migrate without silently deleting the original saved data. Existing realm, position, entities, Time, XP, and supported items SHALL be retained. A legacy full-floor snapshot MAY remain readable only for its in-progress legacy run; a newly started run SHALL use the deterministic level-delta format. A migration failure SHALL mark the Saved Game invalid while leaving its original stored content intact.
+Supported legacy campaigns SHALL preserve supported persistent progression while replacing their active run with a new deterministic Level 1. The migration SHALL retain an original backup before replacing the primary record. Legacy realm, position, entities, Time, Inventory, equipment, and full-floor snapshots SHALL not remain playable. A migration failure SHALL mark the Saved Game invalid while leaving its original stored content intact.
 
 #### Scenario: Resume a legacy campaign
 - **WHEN** a valid previous campaign is selected
-- **THEN** its old equipment and progression are mapped into the new model and the resulting game can be saved and resumed
+- **THEN** it starts a new deterministic Level 1 with its supported persistent progression and no legacy run state
 
-#### Scenario: Start a new run after legacy migration
-- **WHEN** a migrated legacy campaign reaches death and begins a new run
-- **THEN** the new run saves generated levels as deterministic level-state deltas instead of full floor snapshots
+#### Scenario: Preserve the legacy backup
+- **WHEN** a valid previous campaign is reset into a deterministic run
+- **THEN** the game retains its original serialized data as a migration backup before replacing the primary Saved Game
 
 #### Scenario: Preserve a failed migration
 - **WHEN** a legacy campaign cannot be migrated
 - **THEN** its data remains stored and the menu clearly marks it as unavailable to resume
+
+## ADDED Requirements
+
+### Requirement: Launch complete deterministic URLs without saving
+When world, level, slot, run, and seed URL arguments are all valid and present, the game SHALL start the requested deterministic run without reading or writing the matching Saved Game. It SHALL keep unrelated supported URL arguments active.
+
+#### Scenario: Start a deterministic test run
+- **WHEN** the game opens with complete valid run identity URL arguments
+- **THEN** it starts the requested world, level, slot, run, and seed identity without replacing local Saved Game data

@@ -14,7 +14,7 @@
 
 **Non-Goals:**
 
-- Add target memory, investigation, patrol, flee, ranged attacks, new enemy types, or browser-visible AI controls.
+- Add target memory, investigation, patrol, flee, new attack types, new enemy types, or browser-visible AI controls.
 - Change player movement, combat values, awareness tuning, or tactical turn cost.
 
 ## Decisions
@@ -39,7 +39,7 @@ The first implementation must set the limit as a named tuning constant and test 
 
 ### Resolve collisions deterministically
 
-The resolver maintains a reservation set seeded from snapshot occupants. It releases an actor's origin when resolving that actor, permits a destination only once, and rejects swaps or moves into occupied cells unless a later explicit rule allows them. A rejected route intent changes the actor to `blocked` and does not move it.
+The resolver maintains a reservation set seeded from snapshot occupants. It releases an actor's origin when resolving that actor, permits a destination only once, and rejects swaps or moves into occupied cells unless a later explicit rule allows them. A rejected route intent changes the actor to `blocked` and does not move it. The planner receives the existing combat predicate, so ranged attacks keep their established targeting behavior while melee attacks remain cardinal.
 
 Stable ID ordering makes same-state, same-position saves replay identically. This replaces the current implicit dependency on entity-array order.
 

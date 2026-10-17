@@ -57,7 +57,7 @@ test("wires UI tooltips to pointer and keyboard focus with accessible descriptio
   assert.match(tooltip, /createPortal\(/);
   assert.match(tooltip, /import \{ createPortal \} from "react-dom"/);
   assert.match(tooltip, /new ResizeObserver\(update\)/);
-  assert.match(game, /<Tooltip key=\{name\} content=\{resourceHelp\[name\]\}/);
+  assert.match(game, /<Tooltip key=\{name\} content=\{`\$\{prefix\} \$\{resourceHelp\[name\]\}`\}/);
   assert.match(game, /className="resource_tooltip_trigger"/);
   assert.match(gameCard, /className="game-card__title-trigger"/);
   assert.match(game, /className="attribute_tooltip_trigger"/);
