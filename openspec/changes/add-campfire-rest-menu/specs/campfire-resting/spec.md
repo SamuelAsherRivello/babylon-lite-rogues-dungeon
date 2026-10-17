@@ -18,7 +18,7 @@ Each campfire SHALL render a looping idle animation with at least three frames a
 - **THEN** the campfire remains crisp and legible in its occupied grid cell
 
 ### Requirement: Offer a rest menu after a campfire bump
-When the player bumps an adjacent campfire, the game SHALL show an in-world popup menu titled `Campfire`, with the body `You may rest one turn` and a `Rest` button. Opening the menu SHALL NOT advance time.
+When the player bumps an adjacent campfire, the game SHALL show an in-world popup menu titled `Campfire`, with the body `You may rest one turn` and a `Rest` action whose secondary italic line reads `Or walk to choose`. Opening the menu SHALL NOT advance time.
 
 #### Scenario: Bump an adjacent campfire
 - **WHEN** the player attempts a cardinal move into an adjacent campfire

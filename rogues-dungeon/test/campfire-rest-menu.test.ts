@@ -19,7 +19,7 @@ test("campfire rest menu is a transient bump prompt that waits only after confir
   assert.match(game, /if \(target\?\.kind === "campfire"\) \{ setCampfireMenu\(\{ x: target\.x, y: target\.y \}\); return \{ accepted: false/);
   assert.match(game, /const restAtCampfire = useCallback\(\(\) => \{ setCampfireMenu\(null\); return dispatch\(\{ type: "wait" \}\); \}/);
   assert.match(game, /if \(campfireMenu\) setCampfireMenu\(null\)/);
-  assert.match(renderer, /<h2>Campfire<\/h2><p>You may rest one turn<\/p><button/);
+  assert.match(renderer, /<h2>Campfire<\/h2><p>You may rest one turn<\/p><button[\s\S]*<span>Rest<\/span><i>Or walk to choose<\/i>/);
   assert.match(game, /campfireMenu=\{campfireMenu\}/);
   assert.match(renderer, /findWorldTooltipPosition\(rect, \{ width: panel\.offsetWidth, height: panel\.offsetHeight \}, \[cellRect\(campfireMenu\.x, campfireMenu\.y\), cellRect\(campaign\.player\.x, campaign\.player\.y\)\]/);
   assert.match(css, /\.world-view__campfire-menu \{[^}]*z-index:9/);

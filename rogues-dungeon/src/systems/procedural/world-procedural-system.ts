@@ -93,9 +93,13 @@ export const abilityCatalog = Object.freeze({
   wand: Object.freeze({ id: "wand", title: "Wand", icon: "✹", manaCost: 4, kind: "wand", damage: 7, target: "nearest-enemy", range: 8, isStackable: false }),
 });
 export const itemCatalog: readonly Omit<Item, "id">[] = Object.freeze([
-  { name: "Chest Plate 02", group: "armor", modifiers: { defense: 4 }, isStackable: false },
-  { name: "Iron Sword 01", group: "weapons", modifiers: { offense: 8 }, isStackable: false },
-  { name: "Oak Shield 03", group: "weapons", modifiers: { defense: 3 }, isStackable: false },
+  { name: "Dagger (Magic)", group: "weapons", modifiers: { offense: 3, mana: 2 }, hitChance: 94, critChance: 4, perks: ["Reliable"], isStackable: false },
+  { name: "Sword", group: "weapons", modifiers: { offense: 6 }, hitChance: 76, critChance: 20, perks: ["High CRIT"], isStackable: false },
+  { name: "Two-Handed Sword", group: "weapons", slotSpan: 2, modifiers: { offense: 15, defense: 2 }, hitChance: 90, critChance: 8, perks: ["Automatic parry"], isStackable: false },
+  { name: "Leg Armor (Magic)", group: "armor", modifiers: { defense: 2, mana: 2 }, perks: ["Mana boost"], isStackable: false },
+  { name: "Chest Armor", group: "armor", modifiers: { offense: 1, defense: 5 }, perks: ["Balanced"], isStackable: false },
+  { name: "Suit of Armor", group: "armor", slotSpan: 2, modifiers: { offense: 2, defense: 12 }, perks: ["Heavy protection"], isStackable: false },
+  { name: "Oak Shield 03", group: "weapons", modifiers: { defense: 3 }, perks: ["Shield"], isStackable: false },
   { name: "Wooden Stick", group: "weapons", modifiers: { offense: 8 }, isStackable: false },
 ]);
 export const consumableCatalog = Object.freeze({
@@ -157,26 +161,31 @@ export function normalizeStackableLocations(campaign: Campaign) {
     else inventory.push(item);
   }
   campaign.player.inventory = orderedInventory(inventory);
-  campaign.player.equipment = {
-    weapons: campaign.player.equipment.weapons.map((item) => item ? normalizeEquipmentItem(item) : null),
-    armor: campaign.player.equipment.armor.map((item) => item ? normalizeEquipmentItem(item) : null),
+  const normalizeGroup = (raw: (Item | null)[]) => {
+    const slots = raw.slice(0, 2).map((item) => item ? normalizeEquipmentItem(item) : null);
+    while (slots.length < 2) slots.push(null);
+    for (const item of uniqueItems(slots)) if (item.slotSpan === 2) { slots[0] = item; slots[1] = item; }
+    return slots;
   };
+  campaign.player.equipment = { weapons: normalizeGroup(campaign.player.equipment.weapons), armor: normalizeGroup(campaign.player.equipment.armor) };
   return campaign;
 }
 function entityAt(entities: Entity[], x: number, y: number) { return entities.find((entity) => entity.x === x && entity.y === y); }
+function isAvailableEntranceCell(floor: Floor, position: Position) {
+  return isWalkable(floor, position.x, position.y)
+    && !entityAt(floor.entities, position.x, position.y)
+    && !isObjectSetBlocked(floor, position, position.x, position.y);
+}
 export function entrancePosition(floor: Floor): Position {
   const returnStair = floor.entities.find((entity) => entity.kind === "stairs" && entity.direction === "back");
   const preferred = returnStair ? { x: returnStair.x + 1, y: returnStair.y } : { ...floor.start };
-  const available = (position: Position) => isWalkable(floor, position.x, position.y)
-    && !entityAt(floor.entities, position.x, position.y)
-    && !isObjectSetBlocked(floor, position, position.x, position.y);
-  if (available(preferred)) return preferred;
+  if (isAvailableEntranceCell(floor, preferred)) return preferred;
   for (let distance = 1; distance <= floor.width + floor.height; distance++) {
     for (let dx = -distance; dx <= distance; dx++) {
       const dy = distance - Math.abs(dx);
       for (const yOffset of dy === 0 ? [0] : [-dy, dy]) {
         const candidate = { x: preferred.x + dx, y: preferred.y + yOffset };
-        if (available(candidate)) return candidate;
+        if (isAvailableEntranceCell(floor, candidate)) return candidate;
       }
     }
   }
@@ -218,17 +227,20 @@ function shuffledWalkableCells(cells: ReturnType<typeof createLevelContext>["cel
 
 function isSolidObjectPlacementCell(cells: ReturnType<typeof createLevelContext>["cells"], cell: Position) {
   const walkable = (x: number, y: number) => Boolean(cells[y]?.[x]?.walkable);
-  const hasVerticalExit = walkable(cell.x, cell.y - 1) || walkable(cell.x, cell.y + 1);
-  const hasHorizontalExit = walkable(cell.x - 1, cell.y) || walkable(cell.x + 1, cell.y);
-  return hasVerticalExit && hasHorizontalExit;
+  return (walkable(cell.x, cell.y - 1) || walkable(cell.x, cell.y + 1))
+    && (walkable(cell.x - 1, cell.y) || walkable(cell.x + 1, cell.y));
 }
 
-// A closed chest is an impassable interactive object. It may be placed in an
-// alcove, but never on a cell whose removal disconnects adjacent floor tiles.
-export function isNonBlockingChestPlacementCell(cells: ReturnType<typeof createLevelContext>["cells"], cell: Position) {
+// Any object that blocks movement may use an alcove, but it must not split a
+// route between its neighbouring floor cells. Existing blocking objects count
+// as walls, so a later placement cannot complete a blockage that an earlier
+// placement left open.
+export function isNonBlockingObjectPlacementCell(cells: ReturnType<typeof createLevelContext>["cells"], cell: Position, blockingCells: readonly Position[] = []) {
+  const blocked = new Set(blockingCells.map(({ x, y }) => `${x},${y}`));
+  blocked.add(`${cell.x},${cell.y}`);
   const neighbours = [[0, -1], [1, 0], [0, 1], [-1, 0]]
     .map(([dx, dy]) => ({ x: cell.x + dx, y: cell.y + dy }))
-    .filter(({ x, y }) => Boolean(cells[y]?.[x]?.walkable));
+    .filter(({ x, y }) => Boolean(cells[y]?.[x]?.walkable) && !blocked.has(`${x},${y}`));
   if (neighbours.length < 2) return true;
 
   const visited = new Set<string>([`${neighbours[0].x},${neighbours[0].y}`]);
@@ -238,13 +250,17 @@ export function isNonBlockingChestPlacementCell(cells: ReturnType<typeof createL
     for (const [dx, dy] of [[0, -1], [1, 0], [0, 1], [-1, 0]]) {
       const next = { x: current.x + dx, y: current.y + dy };
       const key = `${next.x},${next.y}`;
-      if ((next.x === cell.x && next.y === cell.y) || visited.has(key) || !cells[next.y]?.[next.x]?.walkable) continue;
+      if (visited.has(key) || blocked.has(key) || !cells[next.y]?.[next.x]?.walkable) continue;
       visited.add(key);
       queue.push(next);
     }
   }
   return neighbours.every(({ x, y }) => visited.has(`${x},${y}`));
 }
+
+// Kept for callers that specifically ask about chests. The same rule applies
+// to every movement-blocking object.
+export const isNonBlockingChestPlacementCell = isNonBlockingObjectPlacementCell;
 
 function shuffledWallDecorationCells(map: number[][], random: () => number) {
   const candidates: Position[] = [];
@@ -339,6 +355,9 @@ export function upgradeCampaignResources(campaign: Campaign) {
   normalizeStackableLocations(campaign);
   campaign.player.hasMass = campaign.player.hasMass !== false;
   campaign.player.heading = campaign.player.heading ?? "e";
+  campaign.player.encumberedDirection ??= null;
+  campaign.combatRollState = Number.isInteger(campaign.combatRollState) ? campaign.combatRollState! >>> 0 : campaign.floor.seed >>> 0;
+  campaign.floor.projectiles = Array.isArray(campaign.floor.projectiles) ? campaign.floor.projectiles : [];
   campaign.player.resources = playerResourcesFromCampaign(campaign);
   const level = campaign.floor.level ?? campaign.floor.depth ?? 1;
   for (const entity of campaign.floor.entities ?? []) if (entity.kind === "enemy") {
@@ -422,9 +441,11 @@ export function generateFloor(level: number, seed = seedNow(), difficulty = leve
     const candidates = shuffledWalkableCells(generation.cells, random);
     const route = new Set(structuralRoute(map, start, exit).map((cell) => `${cell.x},${cell.y}`));
     const claim = (cell: Position) => generation.occupiedCells.some((occupied) => occupied.x === cell.x && occupied.y === cell.y) || !isWalkable(generation, cell.x, cell.y) ? false : generation.reserveEntityCell(cell.x, cell.y);
-    const nextCell = () => candidates.find((cell) => !route.has(`${cell.x},${cell.y}`) && isSolidObjectPlacementCell(generation.cells, cell) && claim(cell)) ?? null;
-    const nextChestCell = () => candidates.find((cell) => !route.has(`${cell.x},${cell.y}`) && isSolidObjectPlacementCell(generation.cells, cell) && isNonBlockingChestPlacementCell(generation.cells, cell) && claim(cell)) ?? null;
-    const add = (entity: Entity) => { generation.entities.push(entity); };
+    const blockingCells: Position[] = [];
+    const blocksMovement = (entity: Entity) => ["chest", "crate", "campfire", "enemy"].includes(entity.kind) && (entity.kind !== "chest" || !entity.opened) && (entity.kind !== "crate" || !entity.opened);
+    const nextCell = () => candidates.find((cell) => !route.has(`${cell.x},${cell.y}`) && claim(cell)) ?? null;
+    const nextBlockingCell = () => candidates.find((cell) => !route.has(`${cell.x},${cell.y}`) && isSolidObjectPlacementCell(generation.cells, cell) && isNonBlockingObjectPlacementCell(generation.cells, cell, blockingCells) && claim(cell)) ?? null;
+    const add = (entity: Entity) => { generation.entities.push(entity); if (blocksMovement(entity)) blockingCells.push(entity); };
     const objectSets: FloorTriggerDoorBarrelSet[] = [];
     if (level === 1 && regionRole) {
       const layouts = [
@@ -436,6 +457,7 @@ export function generateFloor(level: number, seed = seedNow(), difficulty = leve
       const claimSetCell = (cell: Position) => generation.reserveEntityCell(cell.x, cell.y);
       if (!isBarrelAdjacentToWall(generation, layout.barrel) && claimSetCell(layout.barrel) && claimSetCell(layout.trigger) && claimSetCell(sealedDoor)) {
         objectSets.push({ id: "floor-trigger-door-barrel-1", kind: "floor-trigger-door-barrel", barrel: layout.barrel, barrelStart: { ...layout.barrel }, trigger: layout.trigger, door: sealedDoor, regionRole });
+        blockingCells.push(layout.barrel, sealedDoor);
         if (regionRole === "optional-reward" && claimSetCell(sealedGoal)) add({ id: "sealed-reward", kind: "chest", opened: false, ...sealedGoal });
       }
     }
@@ -450,14 +472,15 @@ export function generateFloor(level: number, seed = seedNow(), difficulty = leve
     // Test mode places introductory pickups, a chest, and a crate beside the level-one entrance.
     // Normal floors use the seeded, object-specific distribution rules below.
     const nearStart = (offsets: readonly Position[]) => offsets.map(({ x, y }) => ({ x: start.x + x, y: start.y + y })).find((cell) => !route.has(`${cell.x},${cell.y}`) && claim(cell));
+    const nearStartBlocking = (offsets: readonly Position[]) => offsets.map(({ x, y }) => ({ x: start.x + x, y: start.y + y })).find((cell) => !route.has(`${cell.x},${cell.y}`) && isSolidObjectPlacementCell(generation.cells, cell) && isNonBlockingObjectPlacementCell(generation.cells, cell, blockingCells) && claim(cell));
     if (level1TestMode) {
-      const testChest = nearStart([{ x: -1, y: 0 }, { x: 0, y: -1 }, { x: -1, y: -1 }, { x: -2, y: 0 }].filter((cell) => isNonBlockingChestPlacementCell(generation.cells, { x: start.x + cell.x, y: start.y + cell.y })));
-      const testCrate = nearStart([{ x: 1, y: 0 }, { x: 1, y: -1 }, { x: 0, y: -2 }, { x: 2, y: -1 }]);
+      const testChest = nearStartBlocking([{ x: -1, y: 0 }, { x: 0, y: -1 }, { x: -1, y: -1 }, { x: -2, y: 0 }]);
+      const testCrate = nearStartBlocking([{ x: 1, y: 0 }, { x: 1, y: -1 }, { x: 0, y: -2 }, { x: 2, y: -1 }]);
       const healthCell = nearStart([{ x: 0, y: 1 }, { x: -1, y: 1 }, { x: 1, y: 1 }, { x: 0, y: 2 }]);
       const manaCell = nearStart([{ x: 2, y: 0 }, { x: 2, y: 1 }, { x: 1, y: 2 }, { x: -1, y: 2 }]);
       const starterKey = nearStart([{ x: -2, y: 2 }, { x: -2, y: -2 }, { x: 2, y: 2 }]);
       const starterGold = nearStart([{ x: 2, y: -2 }, { x: 2, y: 2 }, { x: -2, y: -2 }]);
-      const testCampfire = nearStart([{ x: 1, y: 1 }, { x: -1, y: 1 }, { x: 1, y: -1 }, { x: -2, y: 1 }]);
+      const testCampfire = nearStartBlocking([{ x: 1, y: 1 }, { x: -1, y: 1 }, { x: 1, y: -1 }, { x: -2, y: 1 }]);
       if (healthCell) add({ id: "health-potion", kind: "potion", resource: "health", ...healthCell });
       if (manaCell) add({ id: "mana-potion", kind: "potion", resource: "mana", ...manaCell });
       if (starterKey) add({ id: "starter-key", kind: "key", amount: 1, ...starterKey });
@@ -468,29 +491,29 @@ export function generateFloor(level: number, seed = seedNow(), difficulty = leve
     }
     for (let i = 1; i < rooms.length; i++) {
       const room = rooms[i]; const preferred = { x: room.x + 2, y: room.y + 2 };
-      const enemyCell = !route.has(`${preferred.x},${preferred.y}`) && claim(preferred) ? preferred : nextCell();
+      const enemyCell = !route.has(`${preferred.x},${preferred.y}`) && isSolidObjectPlacementCell(generation.cells, preferred) && isNonBlockingObjectPlacementCell(generation.cells, preferred, blockingCells) && claim(preferred) ? preferred : nextBlockingCell();
       if (enemyCell && random() < 0.76) {
-        const skeleton = difficulty > 1 && random() < 0.4;
-        const health = skeleton ? 20 + (difficulty - 2) * 4 : 12 + (difficulty - 1) * 3;
-        const damage = skeleton ? 6 + (difficulty - 2) * 2 : 3 + (difficulty - 1) * 2;
-        const enemy: Omit<Enemy, "resources"> = { id: `enemy-${i}`, kind: "enemy", x: enemyCell.x, y: enemyCell.y, hasMass: true, hp: health, maxHp: health, damage, awareness: GAME_TUNING.enemyAwareness, actionCooldown: GAME_TUNING.enemyActionCooldown, nextActionAt: GAME_TUNING.enemyActionCooldown, name: skeleton ? "Skeleton" : "Rat", xp: GAME_TUNING.xpPerKillBase + difficulty, heading: "e", ai: { state: "idle", targetId: null } };
+        const archer = difficulty > 2 && random() < .18; const skeleton = !archer && difficulty > 1 && random() < .4;
+        const health = archer ? 20 + (difficulty - 2) * 4 : skeleton ? 20 + (difficulty - 2) * 4 : 12 + (difficulty - 1) * 3;
+        const damage = archer ? 4 + (difficulty - 3) : skeleton ? 6 + (difficulty - 2) * 2 : 3 + (difficulty - 1) * 2;
+        const enemy: Omit<Enemy, "resources"> = { id: `enemy-${i}`, kind: "enemy", x: enemyCell.x, y: enemyCell.y, hasMass: true, hp: health, maxHp: health, damage, awareness: GAME_TUNING.enemyAwareness, actionCooldown: GAME_TUNING.enemyActionCooldown, nextActionAt: GAME_TUNING.enemyActionCooldown, name: archer ? "Skeleton Archer" : skeleton ? "Skeleton" : "Rat", attackKind: archer ? "ranged" : "melee", attackRange: archer ? 5 : 1, xp: GAME_TUNING.xpPerKillBase + difficulty, heading: "e", ai: { state: "idle", targetId: null } };
         add({ ...enemy, resources: enemyResources(enemy, level) });
       }
       if (!level1TestMode && random() < 0.35) {
-        const chestCell = nextChestCell(); if (chestCell) add({ id: `chest-${i}`, kind: "chest", x: chestCell.x, y: chestCell.y, opened: false });
+        const chestCell = nextBlockingCell(); if (chestCell) add({ id: `chest-${i}`, kind: "chest", x: chestCell.x, y: chestCell.y, opened: false });
       }
       if (random() < 0.25) {
-        const crateCell = nextCell(); if (crateCell) add({ id: `crate-${i}`, kind: "crate", x: crateCell.x, y: crateCell.y, health: 100 });
+        const crateCell = nextBlockingCell(); if (crateCell) add({ id: `crate-${i}`, kind: "crate", x: crateCell.x, y: crateCell.y, health: 100 });
       }
     }
     const campfireCount = Math.max(1, Math.floor(context.cells.flat().filter((cell) => cell.walkable).length / 420));
     for (let index = 0; index < campfireCount; index++) {
-      const cell = nextCell();
+      const cell = nextBlockingCell();
       if (cell) add({ id: `campfire-${index + 1}`, kind: "campfire", name: "CampFire", ...cell });
     }
     if (level1TestMode) {
       const testEnemy = (id: string, name: "Rat" | "Skeleton", offsets: readonly Position[]) => {
-        const cell = nearStart(offsets); if (!cell) return;
+        const cell = nearStartBlocking(offsets); if (!cell) return;
         const skeleton = name === "Skeleton"; const health = skeleton ? 20 : 12; const damage = skeleton ? 6 : 3;
         const enemy: Omit<Enemy, "resources"> = { id, kind: "enemy", x: cell.x, y: cell.y, hasMass: true, hp: health, maxHp: health, damage, awareness: GAME_TUNING.enemyAwareness, actionCooldown: GAME_TUNING.enemyActionCooldown, nextActionAt: GAME_TUNING.enemyActionCooldown, name, xp: GAME_TUNING.xpPerKillBase + difficulty, heading: "e", ai: { state: "idle", targetId: null } };
         add({ ...enemy, resources: enemyResources(enemy, level) });
@@ -530,7 +553,7 @@ export function generateFloor(level: number, seed = seedNow(), difficulty = leve
 }
 
 export function effectiveAttributes(campaign: Campaign, equipment: Equipment = campaign.player.equipment): Attributes {
-  const base = campaign.progression.attributes; const mods = Object.values(equipment).flat().filter((item): item is Item => item !== null).reduce<Partial<Attributes>>((all, item) => {
+  const base = campaign.progression.attributes; const seen = new Set<string>(); const mods = Object.values(equipment).flat().filter((item): item is Item => item !== null && !seen.has(item.id) && (seen.add(item.id), true)).reduce<Partial<Attributes>>((all, item) => {
     for (const [key, value] of Object.entries(item.modifiers ?? {}) as [AttributeName, number][]) all[key] = (all[key] ?? 0) + value;
     return all;
   }, {});
@@ -560,7 +583,7 @@ export function rollStartingAttributes(random = Math.random): Attributes {
 
 export function createCampaign(seed = seedNow(), difficulty = 1, level = 1, options: { level1TestMode?: boolean; attributes?: Attributes } = {}): Campaign {
   const floor = generateFloor(level, seed, difficulty, options); const attributes = options.attributes ? { ...options.attributes } : rollStartingAttributes(rng(seed));
-  const campaign: Campaign = { version: 5, world: "One", realm: `Underground ${floor.level}`, floor, generatorVersion: GENERATOR_VERSION, levelStates: {}, floors: { [level]: structuredClone(floor) }, progression: { attributes, level: 1, xp: 0, nextXp: GAME_TUNING.xpThreshold, totalKills: 0, difficulty, attributePoints: 0 }, player: { x: floor.start.x, y: floor.start.y, hasMass: true, heading: "e", resources: createResourcesModel(), equipment: { weapons: [itemInstance(itemCatalog[3], "starter-stick"), null], armor: [null, null] }, inventory: [consumableInstance("health", "starter-health-potion"), consumableInstance("mana", "starter-mana-potion", 2)], inventoryCapacity: ITEM_CAPACITY, abilities: ["heal", "wand", null], quickSlots: [null, null], sneaking: false }, starterConsumablesSeeded: true, counters: { keys: 1, gold: 55 }, objective: "Find the exit", quest: { id: "my-first-quest", title: "My First Quest", items: [{ id: "walk-through-stairs", title: "Walk through the stairs", complete: false }, { id: "collect-health-potion", title: "Collect a Health Potion", complete: false }, { id: "collect-coin", title: "Collect a coin", complete: false }], activeItemId: "walk-through-stairs" }, log: [] };
+  const campaign: Campaign = { version: 5, world: "One", realm: `Underground ${floor.level}`, floor, combatRollState: seed >>> 0, generatorVersion: GENERATOR_VERSION, levelStates: {}, floors: { [level]: structuredClone(floor) }, progression: { attributes, level: 1, xp: 0, nextXp: GAME_TUNING.xpThreshold, totalKills: 0, difficulty, attributePoints: 0 }, player: { x: floor.start.x, y: floor.start.y, hasMass: true, heading: "e", resources: createResourcesModel(), equipment: { weapons: [itemInstance(itemCatalog[7], "starter-stick"), null], armor: [null, null] }, inventory: [consumableInstance("health", "starter-health-potion"), consumableInstance("mana", "starter-mana-potion", 2)], inventoryCapacity: ITEM_CAPACITY, abilities: ["heal", "wand", null], quickSlots: [null, null], sneaking: false, encumberedDirection: null }, starterConsumablesSeeded: true, counters: { keys: 1, gold: 55 }, objective: "Find the exit", quest: { id: "my-first-quest", title: "My First Quest", items: [{ id: "walk-through-stairs", title: "Walk through the stairs", complete: false }, { id: "collect-health-potion", title: "Collect a Health Potion", complete: false }, { id: "collect-coin", title: "Collect a coin", complete: false }], activeItemId: "walk-through-stairs" }, log: [] };
   campaign.player.resources = playerResourcesFromCampaign(campaign, { health: effectiveAttributes(campaign).health, stamina: effectiveAttributes(campaign).stamina, mana: effectiveAttributes(campaign).mana });
   return campaign;
 }
@@ -568,7 +591,7 @@ export function createCampaign(seed = seedNow(), difficulty = 1, level = 1, opti
 const blobFrames = Object.freeze([3, 2, 1, 0, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4]);
 export function wallFrameAt(floor: Floor, x: number, y: number) { const wall = (tx: number, ty: number) => !isWalkable(floor, tx, ty); const mask = Number(wall(x, y - 1)) | (Number(wall(x + 1, y)) << 1) | (Number(wall(x, y + 1)) << 2) | (Number(wall(x - 1, y)) << 3); return blobFrames[mask]; }
 
-function tick(state: Campaign, events: GameEvent[]) { const previous = state.floor.time; state.floor.time++; emit(events, "time.advanced", { previous, current: state.floor.time }, state); enemyPhase(state, events); }
+function tick(state: Campaign, events: GameEvent[], restTime = false) { const previous = state.floor.time; state.floor.time++; emit(events, "time.advanced", { previous, current: state.floor.time, restTime }, state); if (!restTime) enemyPhase(state, events); }
 function normalizeResources(state: Campaign, events: GameEvent[], cause: string, previousCaps: Attributes) { const caps = effectiveAttributes(state); for (const key of ["health", "stamina", "mana"] as const) { const prior = state.player.resources[key].current; const oldMax = previousCaps[key]; const ratio = oldMax > 0 ? prior / oldMax : 0; const next = Math.max(0, Math.min(caps[key], ratio * caps[key])); state.player.resources[key] = { current: next, currentMax: caps[key] }; if (prior !== next) emit(events, "resource.changed", { resource: key, previous: prior, current: next, previousMax: oldMax, currentMax: caps[key], cause }, state); } state.player.resources = playerResourcesFromCampaign(state, state.player.resources); }
 function changeResource(state: Campaign, events: GameEvent[], key: "health" | "stamina" | "mana", value: number, cause: string) { const cap = effectiveAttributes(state)[key]; const previous = state.player.resources[key].current; const current = Math.max(0, Math.min(cap, value)); state.player.resources[key] = { current, currentMax: cap }; state.player.resources = playerResourcesFromCampaign(state, state.player.resources); if (current !== previous) emit(events, "resource.changed", { resource: key, previous, current, currentMax: cap, cause, ...(key === "health" ? { position: { x: state.player.x, y: state.player.y } } : {}) }, state); }
 function applyTrapOnEntry(state: Campaign, events: GameEvent[], elapsedMs: number) {
@@ -619,9 +642,14 @@ function gainXp(state: Campaign, events: GameEvent[], amount: number, cause: str
 }
 function integerDamage(amount: number) { return Math.max(0, Math.round(amount)); }
 function cardinalDistance(from: Position, to: Position) { return Math.abs(from.x - to.x) + Math.abs(from.y - to.y); }
+function cardinalDirection(from: Position, to: Position): Direction | null { if (from.x === to.x && from.y !== to.y) return to.y < from.y ? "n" : "s"; if (from.y === to.y && from.x !== to.x) return to.x < from.x ? "w" : "e"; return null; }
+function hasClearCardinalLine(floor: Floor, from: Position, to: Position) { const direction = cardinalDirection(from, to); if (!direction) return false; const [dx, dy] = directions[direction]; for (let x = from.x + dx, y = from.y + dy; x !== to.x || y !== to.y; x += dx, y += dy) if (!isWalkable(floor, x, y)) return false; return true; }
+function nextCombatRoll(state: Campaign) { const prior = state.combatRollState ?? state.floor.seed; state.combatRollState = (Math.imul(prior >>> 0, 1664525) + 1013904223) >>> 0; return state.combatRollState % 100 + 1; }
+function hasPerk(state: Campaign, perk: string) { return uniqueItems(Object.values(state.player.equipment).flat()).some((item) => item.perks?.includes(perk)); }
+function incomingDefense(state: Campaign, enemy: Enemy) { const direction = cardinalDirection(state.player, enemy) ?? "n"; const heading = state.player.heading ?? "e"; const side = direction === "n" || direction === "s" ? ["e", "w"] : ["n", "s"]; const multiplier = direction === heading ? 1 : side.includes(heading) ? .7 : .4; return { direction, multiplier, defense: resourceState(state).defense.current * multiplier }; }
 function enemyCanAttack(enemy: Enemy, player: Position) {
-  const distance = Math.max(Math.abs(player.x - enemy.x), Math.abs(player.y - enemy.y));
-  if (enemy.attackKind === "ranged") return distance <= (enemy.attackRange ?? 1);
+  const distance = cardinalDistance(enemy, player);
+  if (enemy.attackKind === "ranged") return distance <= (enemy.attackRange ?? 1) && cardinalDirection(enemy, player) !== null;
   return cardinalDistance(enemy, player) === 1;
 }
 function headingToward(from: Position, to: Position, fallback: Direction) {
@@ -630,11 +658,11 @@ function headingToward(from: Position, to: Position, fallback: Direction) {
 }
 function enemyPhase(state: Campaign, events: GameEvent[]) {
   if (state.floor.time === 1) return;
-  const player = state.player; const defense = resourceState(state).defense.current;
+  const player = state.player;
   const enemies = state.floor.entities.filter((entity): entity is Enemy => entity.kind === "enemy");
   const canEnter = (enemy: Enemy, position: Position) => !isObjectSetBlocked(state.floor, state.player, position.x, position.y)
     && !(floorTrapAt(state.floor, position) && enemyAvoidsTrap(enemy, position, state.floor.time));
-  const intents = planEnemyActions({ floor: state.floor, player, time: state.floor.time, enemies, effectiveAwareness: (enemy) => effectiveAwareness(state, enemy), canAttack: enemyCanAttack, canEnter });
+  const intents = planEnemyActions({ floor: state.floor, player, time: state.floor.time, enemies, effectiveAwareness: (enemy) => effectiveAwareness(state, enemy), canAttack: (enemy, target) => enemyCanAttack(enemy, target) && (enemy.attackKind !== "ranged" || hasClearCardinalLine(state.floor, enemy, target)), canEnter });
   const occupied = new Set(state.floor.entities.map((entity) => `${entity.x},${entity.y}`));
   for (const intent of intents) {
     const enemy = state.floor.entities.find((entity): entity is Enemy => entity.kind === "enemy" && entity.id === intent.enemyId);
@@ -645,9 +673,16 @@ function enemyPhase(state: Campaign, events: GameEvent[]) {
       enemy.ai = { state: "attack", targetId: "player" };
       enemy.nextActionAt = state.floor.time + enemy.actionCooldown;
       enemy.heading = headingToward(enemy, player, enemy.heading ?? "e");
-      const damage = Math.max(1, integerDamage(enemy.resources.offense.current - defense));
-      changeResource(state, events, "health", player.resources.health.current - damage, "enemy-attack");
-      emit(events, "combat.hit", { target: "Player", targetId: "player", source: enemy.id, targetPosition: { x: player.x, y: player.y }, damage }, state);
+      const defense = incomingDefense(state, enemy);
+      const parried = hasPerk(state, "Automatic parry");
+      const damage = parried ? 0 : Math.max(1, integerDamage(enemy.resources.offense.current - defense.defense));
+      if (enemy.attackKind === "ranged") {
+        const projectileId = `projectile-${state.floor.time}-${enemy.id}`;
+        state.floor.projectiles = [...(state.floor.projectiles ?? []), { id: projectileId, sourceId: enemy.id, from: { x: enemy.x, y: enemy.y }, to: { x: player.x, y: player.y }, direction: defense.direction, createdAt: state.floor.time }];
+        emit(events, "projectile.fired", { projectileId, source: enemy.id, from: { x: enemy.x, y: enemy.y }, targetPosition: { x: player.x, y: player.y }, attackDirection: defense.direction }, state);
+      }
+      if (damage > 0) changeResource(state, events, "health", player.resources.health.current - damage, "enemy-attack");
+      emit(events, "combat.hit", { target: "Player", targetId: "player", source: enemy.id, targetPosition: { x: player.x, y: player.y }, damage, attackDirection: defense.direction, mitigation: defense.multiplier, outcome: parried ? "PARRY" : "HIT" }, state);
       continue;
     }
     if (intent.kind === "blocked") { enemy.ai = { state: "blocked", targetId: "player" }; continue; }
@@ -731,7 +766,30 @@ export function createRunCampaign(worldSeed: number, slot: number, run: number, 
 }
 function freshRunAfterDeath(state: Campaign) { const difficulty = state.progression.difficulty ?? state.floor.level ?? state.floor.depth ?? 1; const campaign = createRunCampaign(state.worldSeed ?? state.floor.seed, state.slot ?? 1, (state.run ?? 1) + 1, difficulty); campaign.progression = structuredClone(state.progression); campaign.progression.difficulty = difficulty; campaign.player.abilities = state.player.abilities.slice(0, 3); campaign.player.resources = playerResourcesFromCampaign(campaign, campaign.player.resources); return campaign; }
 function orderedInventory(inventory: Item[]) { return [...inventory].sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id)); }
-function attack(state: Campaign, events: GameEvent[], enemy: Enemy) { const offense = Math.max(1, integerDamage(resourceState(state).offense.current)); const health = enemy.resources.health; const before = health.current; health.current = Math.max(0, health.current - offense); enemy.hp = health.current; emit(events, "combat.hit", { target: enemy.name, targetId: enemy.id, targetPosition: { x: enemy.x, y: enemy.y }, damage: offense, previousHealth: before, currentHealth: health.current }, state); changeResource(state, events, "stamina", state.player.resources.stamina.current - ATTACK_STAMINA_COST, "attack"); gainXp(state, events, GAME_TUNING.xpPerAttack, "attack"); if (health.current <= 0) { state.floor.entities = state.floor.entities.filter((entry) => entry.id !== enemy.id); state.progression.totalKills++; gainXp(state, events, enemy.resources.xp.current, "kill"); emit(events, "enemy.defeated", { name: enemy.name, xp: enemy.resources.xp.current }, state); } }
+function occupiedIndexes(slots: (Item | null)[], item: Item) { return slots.flatMap((entry, index) => entry?.id === item.id ? [index] : []); }
+function targetIndexes(slots: (Item | null)[], item: Item, index: number) {
+  if (item.slotSpan === 2) return [0, 1];
+  const target = slots[index];
+  return target?.slotSpan === 2 ? occupiedIndexes(slots, target) : [index];
+}
+function uniqueItems(items: (Item | null | undefined)[]) { const seen = new Set<string>(); return items.filter((item): item is Item => { if (!item || seen.has(item.id)) return false; seen.add(item.id); return true; }); }
+function applyEquipmentItem(slots: (Item | null)[], item: Item, indexes: number[]) {
+  for (const target of indexes) slots[target] = null;
+  if (item.slotSpan === 2) { slots[0] = item; slots[1] = item; }
+  else slots[indexes[0]!] = item;
+}
+function attack(state: Campaign, events: GameEvent[], enemy: Enemy) {
+  const weapon = uniqueItems(state.player.equipment.weapons).find((item) => Number.isFinite(item.hitChance)) ?? null;
+  const hitChance = Math.min(100, Math.max(0, (weapon?.hitChance ?? 100) + effectiveAttributes(state).luck));
+  const critChance = Math.min(hitChance, Math.max(0, weapon?.critChance ?? 0));
+  const roll = nextCombatRoll(state); const outcome = roll <= critChance ? "CRIT" : roll <= hitChance ? "HIT" : "MISS";
+  const normalDamage = Math.max(1, integerDamage(resourceState(state).offense.current));
+  const damage = outcome === "CRIT" ? Math.ceil(normalDamage * 1.5) : outcome === "HIT" ? normalDamage : 0;
+  const health = enemy.resources.health; const before = health.current; health.current = Math.max(0, health.current - damage); enemy.hp = health.current;
+  emit(events, "combat.hit", { target: enemy.name, targetId: enemy.id, targetPosition: { x: enemy.x, y: enemy.y }, damage, previousHealth: before, currentHealth: health.current, hitChance, critChance, outcome, roll }, state);
+  changeResource(state, events, "stamina", state.player.resources.stamina.current - ATTACK_STAMINA_COST, "attack"); gainXp(state, events, GAME_TUNING.xpPerAttack, "attack");
+  if (health.current <= 0) { state.floor.entities = state.floor.entities.filter((entry) => entry.id !== enemy.id); state.progression.totalKills++; gainXp(state, events, enemy.resources.xp.current, "kill"); emit(events, "enemy.defeated", { name: enemy.name, xp: enemy.resources.xp.current }, state); }
+}
 const chestCoinOffsets: readonly Position[] = [{ x: 0, y: -1 }, { x: 1, y: -1 }, { x: 1, y: 0 }, { x: 1, y: 1 }, { x: 0, y: 1 }, { x: -1, y: 1 }, { x: -1, y: 0 }, { x: -1, y: -1 }];
 function openChest(state: Campaign, events: GameEvent[], chest: Extract<Entity, { kind: "chest" }>) {
   chest.opened = true;
@@ -787,6 +845,7 @@ export function applyAction(campaign: Campaign, action: Action): ActionResult {
     emit(events, "barrel.returned", { id: set.id, from, to: { ...start } }, state); return { state, events, accepted: true, ticks: 0 };
   }
   if (action.type === "wait") { tick(state, events); return { state, events, accepted: true, ticks: 1 }; }
+  if (action.type === "rest") { tick(state, events, true); return { state, events, accepted: true, ticks: 1 }; }
   if (action.type === "enter-stairs") {
     const stair = state.floor.entities.find((entity): entity is Extract<Entity, { kind: "stairs" }> => entity.kind === "stairs" && entity.x === state.player.x && entity.y === state.player.y);
     if (!stair) return reject("not-on-stairs");
@@ -811,6 +870,11 @@ export function applyAction(campaign: Campaign, action: Action): ActionResult {
   if (action.type === "move") {
     const direction = directions[action.direction as Direction]; if (!direction) return reject("invalid-direction"); const [dx, dy] = direction; const x = state.player.x + dx; const y = state.player.y + dy; const entity = entityAt(state.floor.entities, x, y);
     const barrelSet = barrelSetAt(state.floor, x, y);
+    const isOrdinaryStep = !entity && !barrelSet && isWalkable(state.floor, x, y) && !isObjectSetBlocked(state.floor, state.player, x, y);
+    if (state.player.inventory.length > state.player.inventoryCapacity && isOrdinaryStep) {
+      if (state.player.encumberedDirection !== action.direction) { state.player.encumberedDirection = action.direction as Direction; return { state, events, accepted: true, ticks: 0 }; }
+      state.player.encumberedDirection = null;
+    }
     if (barrelSet) {
       const target = { x: x + dx, y: y + dy };
       if (!isWalkable(state.floor, target.x, target.y) || isObjectSetBlocked(state.floor, state.player, target.x, target.y) || entityAt(state.floor.entities, target.x, target.y)) return reject("blocked-barrel");
@@ -911,16 +975,24 @@ export function applyAction(campaign: Campaign, action: Action): ActionResult {
     tick(state, events); return { state, events, accepted: true, ticks: 1 };
   }
   if (action.type === "equip" || action.type === "unequip" || action.type === "reorder-equipment") { const { group, index } = action; if (!state.player.equipment[group] || !Number.isInteger(index) || index < 0 || index > 1) return reject("invalid-slot"); const previousCaps = effectiveAttributes(state);
-    if (action.type === "equip") { const itemIndex = state.player.inventory.findIndex((item) => item.id === action.itemId); const item = state.player.inventory[itemIndex]; if (!item || item.category === "consumable" || item.group !== group || state.player.equipment[group][index]) return reject("invalid-equipment-drop"); state.player.inventory.splice(itemIndex, 1); state.player.equipment[group][index] = item; emit(events, "equipment.changed", { action: "enabled", itemId: item.id, item: item.name, source: "inventory", destination: { group, index }, group, index }, state); }
-    else if (action.type === "unequip") { const item = state.player.equipment[group][index]; if (!item || state.player.inventory.length >= state.player.inventoryCapacity) return reject("cannot-unequip"); state.player.equipment[group][index] = null; state.player.inventory = orderedInventory([...state.player.inventory, item]); emit(events, "equipment.changed", { action: "returned to inventory", itemId: item.id, item: item.name, source: { group, index }, destination: "inventory", group, index }, state); }
-    else { const other = action.other; if (!Number.isInteger(other) || other < 0 || other > 1 || other === index) return reject("invalid-equipment-slot"); [state.player.equipment[group][index], state.player.equipment[group][other]] = [state.player.equipment[group][other], state.player.equipment[group][index]]; emit(events, "equipment.changed", { action: "reordered", group, index, other, source: { group, index }, destination: { group, index: other } }, state); }
+    if (action.type === "equip") {
+      const itemIndex = state.player.inventory.findIndex((item) => item.id === action.itemId); const item = state.player.inventory[itemIndex];
+      if (!item || item.category === "consumable" || item.group !== group) return reject("invalid-equipment-drop");
+      const slots = state.player.equipment[group]; const indexes = targetIndexes(slots, item, index); const displaced = uniqueItems(indexes.map((target) => slots[target]));
+      if (state.player.inventory.length - 1 + displaced.length > state.player.inventoryCapacity) return reject("inventory-full");
+      state.player.inventory.splice(itemIndex, 1); applyEquipmentItem(slots, item, indexes);
+      state.player.inventory = orderedInventory([...state.player.inventory, ...displaced]);
+      emit(events, "equipment.changed", { action: displaced.length ? "swapped" : "enabled", itemId: item.id, item: item.name, source: "inventory", destination: { group, index }, group, index, displacedItemIds: displaced.map((entry) => entry.id) } as EventFacts, state);
+    }
+    else if (action.type === "unequip") { const item = state.player.equipment[group][index]; if (!item || state.player.inventory.length >= state.player.inventoryCapacity) return reject("cannot-unequip"); for (const slotIndex of occupiedIndexes(state.player.equipment[group], item)) state.player.equipment[group][slotIndex] = null; state.player.inventory = orderedInventory([...state.player.inventory, item]); emit(events, "equipment.changed", { action: "returned to inventory", itemId: item.id, item: item.name, source: { group, index }, destination: "inventory", group, index }, state); }
+    else { const other = action.other; if (!Number.isInteger(other) || other < 0 || other > 1 || other === index) return reject("invalid-equipment-slot"); const left = state.player.equipment[group][index]; const right = state.player.equipment[group][other]; if (left?.slotSpan === 2 || right?.slotSpan === 2) return reject("cannot-reorder-two-slot"); [state.player.equipment[group][index], state.player.equipment[group][other]] = [right, left]; emit(events, "equipment.changed", { action: "reordered", group, index, other, source: { group, index }, destination: { group, index: other } }, state); }
     normalizeResources(state, events, "equipment", previousCaps); tick(state, events); return { state, events, accepted: true, ticks: 1 };
   }
   return reject("unknown-action");
 }
 
 export function resolveTurn(state: Campaign, direction: string) { return applyAction(state, { type: "move", direction }).state; }
-export function previewEquipment(campaign: Campaign, item: Item, group: EquipmentGroup, index: number, mode = "equip") { const projected = structuredClone(campaign); if (mode === "equip" && projected.player.equipment[group]?.[index] === null) projected.player.equipment[group][index] = item; if (mode === "unequip") projected.player.equipment[group][index] = null; return effectiveAttributes(projected); }
+export function previewEquipment(campaign: Campaign, item: Item, group: EquipmentGroup, index: number, mode = "equip") { const projected = structuredClone(campaign); const slots = projected.player.equipment[group]; if (mode === "equip" && item.group === group) applyEquipmentItem(slots, item, targetIndexes(slots, item, index)); if (mode === "unequip") for (const slotIndex of occupiedIndexes(slots, item)) slots[slotIndex] = null; return effectiveAttributes(projected); }
 export function createGameSession(initial: Campaign, { onCommit }: { onCommit?: (result: ActionResult) => void } = {}) {
   let state = initial; let transactionSequence = 0; let eventSequence = 0; let dispatching = false;
   const listeners = new Set<(result: ActionResult) => void>(); const queue: { action: Action; result: ActionResult | null }[] = [];

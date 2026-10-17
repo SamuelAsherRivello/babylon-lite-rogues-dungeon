@@ -3,7 +3,7 @@ import { effectiveAttributes, isQuickSlottableItem, previewEquipment } from "../
 
 export function previewInventoryDrop(campaign: Campaign, drag: DragSource | null, group: EquipmentGroup, index: number, targetItem: Item | null) {
   if (!drag) return null;
-  if (drag.kind === "inventory" && drag.item.group === group && !targetItem) return previewEquipment(campaign, drag.item, group, index);
+  if (drag.kind === "inventory" && drag.item.group === group) return previewEquipment(campaign, drag.item, group, index);
   if (drag.kind === "slot" && drag.group === group && drag.index !== index) {
     const projected = structuredClone(campaign); const slots = projected.player.equipment[group];
     [slots[drag.index], slots[index]] = [slots[index], slots[drag.index]];
@@ -25,7 +25,7 @@ export function resolveInventoryDrop(drag: DragSource | null, destination: DropD
   }
   if (destination.kind === "slot") {
     const { group, index } = destination;
-    if (drag.kind === "inventory" && drag.item.group === group && !targetItem) return { type: "equip", itemId: drag.item.id, group, index };
+    if (drag.kind === "inventory" && drag.item.group === group) return { type: "equip", itemId: drag.item.id, group, index };
     if (drag.kind === "slot" && drag.group === group && drag.index !== index) return { type: "reorder-equipment", group, index: drag.index, other: index };
     return null;
   }

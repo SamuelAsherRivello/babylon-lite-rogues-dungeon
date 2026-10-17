@@ -13,7 +13,7 @@ export type Resources = Record<ResourceName, Resource>;
 export type ResourceInput = Partial<Record<ResourceName, Partial<Resource> | number>>;
 export type EquipmentGroup = "weapons" | "armor";
 export type ConsumableResource = "health" | "mana";
-export interface Item { id: string; name: string; group: EquipmentGroup; modifiers: Partial<Attributes>; category?: "equipment" | "consumable"; consumableResource?: ConsumableResource; isStackable?: boolean; quantity?: number }
+export interface Item { id: string; name: string; group: EquipmentGroup; modifiers: Partial<Attributes>; slotSpan?: 1 | 2; hitChance?: number; critChance?: number; perks?: readonly string[]; category?: "equipment" | "consumable"; consumableResource?: ConsumableResource; isStackable?: boolean; quantity?: number }
 export interface QuickSlot { item: Item; quantity: number }
 export type Equipment = Record<EquipmentGroup, (Item | null)[]>;
 export type AbilityId = "heal" | "wand";
@@ -52,7 +52,9 @@ export interface Floor {
   tiledGrounds?: number[]; tiledWalls?: number[];
   decorations?: WorldDecoration[];
   objectSets?: ObjectSet[];
+  projectiles?: RangedProjectile[];
 }
+export interface RangedProjectile { id: string; sourceId: string; from: Position; to: Position; direction: Direction; createdAt: number }
 /** The persisted difference between a deterministic base floor and its current runtime state. */
 export interface LevelStateDelta {
   time: number;
@@ -65,7 +67,7 @@ export type QuestItemId = "walk-through-stairs" | "collect-health-potion" | "col
 export interface QuestItem { id: QuestItemId; title: string; complete: boolean }
 export interface Quest { id: "my-first-quest"; title: "My First Quest"; items: QuestItem[]; activeItemId: QuestItemId | null }
 export interface Campaign {
-  version: number; world: string; realm: string; floor: Floor;
+  version: number; world: string; realm: string; floor: Floor; combatRollState?: number;
   /** Inputs used to regenerate this run's floors deterministically. */
   worldSeed?: number; slot?: number; run?: number; generatorVersion?: string;
   /** Compact state for visited generated levels, keyed by level. */
@@ -73,7 +75,7 @@ export interface Campaign {
   /** Legacy snapshot compatibility. New campaigns never write this field. */
   floors?: Record<string, Floor>;
   progression: { attributes: Attributes; level: number; xp: number; nextXp: number; totalKills: number; difficulty: number; attributePoints: number };
-  player: MassBearingPosition & { resources: Resources; equipment: Equipment; inventory: Item[]; inventoryCapacity: number; abilities: (AbilityId | null)[]; quickSlots?: [QuickSlot | null, QuickSlot | null]; sneaking: boolean; heading?: CharacterHeading };
+  player: MassBearingPosition & { resources: Resources; equipment: Equipment; inventory: Item[]; inventoryCapacity: number; abilities: (AbilityId | null)[]; quickSlots?: [QuickSlot | null, QuickSlot | null]; sneaking: boolean; heading?: CharacterHeading; encumberedDirection?: Direction | null };
   starterConsumablesSeeded?: boolean;
   counters: { keys: number; gold: number }; objective: string; quest?: Quest; log: LogEntry[]; savedAt?: number;
 }
@@ -86,6 +88,7 @@ export type Action =
   | { type: "enter-stairs" }
   | { type: "return-barrel"; setId: string }
   | { type: "wait" }
+  | { type: "rest" }
   | { type: "toggle-sneak" }
   | { type: "spend-attribute-points"; allocation: Partial<Record<AttributeName, number>> }
   | { type: "ability"; index: number }
@@ -109,6 +112,7 @@ export interface EventFacts {
   destination?: string | { group: EquipmentGroup; index: number } | { quickSlot: number }; group?: EquipmentGroup; index?: number; other?: number;
   id?: string; title?: string; manaCost?: number; targetType?: string; transactionId?: string; actionType?: string; ticks?: number; abilityId?: AbilityId;
   error?: string; message?: string; quantity?: number; quickSlot?: number;
+  displacedItemIds?: string[]; hitChance?: number; critChance?: number; roll?: number; attackDirection?: Direction; mitigation?: number; projectileId?: string; outcome?: string;
 }
 export interface GameEvent { type: string; facts: EventFacts; source?: string; gameTime: number; sequence: number; eventId?: string; transactionId?: string | null; outcome?: string }
 export interface ActionResult { state: Campaign; events: GameEvent[]; accepted: boolean; ticks: number; transactionId?: string; system?: boolean }

@@ -2,9 +2,9 @@
 
 ## 1. Model, save, and catalog equipment
 
-- [ ] 1.1 Add serializable one-slot and two-slot equipment occupancy, combat properties, and deterministic combat-roll state; migrate existing saves without losing valid items and verify focused persistence tests.
-- [ ] 1.2 Replace the equipment catalog with Dagger (Magic), Sword, Two-Handed Sword, Leg Armor (Magic), Chest Armor, and Suit of Armor; verify each item has only Offense, Defense, Mana, HIT, CRIT, and declared perks.
-- [ ] 1.3 Make effective attributes deduplicate two-slot equipment and apply Mana as a maximum-resource bonus without a use cost; verify focused attribute and resource-cap tests.
+- [x] 1.1 Add serializable one-slot and two-slot equipment occupancy, combat properties, and deterministic combat-roll state; migrate existing saves without losing valid items and verify focused persistence tests.
+- [x] 1.2 Replace the equipment catalog with Dagger (Magic), Sword, Two-Handed Sword, Leg Armor (Magic), Chest Armor, and Suit of Armor; verify each item has only Offense, Defense, Mana, HIT, CRIT, and declared perks.
+- [x] 1.3 Make effective attributes deduplicate two-slot equipment and apply Mana as a maximum-resource bonus without a use cost; verify focused attribute and resource-cap tests.
 
 ## 2. Implement loadout transactions and carrying penalty
 

@@ -178,7 +178,8 @@ body {
 .world-view__campfire-menu { position:absolute; z-index:9; display:grid; justify-items:center; gap:.28rem; width:min(9.5rem,calc(100% - 1rem)); padding:.45rem; box-sizing:border-box; border:1px solid #65583e; background:#1d1923; color:#e8dec4; box-shadow:0 2px 6px #000b; text-align:center; font:.65rem/1.2 ui-monospace,"Cascadia Mono",monospace; }
 .world-view__campfire-menu h2,.world-view__campfire-menu p { margin:0; }
 .world-view__campfire-menu h2 { color:#d99855; font-size:.75rem; text-transform:uppercase; }
-.world-view__campfire-menu button { min-width:4.8rem; border:1px solid #806442; background:#302a42; color:#f7efd4; padding:.23rem .45rem; font:inherit; cursor:pointer; }
+.world-view__campfire-menu button { display:grid; gap:.1rem; min-width:6.8rem; border:1px solid #806442; background:#302a42; color:#f7efd4; padding:.23rem .45rem; font:inherit; cursor:pointer; }
+.world-view__campfire-menu button i { color:#c9bca1; font-size:.52rem; }
 .world-view__campfire-menu button:hover,.world-view__campfire-menu button:focus-visible { background:#4c426b; outline:2px solid #d99855; outline-offset:2px; }
 @keyframes resource_gain_fade { from { opacity:1 } to { opacity:.55 } }
 .attribute_grid { display:grid; grid-template-columns:1fr 1fr; gap:.3rem; }.attribute_item { display:flex; justify-content:space-between; gap:.25rem; font-size:.63rem; line-height:1.45; }.attribute_tooltip_trigger { border:0; padding:0; background:transparent; color:inherit; font:inherit; text-align:left; cursor:help; }.delta_value { display:inline-flex; justify-content:flex-end; }.delta_value_number { color:#e8dec4; }.delta_value_green { color:#76c878; }.delta_value_red { color:#df6161; }.delta_value_pulse { animation:delta_value_pulse 300ms ease-out; } @keyframes delta_value_pulse { 0%,100% { transform:scale(1); } 50% { transform:scale(2); } }

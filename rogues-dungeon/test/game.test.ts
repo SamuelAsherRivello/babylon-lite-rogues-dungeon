@@ -2,7 +2,7 @@ import type { ActionResult, Campaign, Enemy, Entity, Item, Direction } from '../
 import type { TileLayer } from '../src/systems/rendering/tile-map-system.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { applyAction, combatReadiness, createCampaign, createGameSession, createResourcesModel, createRunCampaign, effectiveAttributes, ensureNearbyStairs, entrancePosition, FLOOR_CENTER, FLOOR_HEIGHT, FLOOR_WIDTH, GAME_TUNING, generateFloor, headingFromMovement, isNonBlockingChestPlacementCell, isObjectSetBlocked, isObjectSetDoorOpen, previewEquipment, resourceState, rollStartingAttributes, STAIRS_MAX_DISTANCE_FROM_START, upgradeCampaignResources } from '../src/systems/procedural/world-procedural-system.ts';
+import { applyAction, combatReadiness, createCampaign, createGameSession, createResourcesModel, createRunCampaign, effectiveAttributes, ensureNearbyStairs, entrancePosition, FLOOR_CENTER, FLOOR_HEIGHT, FLOOR_WIDTH, GAME_TUNING, generateFloor, headingFromMovement, isNonBlockingChestPlacementCell, isNonBlockingObjectPlacementCell, isObjectSetBlocked, isObjectSetDoorOpen, previewEquipment, resourceState, rollStartingAttributes, STAIRS_MAX_DISTANCE_FROM_START, upgradeCampaignResources } from '../src/systems/procedural/world-procedural-system.ts';
 import { worldFloorSeed } from '../src/systems/procedural/world-seed-system.ts';
 import { projectLogEvents } from '../src/game/log-policy.ts';
 import { projectFloatingFeedback, removeFloatingFeedback } from '../src/game/floating-feedback.ts';
@@ -318,6 +318,24 @@ test('chooses an unoccupied entrance grid spot when the preferred stair exit is 
   assert.equal(floor.entities.some((entity) => entity.x === entrance.x && entity.y === entrance.y), false);
 });
 
+test('places the player away from an enemy when entering a saved level', () => {
+  const campaign = createCampaign(17, 1, 1, { level1TestMode: true });
+  const forwardStair = campaign.floor.entities.find((entity) => entity.kind === 'stairs' && entity.direction === 'forward')!;
+  campaign.player.x = forwardStair.x;
+  campaign.player.y = forwardStair.y;
+  const nextFloor = generateFloor(2, 902, 2);
+  const returnStair = nextFloor.entities.find((entity) => entity.kind === 'stairs' && entity.direction === 'back')!;
+  const blockedEntry = { x: returnStair.x + 1, y: returnStair.y };
+  nextFloor.entities.push(legacyEnemy({ id: 'entry-guard', kind: 'enemy', x: blockedEntry.x, y: blockedEntry.y, hp: 12, damage: 1, xp: 1, actionCooldown: 1, nextActionAt: 1 }));
+  campaign.floors = { ...campaign.floors, '2': nextFloor };
+
+  const entered = applyAction(campaign, { type: 'enter-stairs' }).state;
+  assert.equal(entered.floor.level, 2);
+  assert.notDeepEqual({ x: entered.player.x, y: entered.player.y }, blockedEntry);
+  assert.equal(entered.floor.entities.some((entity) => entity.x === entered.player.x && entity.y === entered.player.y), false);
+  assert.equal(entered.floor.cells[entered.player.y]?.[entered.player.x]?.walkable, true);
+});
+
 test('linked stairs return to the previously visited floor', () => {
   let state = createCampaign(17, 1, 1, { level1TestMode: true });
   for (let step = 0; step < 2; step++) state = applyAction(state, { type: 'move', direction: 'e' }).state;
@@ -407,6 +425,14 @@ test('rejects chest placements that split adjacent floor paths', () => {
   assert.equal(isNonBlockingChestPlacementCell(alcove.cells, { x: 1, y: 1 }), true);
 });
 
+test('rejects every movement-blocking object placement that completes a walkway blockage', () => {
+  const corridor = createLevelContext({ worldId: 'test', realmId: 'test', levelId: 1, seed: 1, width: 5, height: 2, start: { x: 0, y: 0 }, exit: { x: 4, y: 0 } });
+  for (let y = 0; y < 2; y++) for (let x = 0; x < 5; x++) corridor.writeCell(x, y, { walkable: true });
+  const firstObject = { x: 2, y: 0 };
+  assert.equal(isNonBlockingObjectPlacementCell(corridor.cells, firstObject), true);
+  assert.equal(isNonBlockingObjectPlacementCell(corridor.cells, { x: 2, y: 1 }, [firstObject]), false);
+});
+
 test('places seeded dungeon objects on unique walkable cells while preserving the exit route', () => {
   for (const seed of [17, 914]) {
     const floor = generateFloor(1, seed, 1);
@@ -418,8 +444,10 @@ test('places seeded dungeon objects on unique walkable cells while preserving th
       assert.equal(positions.has(key), false, `${seed}:${key} must contain one entity`);
       positions.add(key);
     }
-    for (const chest of floor.entities.filter((entity) => entity.kind === 'chest')) {
-      assert.equal(isNonBlockingChestPlacementCell(floor.cells, chest), true, `${seed}:${chest.id} must not block floor connectivity`);
+    const blockers: { x: number; y: number }[] = [];
+    for (const entity of floor.entities) if (['chest', 'crate', 'campfire', 'enemy'].includes(entity.kind)) {
+      assert.equal(isNonBlockingObjectPlacementCell(floor.cells, entity, blockers), true, `${seed}:${entity.id} must not block floor connectivity`);
+      blockers.push(entity);
     }
     assert.ok(findCardinalPath(floor, floor.start, stairs), `${seed}: exit must remain reachable`);
     const set = floor.objectSets?.[0];
@@ -521,7 +549,7 @@ test('enemy damage is deterministic, stamina-scaled, and never reduced below one
   assert.equal(Number.isInteger(present(healthEvent.facts.previous) - present(healthEvent.facts.current)), true);
 });
 
-test('melee enemies move and attack only on cardinal tiles, while ranged attacks may target diagonals', () => {
+test('melee enemies attack only adjacent cardinal tiles and ranged enemies require a cardinal line', () => {
   const meleeCampaign = createCampaign(3_041); const { x, y } = meleeCampaign.player;
   const melee = legacyEnemy({ id: 'diagonal-melee', kind: 'enemy', name: 'Diagonal Melee', x: x + 1, y: y + 1, hp: 10, damage: 2, xp: 1, actionCooldown: 1, nextActionAt: 1 });
   meleeCampaign.floor.entities = [melee];
@@ -532,7 +560,7 @@ test('melee enemies move and attack only on cardinal tiles, while ranged attacks
   assert.equal(Math.abs(movedMelee.x - x) + Math.abs(movedMelee.y - y), 1);
   assert.ok((movedMelee.x === x && movedMelee.y === y + 1) || (movedMelee.x === x + 1 && movedMelee.y === y));
 
-  const rangedCampaign = createCampaign(3_042); const ranged = legacyEnemy({ id: 'diagonal-ranged', kind: 'enemy', name: 'Diagonal Ranged', x: rangedCampaign.player.x + 1, y: rangedCampaign.player.y + 1, hp: 10, damage: 2, xp: 1, actionCooldown: 1, nextActionAt: 1, attackKind: 'ranged', attackRange: 1 });
+  const rangedCampaign = createCampaign(3_042); const ranged = legacyEnemy({ id: 'cardinal-ranged', kind: 'enemy', name: 'Cardinal Ranged', x: rangedCampaign.player.x + 2, y: rangedCampaign.player.y, hp: 10, damage: 2, xp: 1, actionCooldown: 1, nextActionAt: 1, attackKind: 'ranged', attackRange: 5 });
   rangedCampaign.floor.entities = [ranged];
   rangedCampaign.floor.map![ranged.y][ranged.x] = 0;
   const rangedResult = applyAction(rangedCampaign, { type: 'wait' });
@@ -1052,9 +1080,9 @@ test('drag resolver previews and commits only relevant compatible destinations',
   campaign.player.inventory = [item]; const drag = { kind: 'inventory' as const, item };
   assert.ok(previewInventoryDrop(campaign, drag, 'weapons', 0, null));
   assert.equal(previewInventoryDrop(campaign, drag, 'armor', 0, null), null);
-  assert.equal(previewInventoryDrop(campaign, drag, 'weapons', 0, { id: 'occupied', name: 'Occupied', group: 'weapons', modifiers: {} }), null);
+  assert.ok(previewInventoryDrop(campaign, drag, 'weapons', 0, { id: 'occupied', name: 'Occupied', group: 'weapons', modifiers: {} }));
   assert.deepEqual(resolveInventoryDrop(drag, { kind: 'slot', group: 'weapons' as const, index: 1 }), { type: 'equip', itemId: 's1', group: 'weapons' as const, index: 1 });
-  assert.equal(resolveInventoryDrop(drag, { kind: 'slot', group: 'weapons' as const, index: 0 }, { id: 'occupied', name: 'Occupied', group: 'weapons', modifiers: {} }), null);
+  assert.deepEqual(resolveInventoryDrop(drag, { kind: 'slot', group: 'weapons' as const, index: 0 }, { id: 'occupied', name: 'Occupied', group: 'weapons', modifiers: {} }), { type: 'equip', itemId: 's1', group: 'weapons' as const, index: 0 });
   assert.equal(resolveInventoryDrop({ kind: 'slot', group: 'weapons' as const, index: 0, item }, { kind: 'slot', group: 'armor' as const, index: 1 }), null);
   assert.deepEqual(resolveInventoryDrop({ kind: 'slot', group: 'weapons' as const, index: 0, item }, { kind: 'slot', group: 'weapons' as const, index: 1 }), { type: 'reorder-equipment', group: 'weapons' as const, index: 0, other: 1 });
   assert.deepEqual(resolveInventoryDrop({ kind: 'slot', group: 'armor' as const, index: 1, item }, { kind: 'inventory' }), { type: 'unequip', group: 'armor' as const, index: 1 });
@@ -1073,7 +1101,7 @@ test('drag descriptions share valid drop actions with transient equip and unequi
   const equip = present(describeInventoryDrop(campaign, { kind: 'inventory', item: stick }, { kind: 'slot', group: 'weapons' as const, index: 1 }));
   assert.deepEqual(equip.action, { type: 'equip', itemId: stick.id, group: 'weapons' as const, index: 1 }); assert.equal(present(equip.preview).offense, baseline.offense + 3);
   assert.equal(describeInventoryDrop(campaign, { kind: 'inventory', item: stick }, { kind: 'slot', group: 'armor' as const, index: 0 }), null);
-  assert.equal(describeInventoryDrop(campaign, { kind: 'inventory', item: stick }, { kind: 'slot', group: 'weapons' as const, index: 0 }, { id: 'occupied', name: 'Occupied', group: 'weapons', modifiers: {} }), null);
+  assert.ok(describeInventoryDrop(campaign, { kind: 'inventory', item: stick }, { kind: 'slot', group: 'weapons' as const, index: 0 }, { id: 'occupied', name: 'Occupied', group: 'weapons', modifiers: {} }));
   const equipped = createCampaign(402); equipped.player.equipment.weapons[0] = stick; const equippedBaseline = effectiveAttributes(equipped);
   const unequip = present(describeInventoryDrop(equipped, { kind: 'slot', item: stick, group: 'weapons' as const, index: 0 }, { kind: 'inventory' }));
   assert.deepEqual(unequip.action, { type: 'unequip', group: 'weapons' as const, index: 0 }); assert.equal(present(unequip.preview).offense, equippedBaseline.offense - 3);
