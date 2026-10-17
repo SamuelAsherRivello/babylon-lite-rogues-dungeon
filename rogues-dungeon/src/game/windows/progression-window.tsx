@@ -1,9 +1,9 @@
 import { useState } from "react";
 import type { AttributeName, Campaign } from "../types.ts";
-import { Dialog } from "../../ui/Dialog.tsx";
+import { Dialog, type DialogCenter } from "../../ui/Dialog.tsx";
 import { AttributesCard } from "../panels/attribute-panel.tsx";
 
-export function ProgressionWindow({ campaign, onClose, onConfirm }: { campaign: Campaign; onClose(): void; onConfirm(allocation: Partial<Record<AttributeName, number>>): void }) {
+export function ProgressionWindow({ campaign, onClose, onConfirm, center }: { campaign: Campaign; onClose(): void; onConfirm(allocation: Partial<Record<AttributeName, number>>): void; center?: DialogCenter | null }) {
   const [draft, setDraft] = useState<Partial<Record<AttributeName, number>>>({});
   const spent = Object.values(draft).reduce((sum, value) => sum + (value ?? 0), 0);
   const remaining = campaign.progression.attributePoints - spent;
@@ -21,5 +21,5 @@ export function ProgressionWindow({ campaign, onClose, onConfirm }: { campaign: 
     onDecrease: (name: AttributeName) => change(name, -1),
     onIncrease: (name: AttributeName) => change(name, 1),
   };
-  return <Dialog title="Progression" onClose={onClose} className="progression-window"><p>Spend {campaign.progression.attributePoints} Attribute Points.</p><div className="progression-window__attributes"><AttributesCard attributes={campaign.progression.attributes} preview={preview} adjustments={adjustments} /></div><button type="button" disabled={!spent} onClick={() => onConfirm(draft)}>Confirm {spent} Attribute Point{spent === 1 ? "" : "s"}</button></Dialog>;
+  return <Dialog title="Progression" onClose={onClose} className="progression-window" center={center}><div className="progression-window__attributes"><AttributesCard attributes={campaign.progression.attributes} preview={preview} adjustments={adjustments} /></div><p className="body_text">Spend {campaign.progression.attributePoints} Attribute Points.</p><div className="progression-window__actions"><button type="button" disabled={!spent} onClick={() => onConfirm(draft)}>Confirm {spent} Attribute Point{spent === 1 ? "" : "s"}</button><button type="button" onClick={onClose}>Cancel</button></div></Dialog>;
 }

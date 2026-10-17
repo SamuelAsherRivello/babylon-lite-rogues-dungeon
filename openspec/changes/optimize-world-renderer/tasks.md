@@ -8,7 +8,7 @@
 
 ## 2. Semantic minimap and future mask boundary
 
-- [ ] 2.1 Replace minimap game-art sprite setup with a compact semantic cell-marker renderer derived from the shared render model, verifying player, walls, exit, pickups, and enemies retain matching coordinates.
+- [x] 2.1 Replace minimap game-art sprite setup with a compact semantic cell-marker renderer derived from the shared render model, verifying player, walls, exit, pickups, and enemies retain matching coordinates.
 - [x] 2.2 Add renderer-agnostic per-cell discovery and normalized-light interfaces that do not invalidate static chunks, with focused tests for independent updates.
 
 ## 3. Combat decal lifecycle
@@ -18,5 +18,5 @@
 
 ## 4. Integration verification
 
-- [ ] 4.1 Run npm test and npm run typecheck, resolving renderer regressions.
+- [x] 4.1 Run npm test and npm run typecheck, resolving renderer regressions.
 - [ ] 4.2 Run the required three-context muted browser verification for the renderer and record that the game, canvas, minimap, and browser consoles remain healthy.

@@ -41,7 +41,11 @@ export function AttributePanel({ attributes, preview = null, help = {}, theme = 
     const value = preview?.[name] ?? attributes[name];
     const tone = value === attributes[name] ? "" : value > attributes[name] ? "green" : "red";
     const label = <span className="attribute_panel__label">{attributeLabels[name]}</span>;
-    const valueControl = adjustments ? <span className="attribute_adjustment"><button type="button" aria-label={`Decrease ${attributeLabels[name]}`} disabled={!adjustments.canDecrease(name)} onClick={() => adjustments.onDecrease(name)}>‹</button><DeltaValue value={value} tone={tone} /><button type="button" aria-label={`Increase ${attributeLabels[name]}`} disabled={!adjustments.canIncrease(name)} onClick={() => adjustments.onIncrease(name)}>›</button></span> : <DeltaValue value={value} tone={tone} />;
+    const decreaseEnabled = adjustments?.canDecrease(name) ?? false;
+    const increaseEnabled = adjustments?.canIncrease(name) ?? false;
+    const decreaseButton = <button type="button" aria-label={`Decrease ${attributeLabels[name]}`} disabled={!decreaseEnabled} onClick={() => adjustments?.onDecrease(name)}>‹</button>;
+    const increaseButton = <button type="button" aria-label={`Increase ${attributeLabels[name]}`} disabled={!increaseEnabled} onClick={() => adjustments?.onIncrease(name)}>›</button>;
+    const valueControl = adjustments ? <span className="attribute_adjustment">{decreaseEnabled ? <Tooltip content={`Decrease ${attributeLabels[name]} to ${value - 1} (-1).`}>{decreaseButton}</Tooltip> : decreaseButton}<DeltaValue value={value} tone={tone} />{increaseEnabled ? <Tooltip content={`Increase ${attributeLabels[name]} to ${value + 1} (+1).`}>{increaseButton}</Tooltip> : increaseButton}</span> : <DeltaValue value={value} tone={tone} />;
     return <div className="attribute_item" key={name}>{help[name] ? <Tooltip content={help[name]}><button tabIndex={-1} type="button" className="attribute_tooltip_trigger">{attributeLabels[name]}</button></Tooltip> : label}{valueControl}</div>;
   })}</div>)}</div>;
 }
