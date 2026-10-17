@@ -13,7 +13,7 @@ test("@smoke pushes a barrel onto its floor trigger in a muted Edge session", as
         entities: [{ id: "depth-rat", kind: "enemy", name: "Rat", x: 49, y: 51, hp: 3, maxHp: 3, damage: 0, xp: 1, awareness: 0, actionCooldown: 9, nextActionAt: 9 }],
         objectSets: [{ id: "fixture", kind: "floor-trigger-door-barrel", barrel: { x: 48, y: 50 }, trigger: { x: 49, y: 50 }, door: { x: 54, y: 50 }, regionRole: "optional-reward" }],
       },
-      progression: { attributes: { health: 30, stamina: 16, offense: 0, defense: 1, mana: 12, vitality: 0, strength: 0, luck: 0, recovery: 0, stealth: 0 }, level: 1, xp: 0, nextXp: 100, totalKills: 0, difficulty: 1, pendingUpgrades: [] },
+      progression: { attributes: { health: 30, stamina: 16, offense: 0, defense: 1, mana: 12, vitality: 0, strength: 0, luck: 0, recovery: 0, stealth: 0 }, level: 1, xp: 0, nextXp: 100, totalKills: 0, difficulty: 1, attributePoints: 0 },
       player: { x: 47, y: 50, resources: { health: resource(30, 30), stamina: resource(16, 16), offense: resource(8, 8), defense: resource(1, 1), mana: resource(12, 12), xp: { ...resource(0, 100), level: 1 } }, equipment: { weapons: [null, null], armor: [null, null] }, inventory: [], inventoryCapacity: 10, abilities: ["heal", "wand", null], sneaking: false }, counters: { keys: 0, gold: 0 }, objective: "Find the exit", log: [],
     }));
   }, GENERATOR_VERSION);

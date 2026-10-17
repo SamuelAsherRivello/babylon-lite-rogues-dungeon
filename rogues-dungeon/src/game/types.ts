@@ -112,7 +112,8 @@ export interface EventFacts {
   destination?: string | { group: EquipmentGroup; index: number } | { quickSlot: number }; group?: EquipmentGroup; index?: number; other?: number;
   id?: string; title?: string; manaCost?: number; targetType?: string; transactionId?: string; actionType?: string; ticks?: number; abilityId?: AbilityId;
   error?: string; message?: string; quantity?: number; quickSlot?: number;
-  displacedItemIds?: string[]; hitChance?: number; critChance?: number; roll?: number; attackDirection?: Direction; mitigation?: number; projectileId?: string; outcome?: string;
+  displacedItemIds?: string[]; displacedItems?: { id: string; name: string }[]; occupiedSlots?: number[]; slotSpan?: 1 | 2;
+  hitChance?: number; critChance?: number; roll?: number; attackDirection?: Direction; mitigation?: number; projectileId?: string; outcome?: string;
 }
 export interface GameEvent { type: string; facts: EventFacts; source?: string; gameTime: number; sequence: number; eventId?: string; transactionId?: string | null; outcome?: string }
 export interface ActionResult { state: Campaign; events: GameEvent[]; accepted: boolean; ticks: number; transactionId?: string; system?: boolean }

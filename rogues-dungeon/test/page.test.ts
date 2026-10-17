@@ -19,6 +19,33 @@ test('status capacity markers make creation ranks legible without reaching the f
   assert.ok(statusCapMarker(14) > 50 && statusCapMarker(14) < 99);
   assert.equal(statusCapMarker(99), 99);
 });
+test('labels character meters as Status and exposes exact current values with the XP level', async () => {
+  const [game, panels] = await Promise.all(['../src/game/game.tsx', '../src/game/panels/information-panels.tsx'].map((path) => readFile(new URL(path, import.meta.url), 'utf8')));
+  assert.match(panels, /GameCard title="Status"/);
+  assert.match(game, /Level \$\{String\(value\.level\)\.padStart\(2, "0"\)\}\. \$\{value\.current\} \/ \$\{value\.currentMax\} XP\./);
+  assert.match(game, /resource_level--empty/);
+  assert.match(game, /resource_level--filled/);
+  assert.match(game, /LVL \$\{String\(value\.level\)\.padStart\(2, "0"\)\}/);
+});
+test('renders equipment and Inventory details for combat properties and two-slot occupancy', async () => {
+  const game = await readFile(new URL('../src/game/game.tsx', import.meta.url), 'utf8');
+  assert.match(game, /HIT \$\{item\.hitChance\}%/);
+  assert.match(game, /CRIT \$\{item\.critChance\}%/);
+  assert.match(game, /item\.perks\.join\(", "\)/);
+  assert.match(game, /item\.slotSpan === 2 \? " · 2 slots"/);
+  assert.match(game, /details=\{details\}/);
+  assert.match(game, /slot_item_details/);
+});
+test('renders an occupied-or-empty equipment swap comparison with complete deltas', async () => {
+  const [game, panels, css] = await Promise.all(['../src/game/game.tsx', '../src/game/panels/information-panels.tsx', '../src/ui/style.css'].map((path) => readFile(new URL(path, import.meta.url), 'utf8')));
+  assert.match(game, /aria-label="Equipment comparison"/);
+  assert.match(game, /Before:/);
+  assert.match(game, /After:/);
+  assert.match(game, /\["offense", "defense", "mana"\]/);
+  assert.match(game, /destination\.index \+ 1\} \+ \$\{destination\.index === 0 \? 2 : 1/);
+  assert.match(panels, /<EquipmentComparison campaign=\{campaign\} drag=\{drag\} \/>/);
+  assert.match(css, /\.equipment_comparison/);
+});
 test('recovers a wall-adjacent barrel only when its current and starting cells are both offscreen', async () => {
   const renderer = await readFile(new URL('../src/systems/rendering/babylon-render-system.tsx', import.meta.url), 'utf8');
   assert.match(renderer, /const barrelOffscreen = isPositionOffscreen\(set\.barrel, cameraCenter, halfWidth, halfHeight\)/);
@@ -302,7 +329,7 @@ test('uses delta values to pulse only when an attribute turns red or green', asy
 
 test('adds a nested How To Play reference dialog to Settings', async () => {
   const [game, settingsWindow, helpWindow, dialog, css] = await Promise.all(['src/game/game.tsx', 'src/game/windows/settings-window.tsx', 'src/game/windows/how-to-play-window.tsx', 'src/ui/Dialog.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
-  for (const topic of ['The Basics', 'Movement', 'Combat', 'Exploration', 'Quests', 'Items', 'Leveling Up', 'Saving Your Game']) assert.match(helpWindow, new RegExp(`\\["${topic}"`));
+  for (const topic of ['The Basics', 'Movement', 'Combat', 'Exploration', 'Quests', 'Items', 'Leveling Up', 'Saving Your Game', 'Tips']) assert.match(helpWindow, new RegExp(`\\["${topic}"`));
   assert.match(helpWindow, /title="How To Play"/); assert.match(helpWindow, /<select/); assert.match(helpWindow, /\{index \+ 1\}\. \{topic\}/); assert.match(helpWindow, /Left-click to walk or attack\. Right-click to run or attack\./);
   assert.match(settingsWindow, /How To Play/); assert.match(settingsWindow, /onOpenHowToPlay/); assert.match(settingsWindow, /dismissible=\{!helpOpen\}/);
   assert.match(settingsWindow, /bounds=\{bounds\}/); assert.match(settingsWindow, /onOpenHowToPlay\(dialogBounds\(event\.currentTarget\.closest\("\.settings-window"\)!\)\)/); assert.match(helpWindow, /bounds=\{bounds\}/);

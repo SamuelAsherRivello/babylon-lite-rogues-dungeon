@@ -63,9 +63,12 @@ test('committed simulation events map to one cue and rejected events stay quiet'
     { type: 'ability.used', outcome: 'committed', facts: {} },
     { type: 'barrel.pushed', outcome: 'committed', facts: {} },
     { type: 'floor-trigger.changed', outcome: 'committed', facts: { active: true } },
+    { type: 'xp.level.changed', outcome: 'committed', facts: { level: 2 } },
+    { type: 'xp.level.changed', outcome: 'committed', facts: { level: 3 } },
     { type: 'combat.hit', outcome: 'rejected', facts: {} },
   ]);
-  assert.deepEqual(new Set(fake.made.filter(({ playCount }) => playCount > 0).map(({ src }) => src)), new Set([AUDIO_ASSETS.sfx.footstep, AUDIO_ASSETS.sfx.weaponHit, AUDIO_ASSETS.sfx.enemyHit, AUDIO_ASSETS.sfx.enemyFall, AUDIO_ASSETS.sfx.pickupClick, AUDIO_ASSETS.sfx.potion, AUDIO_ASSETS.sfx.chest, AUDIO_ASSETS.sfx.stairs, AUDIO_ASSETS.sfx.ability, AUDIO_ASSETS.sfx.barrelSlide, AUDIO_ASSETS.sfx.crateHit]));
+  assert.deepEqual(new Set(fake.made.filter(({ playCount }) => playCount > 0).map(({ src }) => src)), new Set([AUDIO_ASSETS.sfx.footstep, AUDIO_ASSETS.sfx.weaponHit, AUDIO_ASSETS.sfx.enemyHit, AUDIO_ASSETS.sfx.enemyFall, AUDIO_ASSETS.sfx.pickupClick, AUDIO_ASSETS.sfx.potion, AUDIO_ASSETS.sfx.chest, AUDIO_ASSETS.sfx.stairs, AUDIO_ASSETS.sfx.ability, AUDIO_ASSETS.sfx.barrelSlide, AUDIO_ASSETS.sfx.crateHit, AUDIO_ASSETS.sfx.accepted]));
+  assert.equal(fake.made.filter(({ src }) => src === AUDIO_ASSETS.sfx.accepted).reduce((total, audio) => total + audio.playCount, 0), 2);
 });
 
 test('equipment drop feedback distinguishes accepted and rejected drops', async () => {

@@ -591,7 +591,7 @@ export function createCampaign(seed = seedNow(), difficulty = 1, level = 1, opti
 const blobFrames = Object.freeze([3, 2, 1, 0, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4]);
 export function wallFrameAt(floor: Floor, x: number, y: number) { const wall = (tx: number, ty: number) => !isWalkable(floor, tx, ty); const mask = Number(wall(x, y - 1)) | (Number(wall(x + 1, y)) << 1) | (Number(wall(x, y + 1)) << 2) | (Number(wall(x - 1, y)) << 3); return blobFrames[mask]; }
 
-function tick(state: Campaign, events: GameEvent[], restTime = false) { const previous = state.floor.time; state.floor.time++; emit(events, "time.advanced", { previous, current: state.floor.time }, state); if (!restTime) enemyPhase(state, events); }
+function tick(state: Campaign, events: GameEvent[], restTime = false) { const previous = state.floor.time; state.floor.time++; state.floor.projectiles = (state.floor.projectiles ?? []).filter((projectile) => projectile.createdAt >= state.floor.time); emit(events, "time.advanced", { previous, current: state.floor.time }, state); if (!restTime) enemyPhase(state, events); }
 function normalizeResources(state: Campaign, events: GameEvent[], cause: string, previousCaps: Attributes) { const caps = effectiveAttributes(state); for (const key of ["health", "stamina", "mana"] as const) { const prior = state.player.resources[key].current; const oldMax = previousCaps[key]; const ratio = oldMax > 0 ? prior / oldMax : 0; const next = Math.max(0, Math.min(caps[key], ratio * caps[key])); state.player.resources[key] = { current: next, currentMax: caps[key] }; if (prior !== next) emit(events, "resource.changed", { resource: key, previous: prior, current: next, previousMax: oldMax, currentMax: caps[key], cause }, state); } state.player.resources = playerResourcesFromCampaign(state, state.player.resources); }
 function changeResource(state: Campaign, events: GameEvent[], key: "health" | "stamina" | "mana", value: number, cause: string) { const cap = effectiveAttributes(state)[key]; const previous = state.player.resources[key].current; const current = Math.max(0, Math.min(cap, value)); state.player.resources[key] = { current, currentMax: cap }; state.player.resources = playerResourcesFromCampaign(state, state.player.resources); if (current !== previous) emit(events, "resource.changed", { resource: key, previous, current, currentMax: cap, cause, ...(key === "health" ? { position: { x: state.player.x, y: state.player.y } } : {}) }, state); }
 function applyTrapOnEntry(state: Campaign, events: GameEvent[], elapsedMs: number) {
@@ -777,6 +777,21 @@ function applyEquipmentItem(slots: (Item | null)[], item: Item, indexes: number[
   for (const target of indexes) slots[target] = null;
   if (item.slotSpan === 2) { slots[0] = item; slots[1] = item; }
   else slots[indexes[0]!] = item;
+}
+export function projectEquipmentSwap(campaign: Campaign, itemId: string, group: EquipmentGroup, index: number) {
+  if (!campaign.player.equipment[group] || !Number.isInteger(index) || index < 0 || index > 1) return null;
+  const projected = structuredClone(campaign);
+  const itemIndex = projected.player.inventory.findIndex((item) => item.id === itemId);
+  const item = projected.player.inventory[itemIndex];
+  if (!item || item.category === "consumable" || item.group !== group) return null;
+  const slots = projected.player.equipment[group];
+  const indexes = targetIndexes(slots, item, index);
+  const displaced = uniqueItems(indexes.map((target) => slots[target]));
+  if (projected.player.inventory.length - 1 + displaced.length > projected.player.inventoryCapacity) return null;
+  projected.player.inventory.splice(itemIndex, 1);
+  applyEquipmentItem(slots, item, indexes);
+  projected.player.inventory = orderedInventory([...projected.player.inventory, ...displaced]);
+  return { campaign: projected, item, indexes, displaced };
 }
 function attack(state: Campaign, events: GameEvent[], enemy: Enemy) {
   const weapon = uniqueItems(state.player.equipment.weapons).find((item) => Number.isFinite(item.hitChance)) ?? null;
@@ -978,11 +993,12 @@ export function applyAction(campaign: Campaign, action: Action): ActionResult {
     if (action.type === "equip") {
       const itemIndex = state.player.inventory.findIndex((item) => item.id === action.itemId); const item = state.player.inventory[itemIndex];
       if (!item || item.category === "consumable" || item.group !== group) return reject("invalid-equipment-drop");
-      const slots = state.player.equipment[group]; const indexes = targetIndexes(slots, item, index); const displaced = uniqueItems(indexes.map((target) => slots[target]));
-      if (state.player.inventory.length - 1 + displaced.length > state.player.inventoryCapacity) return reject("inventory-full");
-      state.player.inventory.splice(itemIndex, 1); applyEquipmentItem(slots, item, indexes);
-      state.player.inventory = orderedInventory([...state.player.inventory, ...displaced]);
-      emit(events, "equipment.changed", { action: displaced.length ? "swapped" : "enabled", itemId: item.id, item: item.name, source: "inventory", destination: { group, index }, group, index, displacedItemIds: displaced.map((entry) => entry.id) } as EventFacts, state);
+      const swap = projectEquipmentSwap(state, item.id, group, index);
+      if (!swap) return reject("inventory-full");
+      const { displaced } = swap;
+      state.player.equipment = swap.campaign.player.equipment;
+      state.player.inventory = swap.campaign.player.inventory;
+      emit(events, "equipment.changed", { action: displaced.length ? "swapped" : "enabled", itemId: item.id, item: item.name, source: "inventory", destination: { group, index }, group, index, slotSpan: item.slotSpan ?? 1, occupiedSlots: occupiedIndexes(state.player.equipment[group], item), displacedItemIds: displaced.map((entry) => entry.id), displacedItems: displaced.map(({ id, name }) => ({ id, name })) } as EventFacts, state);
     }
     else if (action.type === "unequip") { const item = state.player.equipment[group][index]; if (!item || state.player.inventory.length >= state.player.inventoryCapacity) return reject("cannot-unequip"); for (const slotIndex of occupiedIndexes(state.player.equipment[group], item)) state.player.equipment[group][slotIndex] = null; state.player.inventory = orderedInventory([...state.player.inventory, item]); emit(events, "equipment.changed", { action: "returned to inventory", itemId: item.id, item: item.name, source: { group, index }, destination: "inventory", group, index }, state); }
     else { const other = action.other; if (!Number.isInteger(other) || other < 0 || other > 1 || other === index) return reject("invalid-equipment-slot"); const left = state.player.equipment[group][index]; const right = state.player.equipment[group][other]; if (left?.slotSpan === 2 || right?.slotSpan === 2) return reject("cannot-reorder-two-slot"); [state.player.equipment[group][index], state.player.equipment[group][other]] = [right, left]; emit(events, "equipment.changed", { action: "reordered", group, index, other, source: { group, index }, destination: { group, index: other } }, state); }

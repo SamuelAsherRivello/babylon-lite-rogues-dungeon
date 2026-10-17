@@ -8,7 +8,10 @@ const baseURL = `http://${host}:${port}${basePath}`;
 export default defineConfig({
   testDir: "./rogues-dungeon/test/browser",
   outputDir: "output/playwright/",
-  fullyParallel: true,
+  // Babylon Lite requires a real WebGPU device. Serial browser coverage avoids
+  // competing device initialization across parallel Edge workers.
+  fullyParallel: false,
+  workers: 1,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
@@ -18,7 +21,7 @@ export default defineConfig({
     screenshot: "only-on-failure",
     video: "retain-on-failure",
   },
-  projects: [{ name: "edge", use: { ...devices["Desktop Edge"], launchOptions: { channel: "msedge" } } }],
+  projects: [{ name: "edge", use: { ...devices["Desktop Edge"], headless: false, launchOptions: { channel: "msedge" } } }],
   webServer: {
     command: `npm run dev -- --host ${host} --port ${port} --strictPort`,
     url: baseURL,

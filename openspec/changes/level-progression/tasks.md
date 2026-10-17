@@ -9,20 +9,20 @@
 
 ## 2. Character creation and Progression UI
 
-- [ ] 2.1 Add the Create Character menu flow for empty Saved Games with idle player preview, compact profile, all ten values, Roll, Confirm, and cancel; verify a browser test proves cancel leaves the slot empty and confirmation creates a resumable campaign.
-- [ ] 2.2 Replace the forced level-up window with a Progression dialog that supports plus/minus drafts, live outcome copy, confirmation, and safe close; verify component or browser coverage proves drafts never mutate committed state and confirmation spends only valid points.
-- [ ] 2.3 Connect the existing panel-popup API to unspent Attribute Points after the complete dialog flow is available, preserving its non-dismissible Attributes callout and non-pausing behavior; verify a focused browser test proves it remains after a close or partial spend and clears after all points are spent.
-- [ ] 2.4 Remove obsolete forced-level-up actions, UI, styles, tests, and input guards; verify typecheck has no unused references and normal movement remains available with unspent points.
+- [x] 2.1 Add the Create Character menu flow for empty Saved Games with idle player preview, compact profile, all ten values, Roll, Confirm, and cancel; verify a browser test proves cancel leaves the slot empty and confirmation creates a resumable campaign.
+- [x] 2.2 Replace the forced level-up window with a Progression dialog that supports plus/minus drafts, live outcome copy, confirmation, and safe close; verify component or browser coverage proves drafts never mutate committed state and confirmation spends only valid points.
+- [x] 2.3 Connect the existing panel-popup API to unspent Attribute Points after the complete dialog flow is available, preserving its non-dismissible Attributes callout and non-pausing behavior; verify a focused browser test proves it remains after a close or partial spend and clears after all points are spent.
+- [x] 2.4 Remove obsolete forced-level-up actions, UI, styles, tests, and input guards; verify typecheck has no unused references and normal movement remains available with unspent points.
 
 ## 3. Status presentation and level celebration
 
-- [ ] 3.1 Rename the Resources card to Status and update Status tooltips with current/maximum prefixes, including level and XP on XP; verify focused UI tests assert the visible card title, tooltip text, and `LVL NN` accessible output.
-- [ ] 3.2 Implement the shared-track capacity-marker curve and contrasting centered `LVL NN` text; verify unit or component tests cover ranks 1, 5, 14, and 99 without marker overflow.
-- [ ] 3.3 Route level-gain events into short-lived inward sparkle particles and a muted-aware non-diegetic chime; verify focused event/audio tests prove one effect and cue per gained level and no retained particle after completion.
-- [ ] 3.4 Update player-facing help and the documented sound-cue inventory for Attribute Points, Status, and the chime; verify referenced UI text and documentation match the implemented behavior.
+- [x] 3.1 Rename the Resources card to Status and update Status tooltips with current/maximum prefixes, including level and XP on XP; verify focused UI tests assert the visible card title, tooltip text, and `LVL NN` accessible output.
+- [x] 3.2 Implement the shared-track capacity-marker curve and contrasting centered `LVL NN` text; verify unit or component tests cover ranks 1, 5, 14, and 99 without marker overflow.
+- [x] 3.3 Route level-gain events into short-lived inward sparkle particles and a muted-aware non-diegetic chime; verify focused event/audio tests prove one effect and cue per gained level and no retained particle after completion.
+- [x] 3.4 Update player-facing help and the documented sound-cue inventory for Attribute Points, Status, and the chime; verify referenced UI text and documentation match the implemented behavior.
 
 ## 4. Integration verification
 
-- [ ] 4.1 Run `npm run typecheck` and the focused Node test files changed by progression, persistence, and presentation work; verify both commands pass.
+- [x] 4.1 Run `npm run typecheck` and the focused Node test files changed by progression, persistence, and presentation work; verify both commands pass.
 - [ ] 4.2 Run one muted Playwright flow in Microsoft Edge that creates a character, gains a level, observes the Status and Attributes callout, allocates points, and reloads; verify the campaign resumes without console errors.
 - [ ] 4.3 During finalization, run the full applicable Rogue's Dungeon browser verification in Playwright, desktop Edge, and the built-in browser on `?mute=1`; verify the game view is playable, a canvas is present, WebGPU fallback messaging is absent, and console errors are absent.

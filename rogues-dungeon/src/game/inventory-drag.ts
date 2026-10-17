@@ -1,9 +1,12 @@
 import type { Action, Campaign, DragSource, DropDestination, EquipmentGroup, Item } from "./types.ts";
-import { effectiveAttributes, isQuickSlottableItem, previewEquipment } from "../systems/procedural/world-procedural-system.ts";
+import { effectiveAttributes, isQuickSlottableItem, previewEquipment, projectEquipmentSwap } from "../systems/procedural/world-procedural-system.ts";
 
 export function previewInventoryDrop(campaign: Campaign, drag: DragSource | null, group: EquipmentGroup, index: number, targetItem: Item | null) {
   if (!drag) return null;
-  if (drag.kind === "inventory" && drag.item.group === group) return previewEquipment(campaign, drag.item, group, index);
+  if (drag.kind === "inventory" && drag.item.group === group) {
+    const projected = projectEquipmentSwap(campaign, drag.item.id, group, index);
+    return projected ? effectiveAttributes(projected.campaign) : null;
+  }
   if (drag.kind === "slot" && drag.group === group && drag.index !== index) {
     const projected = structuredClone(campaign); const slots = projected.player.equipment[group];
     [slots[drag.index], slots[index]] = [slots[index], slots[drag.index]];

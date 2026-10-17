@@ -8,9 +8,10 @@ import { ensureSemanticCells, isWalkable } from "../systems/procedural/level-gri
 const sameCell = (left: Position | null, right: Position | null) => left?.x === right?.x && left?.y === right?.y;
 const cellKey = ({ x, y }: Position) => `${x},${y}`;
 const isWalkableTerrain = (floor: Grid, x: number, y: number) => isWalkable(floor, x, y);
+const passableEntityKinds = new Set(["potion", "key", "gold", "item", "stairs", "discovery"]);
 export interface CardinalPathOptions { maxNodes?: number; isBlocked?: (position: Position) => boolean }
 
-/** Find a cardinal route across a floor without passing through occupied cells. */
+/** Find a cardinal route across a floor, passing through pickups but avoiding blocking occupants. */
 export function findCardinalPath(floor: Grid & { entities?: (Position & { id?: string; kind?: string })[] }, from: Position, to: Position, options: CardinalPathOptions = {}) {
   const normalizedFloor = ensureSemanticCells(floor);
   const height = normalizedFloor?.height ?? normalizedFloor?.cells?.length ?? 0;
@@ -19,7 +20,7 @@ export function findCardinalPath(floor: Grid & { entities?: (Position & { id?: s
     || !isWalkableTerrain(normalizedFloor, from.x, from.y) || !isWalkableTerrain(normalizedFloor, to.x, to.y)) return null;
 
   const occupied = new Set((normalizedFloor.entities ?? [])
-    .filter((entity) => !sameCell(entity, to))
+    .filter((entity) => !sameCell(entity, to) && !passableEntityKinds.has(entity.kind ?? ""))
     .map(cellKey));
   const grid = createGridMap(width, height, { allowDiagonal: false });
   for (let y = 0; y < height; y += 1) for (let x = 0; x < width; x += 1) {

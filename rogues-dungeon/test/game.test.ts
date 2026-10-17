@@ -465,13 +465,20 @@ test('projects player Health changes and enemy hits into positioned transient te
     { type: 'resource.changed', eventId: 'mana', facts: { resource: 'mana', previous: 8, current: 4, position: { x: 4, y: 7 } } },
     { type: 'combat.hit', eventId: 'melee', facts: { targetId: 'rat-1', damage: 6, targetPosition: { x: 5, y: 7 } } },
     { type: 'combat.hit', eventId: 'ability', facts: { targetId: 'skeleton-1', damage: 8, targetPosition: { x: 12, y: 3 }, source: 'wand' } },
+    { type: 'combat.hit', eventId: 'crit', facts: { targetId: 'rat-2', damage: 9, outcome: 'CRIT', targetPosition: { x: 6, y: 7 } } },
+    { type: 'combat.hit', eventId: 'miss', facts: { targetId: 'rat-3', damage: 0, outcome: 'MISS', targetPosition: { x: 7, y: 7 } } },
+    { type: 'resource.changed', eventId: 'north', facts: { resource: 'health', previous: 9, current: 8, attackDirection: 'n', position: { x: 4, y: 7 } } },
   ]);
   assert.deepEqual(effects.map(({ id, text, color, x, y }) => ({ id, text, color, x, y })), [
     { id: 'heal', text: '+5', color: 'gain', x: 4, y: 7 },
     { id: 'hurt', text: '−4', color: 'loss', x: 4, y: 7 },
     { id: 'melee', text: '−6', color: 'loss', x: 5, y: 7 },
     { id: 'ability', text: '−8', color: 'loss', x: 12, y: 3 },
+    { id: 'crit', text: 'CRIT 9', color: 'loss', x: 6, y: 7 },
+    { id: 'miss', text: 'MISS', color: 'miss', x: 7, y: 7 },
+    { id: 'north', text: '−1', color: 'loss', x: 4, y: 7 },
   ]);
+  assert.equal(present(effects.find((effect) => effect.id === 'north')).kind, 'player-n');
   assert.ok(effects.every((effect) => effect.duration > 0));
   assert.deepEqual(removeFloatingFeedback(effects, 'heal'), effects.slice(1));
 });
@@ -1044,6 +1051,8 @@ test('Attribute Points remain available during tactical actions and spend withou
   campaign.floor.map![target.y][target.x] = 0; campaign.floor.entities = [legacyEnemy({ id: 'rat', kind: 'enemy', name: 'Rat', x: target.x, y: target.y, hp: 1, damage: 0, xp: 8 })]; campaign.progression.xp = 95;
   const earned = applyAction(campaign, { type: 'move', direction: 'e' });
   assert.equal(earned.state.progression.attributePoints, 3);
+  const movedWithPoints = applyAction(earned.state, { type: 'move', direction: 'e' });
+  assert.equal(movedWithPoints.accepted, true);
   assert.equal(applyAction(earned.state, { type: 'toggle-sneak' }).accepted, true);
   const beforeTime = earned.state.floor.time; const selected = applyAction(earned.state, { type: 'spend-attribute-points', allocation: { health: 3 } });
   assert.equal(selected.accepted, true); assert.equal(selected.ticks, 0); assert.equal(selected.state.floor.time, beforeTime); assert.equal(selected.state.progression.attributes.health, campaign.progression.attributes.health + 3);
@@ -1101,6 +1110,137 @@ test('inventory collection is alphabetical, capacity bounded, and equipment comm
   full.floor.entities = [{ id: 'blocked-loot', kind: 'item', ...lootPosition, item: { id: 'blocked-item', name: 'Blocked', group: 'weapons' as const, modifiers: {} } }];
   const notPicked = applyAction(full, { type: 'move', direction: 'e' });
   assert.equal(notPicked.state.player.inventory.length, 10); assert.ok(notPicked.state.floor.entities.some((entity) => entity.id === 'blocked-loot'));
+});
+
+test('equipment swaps use the same validated projection for one-slot and two-slot targets', () => {
+  const campaign = createCampaign(390); campaign.floor.entities = [];
+  const dagger = { id: 'dagger', name: 'Dagger (Magic)', group: 'weapons' as const, modifiers: { offense: 3, mana: 2 } };
+  const sword = { id: 'sword', name: 'Sword', group: 'weapons' as const, modifiers: { offense: 6 } };
+  campaign.player.equipment.weapons = [sword, null];
+  campaign.player.inventory = [dagger];
+  const swapped = applyAction(campaign, { type: 'equip', itemId: dagger.id, group: 'weapons', index: 0 });
+  assert.equal(swapped.accepted, true); assert.equal(present(swapped.state.player.equipment.weapons[0]).id, dagger.id);
+  assert.deepEqual(swapped.state.player.inventory.map((item) => item.id), [sword.id]);
+  const swapEvent = present(swapped.events.find((event) => event.type === 'equipment.changed'));
+  assert.deepEqual(swapEvent.facts.displacedItemIds, [sword.id]);
+  assert.deepEqual(swapEvent.facts.displacedItems, [{ id: sword.id, name: sword.name }]);
+  assert.deepEqual(swapEvent.facts.occupiedSlots, [0]); assert.equal(swapEvent.facts.slotSpan, 1);
+
+  const twoSlot = { id: 'two-handed', name: 'Two-Handed Sword', group: 'weapons' as const, slotSpan: 2 as const, modifiers: { offense: 15 } };
+  const left = { id: 'left', name: 'Left Sword', group: 'weapons' as const, modifiers: { offense: 2 } };
+  const right = { id: 'right', name: 'Right Sword', group: 'weapons' as const, modifiers: { offense: 2 } };
+  const full = createCampaign(391); full.floor.entities = []; full.player.equipment.weapons = [left, right];
+  full.player.inventory = [twoSlot, ...Array.from({ length: full.player.inventoryCapacity - 1 }, (_, index) => ({ id: `f${index}`, name: `Full ${index}`, group: 'armor' as const, modifiers: {} }))];
+  const before = structuredClone(full);
+  assert.equal(previewInventoryDrop(full, { kind: 'inventory', item: twoSlot }, 'weapons', 0, left), null);
+  const rejected = applyAction(full, { type: 'equip', itemId: twoSlot.id, group: 'weapons', index: 0 });
+  assert.equal(rejected.accepted, false); assert.equal(rejected.ticks, 0); assert.deepEqual(rejected.state, before);
+});
+
+test('equipment swap events retain occupancy facts and project into the Log before the commit event', () => {
+  const campaign = createCampaign(394); campaign.floor.entities = [];
+  const dagger = { id: 'dagger', name: 'Dagger (Magic)', group: 'weapons' as const, modifiers: { offense: 3 } };
+  const sword = { id: 'sword', name: 'Sword', group: 'weapons' as const, modifiers: { offense: 6 } };
+  campaign.player.inventory = [dagger]; campaign.player.equipment.weapons = [sword, null];
+  const session = createGameSession(campaign);
+  session.subscribe((result) => { if (result.accepted) result.state.log = projectLogEvents(result.state.log, result.events); });
+  const result = transaction(session.dispatch({ type: 'equip', itemId: dagger.id, group: 'weapons', index: 0 }));
+  const equipmentIndex = result.events.findIndex((event) => event.type === 'equipment.changed');
+  const committedIndex = result.events.findIndex((event) => event.type === 'action.committed');
+  assert.ok(equipmentIndex >= 0 && equipmentIndex < committedIndex);
+  assert.equal(result.state.log.at(-1)?.text, 'You swap Dagger (Magic) for Sword.');
+});
+
+test('encumbered movement requires two valid matching inputs without consuming the pending direction', () => {
+  const campaign = createCampaign(392); campaign.floor.entities = [];
+  campaign.player.inventory = Array.from({ length: campaign.player.inventoryCapacity + 1 }, (_, index) => ({ id: `heavy-${index}`, name: `Heavy ${index}`, group: 'armor' as const, modifiers: {} }));
+  campaign.floor.map![campaign.player.y][campaign.player.x + 1] = 0;
+  const start = { x: campaign.player.x, y: campaign.player.y, time: campaign.floor.time };
+  const armed = applyAction(campaign, { type: 'move', direction: 'e' });
+  assert.equal(armed.accepted, true); assert.equal(armed.ticks, 0); assert.deepEqual({ x: armed.state.player.x, y: armed.state.player.y, time: armed.state.floor.time }, start);
+  assert.equal(armed.state.player.encumberedDirection, 'e');
+  const waited = applyAction(armed.state, { type: 'wait' });
+  assert.equal(waited.state.player.encumberedDirection, 'e');
+  const moved = applyAction(waited.state, { type: 'move', direction: 'e' });
+  assert.equal(moved.ticks, 1); assert.equal(moved.state.player.x, start.x + 1); assert.equal(moved.state.player.encumberedDirection, null);
+
+  const blocked = createCampaign(393); blocked.floor.entities = [];
+  blocked.player.inventory = Array.from({ length: blocked.player.inventoryCapacity + 1 }, (_, index) => ({ id: `heavy-${index}`, name: `Heavy ${index}`, group: 'armor' as const, modifiers: {} }));
+  blocked.floor.map![blocked.player.y][blocked.player.x + 1] = 1;
+  const rejected = applyAction(blocked, { type: 'move', direction: 'e' });
+  assert.equal(rejected.accepted, false); assert.equal(rejected.state.player.encumberedDirection, null);
+});
+
+test('player melee rolls persist and resolve CRIT, HIT, MISS, and Luck-adjusted HIT deterministically', () => {
+  const attackWith = (combatRollState: number, luck = 0) => {
+    const campaign = createCampaign(395); const target = { x: campaign.player.x + 1, y: campaign.player.y };
+    const dagger = { id: 'dagger', name: 'Dagger (Magic)', group: 'weapons' as const, modifiers: { offense: 3 }, hitChance: 94, critChance: 4 };
+    campaign.floor.map![target.y][target.x] = 0; campaign.floor.entities = [legacyEnemy({ id: 'target', kind: 'enemy', name: 'Target', ...target, hp: 99, maxHp: 99, damage: 0, xp: 1, actionCooldown: 9, nextActionAt: 99 })];
+    campaign.player.equipment.weapons = [dagger, null]; campaign.progression.attributes.luck = luck; campaign.combatRollState = combatRollState;
+    return applyAction(campaign, { type: 'move', direction: 'e' });
+  };
+  const crit = present(attackWith(32937).events.find((event) => event.type === 'combat.hit'));
+  const hit = present(attackWith(35517).events.find((event) => event.type === 'combat.hit'));
+  const missResult = attackWith(45840); const miss = present(missResult.events.find((event) => event.type === 'combat.hit'));
+  const luckHit = present(attackWith(45840, 2).events.find((event) => event.type === 'combat.hit'));
+  assert.deepEqual([crit.facts.outcome, hit.facts.outcome, miss.facts.outcome, luckHit.facts.outcome], ['CRIT', 'HIT', 'MISS', 'HIT']);
+  assert.equal(crit.facts.damage, Math.ceil(Number(hit.facts.damage) * 1.5));
+  assert.equal(miss.facts.damage, 0); assert.equal(miss.facts.currentHealth, miss.facts.previousHealth);
+  assert.deepEqual(projectFloatingFeedback(missResult.events).map((feedback) => feedback.text), ['MISS']);
+  assert.equal(luckHit.facts.hitChance, 96);
+
+  const storage = new MemoryStorage(); const saved = createCampaign(396); const target = { x: saved.player.x + 1, y: saved.player.y };
+  saved.floor.map![target.y][target.x] = 0; saved.floor.entities = [legacyEnemy({ id: 'saved-target', kind: 'enemy', name: 'Saved Target', ...target, hp: 99, maxHp: 99, damage: 0, xp: 1, actionCooldown: 9, nextActionAt: 99 })];
+  saved.player.equipment.weapons = [{ id: 'saved-dagger', name: 'Dagger (Magic)', group: 'weapons', modifiers: { offense: 3 }, hitChance: 94, critChance: 4 }, null];
+  saved.combatRollState = 35517; writeSlot(storage, '1', saved);
+  const restored = present(readSlot(storage, '1')); assert.equal(restored.combatRollState, 35517);
+  const originalEvent = present(applyAction(saved, { type: 'move', direction: 'e' }).events.find((event) => event.type === 'combat.hit'));
+  const restoredEvent = present(applyAction(restored, { type: 'move', direction: 'e' }).events.find((event) => event.type === 'combat.hit'));
+  assert.deepEqual({ roll: restoredEvent.facts.roll, outcome: restoredEvent.facts.outcome, damage: restoredEvent.facts.damage }, { roll: originalEvent.facts.roll, outcome: originalEvent.facts.outcome, damage: originalEvent.facts.damage });
+});
+
+test('incoming attacks apply front, side, rear mitigation and Two-Handed Sword parry', () => {
+  const attackFrom = (direction: 'n' | 's' | 'e' | 'w') => {
+    const campaign = createCampaign(397); const { x, y } = campaign.player;
+    const offsets = { n: [0, -1], s: [0, 1], e: [1, 0], w: [-1, 0] } as const;
+    const [dx, dy] = offsets[direction]; const enemy = legacyEnemy({ id: `enemy-${direction}`, kind: 'enemy', name: 'Attacker', x: x + dx, y: y + dy, hp: 10, maxHp: 10, damage: 20, xp: 1, actionCooldown: 1, nextActionAt: 1 });
+    campaign.player.heading = 'e'; campaign.player.equipment.armor = [{ id: 'armor', name: 'Chest Armor', group: 'armor', modifiers: { defense: 10 } }, null];
+    campaign.floor.map![enemy.y][enemy.x] = 0; campaign.floor.entities = [enemy];
+    return applyAction(campaign, { type: 'wait' });
+  };
+  const facts = Object.fromEntries((['e', 'n', 's', 'w'] as const).map((direction) => [direction, present(attackFrom(direction).events.find((event) => event.type === 'combat.hit')).facts]));
+  assert.deepEqual([facts.e.attackDirection, facts.n.attackDirection, facts.s.attackDirection, facts.w.attackDirection], ['e', 'n', 's', 'w']);
+  assert.deepEqual([facts.e.mitigation, facts.n.mitigation, facts.s.mitigation, facts.w.mitigation], [1, .7, .7, .4]);
+  assert.ok(Number(facts.e.damage) < Number(facts.n.damage) && Number(facts.n.damage) < Number(facts.w.damage));
+
+  const parry = attackFrom('e').state;
+  parry.player.equipment.weapons = [{ id: 'two-handed', name: 'Two-Handed Sword', group: 'weapons', slotSpan: 2, modifiers: { offense: 15 }, perks: ['Automatic parry'] }, { id: 'two-handed', name: 'Two-Handed Sword', group: 'weapons', slotSpan: 2, modifiers: { offense: 15 }, perks: ['Automatic parry'] }];
+  parry.floor.entities[0] = legacyEnemy({ id: 'parried', kind: 'enemy', name: 'Attacker', x: parry.player.x + 1, y: parry.player.y, hp: 10, maxHp: 10, damage: 20, xp: 1, actionCooldown: 1, nextActionAt: parry.floor.time + 1 });
+  const parried = applyAction(parry, { type: 'wait' });
+  const parryEvent = present(parried.events.find((event) => event.type === 'combat.hit'));
+  assert.equal(parryEvent.facts.outcome, 'PARRY'); assert.equal(parryEvent.facts.damage, 0);
+  assert.equal(parried.events.some((event) => event.type === 'resource.changed' && event.facts.cause === 'enemy-attack'), false);
+});
+
+test('Skeleton Archer fires across a clear five-tile cardinal line but not through walls', () => {
+  const setup = (blocked = false) => {
+    const campaign = createCampaign(398); const archer = legacyEnemy({ id: 'archer', kind: 'enemy', name: 'Skeleton Archer', x: campaign.player.x + 5, y: campaign.player.y, hp: 20, maxHp: 20, damage: 4, xp: 1, actionCooldown: 2, nextActionAt: 1, attackKind: 'ranged', attackRange: 5 });
+    campaign.floor.entities = [archer]; campaign.floor.map![archer.y][archer.x] = 0;
+    for (let x = campaign.player.x + 1; x < archer.x; x++) campaign.floor.map![campaign.player.y][x] = blocked && x === campaign.player.x + 2 ? 1 : 0;
+    return applyAction(campaign, { type: 'wait' });
+  };
+  const clear = setup();
+  assert.ok(clear.events.some((event) => event.type === 'projectile.fired'));
+  assert.ok(clear.events.some((event) => event.type === 'resource.changed' && event.facts.cause === 'enemy-attack'));
+  assert.equal(clear.state.floor.projectiles?.[0]?.sourceId, 'archer');
+  const afterTravel = applyAction(clear.state, { type: 'wait' });
+  assert.deepEqual(afterTravel.state.floor.projectiles, []);
+  const wall = setup(true);
+  assert.equal(wall.events.some((event) => event.type === 'projectile.fired'), false);
+  assert.equal(wall.events.some((event) => event.type === 'resource.changed' && event.facts.cause === 'enemy-attack'), false);
+
+  const renderModel = WorldRender.Render({ cells: clear.state.floor.cells, entities: [present(clear.state.floor.entities.find((entity): entity is Enemy => entity.kind === 'enemy'))], player: clear.state.player });
+  assert.equal(renderModel.actors[0]?.kind, 'skeleton');
 });
 
 test('drag resolver previews and commits only relevant compatible destinations', () => {
@@ -1342,6 +1482,8 @@ test('cardinal A* routes around terrain, rejects sealed destinations, and honors
   assert.ok(route.every((cell, index) => !index || Math.abs(cell.x - route[index - 1].x) + Math.abs(cell.y - route[index - 1].y) === 1));
   assert.equal(findCardinalPath({ map: [[0, 1, 0], [1, 1, 1], [0, 1, 0]], entities: [] }, { x: 0, y: 0 }, { x: 2, y: 2 }), null);
   assert.equal(findCardinalPath({ map: [[0, 0, 0]], entities: [{ id: 'blocker', x: 1, y: 0 }] }, { x: 0, y: 0 }, { x: 2, y: 0 }), null);
+  assert.deepEqual(findCardinalPath({ map: [[0, 0, 0, 0]], entities: [{ id: 'potion', kind: 'potion', x: 1, y: 0 }, { id: 'gold', kind: 'gold', x: 2, y: 0 }] }, { x: 0, y: 0 }, { x: 3, y: 0 }), [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 }, { x: 3, y: 0 }]);
+  assert.equal(findCardinalPath({ map: [[0, 0, 0]], entities: [{ id: 'chest', kind: 'chest', x: 1, y: 0 }] }, { x: 0, y: 0 }, { x: 2, y: 0 }), null);
   assert.deepEqual(findCardinalPath({ map: [[0, 0, 0]], entities: [legacyEnemy({ id: 'target', kind: 'enemy', x: 2, y: 0 })] }, { x: 0, y: 0 }, { x: 2, y: 0 }), [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 2, y: 0 }]);
 });
 
@@ -1460,6 +1602,15 @@ test('turn presentation exposes a hop and shadow pulse only during character mov
   assert.equal(presentation.movementPulseOf('player', CHARACTER_MOVEMENT_DURATION_MS / 2), 1);
   assert.equal(presentation.movementPulseOf('player', CHARACTER_MOVEMENT_DURATION_MS), 0);
   assert.equal(presentation.movementPulseOf('missing', CHARACTER_MOVEMENT_DURATION_MS / 2), 0);
+});
+
+test('turn presentation faces a player toward every bump direction', () => {
+  const presentation = new TurnPresentationSystem();
+  const origin = { x: 10, y: 10 };
+  for (const [direction, offset] of Object.entries({ e: { x: 1, y: 0 }, n: { x: 0, y: -1 }, w: { x: -1, y: 0 }, s: { x: 0, y: 1 } }) as [Direction, { x: number; y: number }][]) {
+    presentation.beginBump('player', origin, offset, 0);
+    assert.equal(presentation.headingOf('player', 'e'), direction);
+  }
 });
 
 test('turn presentation shrinks the player after any Health loss', () => {

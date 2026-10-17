@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { easeInCubic, easeOutCubic } from "../../systems/animation/tween-animation-system.ts";
 import { useUiMotion } from "../../ui/ui-transition-system.tsx";
+import versionText from "../../../../version.txt?raw";
 
 export function MainMenuWindow({ children, exiting = false }: { children: ReactNode; exiting?: boolean }) {
   const [visible, setVisible] = useState(false);
@@ -11,5 +12,5 @@ export function MainMenuWindow({ children, exiting = false }: { children: ReactN
     const frame = requestAnimationFrame(() => setVisible(true));
     return () => cancelAnimationFrame(frame);
   }, []);
-  return <section className="main-menu-window" style={motion}>{children}</section>;
+  return <section className="main-menu-window" style={motion}>{children}<span className="main-menu-window__version">v{versionText.trim().replace(/^version=/, "")}</span></section>;
 }

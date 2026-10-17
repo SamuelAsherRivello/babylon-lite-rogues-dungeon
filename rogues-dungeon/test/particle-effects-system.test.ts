@@ -6,6 +6,7 @@ import {
   HEAL_PARTICLE_END_SCALE,
   HEAL_PARTICLE_START_SCALE,
   createAbilityParticle,
+  createLevelUpSparkles,
   createDamageParticles,
   DAMAGE_PARTICLE_DURATION_MS,
   DAMAGE_PARTICLE_PERSISTENCE_MS,
@@ -49,6 +50,14 @@ test("ability particles make Heal faster and larger while carrying Wand to its l
   const wand = createAbilityParticle("wand", { x: 2, y: 3 }, "rat-1", 100);
   assert.equal(particleScale(wand, 200), .5);
   assert.deepEqual(particlePosition(wand, { x: 6, y: 7 }, 100 + smokePuffDurationMs / 2), { x: 4, y: 5 });
+});
+
+test("each gained level creates one short-lived inward sparkle celebration", () => {
+  const sparkles = createLevelUpSparkles({ x: 4, y: 5 }, 2, 100);
+  assert.equal(sparkles.length, 8);
+  assert.equal(new Set(sparkles.map((sparkle) => sparkle.id)).size, 8);
+  assert.ok(sparkles.every((sparkle) => sparkle.kind === "wand" && sparkle.targetId === "player"));
+  assert.ok(sparkles.every((sparkle) => particleExpired(sparkle, sparkle.startedAt + particleDurationMs(sparkle))));
 });
 
 test("damage particles arc to the shadow baseline, then fade and expire independently", () => {

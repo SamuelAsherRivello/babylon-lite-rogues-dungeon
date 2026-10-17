@@ -18,6 +18,8 @@ function barrels(campaign: Campaign) { return (campaign.floor.objectSets ?? []).
 function subGridMovers(campaign: Campaign) { return [...enemies(campaign), ...barrels(campaign)]; }
 function samePosition(a: Position | undefined, b: Position | undefined) { return a?.x === b?.x && a?.y === b?.y; }
 function clonePosition(position: Position): Position { return { x: position.x, y: position.y }; }
+const bumpOffsets: Readonly<Record<Direction, Position>> = Object.freeze({ n: { x: 0, y: -1 }, s: { x: 0, y: 1 }, w: { x: -1, y: 0 }, e: { x: 1, y: 0 } });
+function bumpDirectionFromOffset(offset: Position): Direction { return offset.x < 0 ? "w" : offset.x > 0 ? "e" : offset.y < 0 ? "n" : "s"; }
 
 /**
  * Keeps renderer-only sub-grid playback separate from campaign state.
@@ -64,7 +66,7 @@ export class TurnPresentationSystem {
     if (previous.player.resources.health.current > current.player.resources.health.current) this.beginDamageReaction("player", now);
     if (previous.player.resources.health.current > current.player.resources.health.current) {
       const attacker = enemies(current).find((enemy) => beforeEnemies.get(enemy.id)?.nextActionAt !== enemy.nextActionAt && Math.max(Math.abs(current.player.x - enemy.x), Math.abs(current.player.y - enemy.y)) <= 1);
-      if (attacker) this.beginBump(attacker.id, attacker, { x: Math.sign(current.player.x - attacker.x), y: Math.sign(current.player.y - attacker.y) }, now);
+      if (attacker) this.beginBump(attacker.id, attacker, bumpDirectionFromOffset({ x: Math.sign(current.player.x - attacker.x), y: Math.sign(current.player.y - attacker.y) }), now);
     }
     const duration = changed.length ? TURN_PLAYBACK_DURATION_MS : 0;
     const enemiesToPlay = changed.map((enemy, index) => {
@@ -116,7 +118,8 @@ export class TurnPresentationSystem {
   }
 
   positionOf(id: string, fallback: Position): Position { return this.positions.get(id) ?? fallback; }
-  beginBump(id: string, origin: Position, direction: Position, now: number) { this.positions.set(id, clonePosition(origin)); this.headings.set(id, direction.x < 0 ? "w" : direction.x > 0 ? "e" : direction.y < 0 ? "n" : "s"); this.bumps.set(id, { origin: clonePosition(origin), direction: clonePosition(direction), startAt: now }); }
+  /** Start a cardinal bump and face its direction for the entire gesture. */
+  beginBump(id: string, origin: Position, direction: Direction | Position, now: number) { const heading = typeof direction === "string" ? direction : bumpDirectionFromOffset(direction); const offset = bumpOffsets[heading]; this.positions.set(id, clonePosition(origin)); this.headings.set(id, heading); this.bumps.set(id, { origin: clonePosition(origin), direction: clonePosition(offset), startAt: now }); }
   isBumping(id: string, now: number) { const bump = this.bumps.get(id); return Boolean(bump && now - bump.startAt < INTERACTIVE_BUMP_DURATION_MS); }
   bumpDepthTieBreakOf(id: string, now: number) { const bump = this.bumps.get(id); return bump && bump.direction.x !== 0 && now - bump.startAt < INTERACTIVE_BUMP_DURATION_MS ? 1 : 0; }
   bumpApexAt(id: string) { const bump = this.bumps.get(id); return bump ? bump.startAt + INTERACTIVE_BUMP_APEX_MS : null; }

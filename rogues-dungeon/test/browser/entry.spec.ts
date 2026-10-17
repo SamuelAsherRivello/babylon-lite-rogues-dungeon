@@ -132,7 +132,7 @@ test("@smoke expands the keyboard tray and logs temporary controls", async ({ pa
     localStorage.setItem("rogues-dungeon.slot.1", JSON.stringify({
       version: 3, world: "One", realm: "Underground 1",
       floor: { generatorVersion, seed: 1, width: 100, height: 100, map, start: { x: 50, y: 50 }, time: 0, level: 1, entities: [] },
-      progression: { attributes: { health: 30, stamina: 16, offense: 0, defense: 1, mana: 12, vitality: 0, strength: 0, luck: 0, recovery: 0, stealth: 0 }, level: 1, xp: 0, nextXp: 100, totalKills: 0, difficulty: 1, pendingUpgrades: [] },
+      progression: { attributes: { health: 30, stamina: 16, offense: 0, defense: 1, mana: 12, vitality: 0, strength: 0, luck: 0, recovery: 0, stealth: 0 }, level: 1, xp: 0, nextXp: 100, totalKills: 0, difficulty: 1, attributePoints: 0 },
       player: { x: 50, y: 50, resources: { health: resource(30, 30), stamina: resource(16, 16), offense: resource(8, 8), defense: resource(1, 1), mana: resource(12, 12), xp: { ...resource(0, 100), level: 1 } }, equipment: { weapons: [{ id: "starter-stick", name: "Wooden Stick", group: "weapons", modifiers: { offense: 8 } }, null], armor: [null, null] }, inventory: [], inventoryCapacity: 10, abilities: ["heal", "wand", null], sneaking: false },
       counters: { keys: 1, gold: 0 }, objective: "Find the exit", log: [],
     }));
@@ -216,7 +216,7 @@ test("@smoke exposes only ability positions 1–3 and ignores key 4", async ({ p
     localStorage.setItem("rogues-dungeon.slot.1", JSON.stringify({
       version: 3, world: "One", realm: "Underground 1",
       floor: { generatorVersion, seed: 1, width: 100, height: 100, map, start: { x: 50, y: 50 }, time: 0, level: 1, entities: [] },
-      progression: { attributes: { health: 30, stamina: 16, offense: 0, defense: 1, mana: 12, vitality: 0, strength: 0, luck: 0, recovery: 0, stealth: 0 }, level: 1, xp: 0, nextXp: 100, totalKills: 0, difficulty: 1, pendingUpgrades: [] },
+      progression: { attributes: { health: 30, stamina: 16, offense: 0, defense: 1, mana: 12, vitality: 0, strength: 0, luck: 0, recovery: 0, stealth: 0 }, level: 1, xp: 0, nextXp: 100, totalKills: 0, difficulty: 1, attributePoints: 0 },
       player: { x: 50, y: 50, resources: { health: resource(30, 30), stamina: resource(16, 16), offense: resource(8, 8), defense: resource(1, 1), mana: resource(12, 12), xp: { ...resource(0, 100), level: 1 } }, equipment: { weapons: [null, null], armor: [null, null] }, inventory: [], inventoryCapacity: 10, abilities: ["heal", "wand", null, "heal"], sneaking: false },
       counters: { keys: 1, gold: 0 }, objective: "Find the exit", log: [],
     }));
@@ -233,24 +233,22 @@ test("@smoke exposes only ability positions 1–3 and ignores key 4", async ({ p
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("rogues-dungeon.slot.1")!).player.abilities)).toEqual(["heal", "wand", null]);
 });
 
-test("@smoke resolves a visible level-up choice without another turn", async ({ page }) => {
+test("@smoke displays the non-blocking Attribute Points callout", async ({ page }) => {
   await page.addInitScript((generatorVersion: string) => {
     const map = Array.from({ length: 100 }, () => Array(100).fill(1)); map[50][50] = 0; map[50][51] = 0;
     const resource = (current: number, currentMax: number) => ({ current, currentMax });
     localStorage.setItem("rogues-dungeon.slot.1", JSON.stringify({
       version: 3, world: "One", realm: "Underground 1",
       floor: { generatorVersion, seed: 1, width: 100, height: 100, map, start: { x: 50, y: 50 }, time: 0, level: 1, entities: [{ id: "rat", kind: "enemy", name: "Cave Rat", x: 51, y: 50, hp: 1, maxHp: 1, damage: 0, xp: 8, awareness: 6, actionCooldown: 2, nextActionAt: 2 }] },
-      progression: { attributes: { health: 30, stamina: 16, offense: 0, defense: 1, mana: 12, vitality: 0, strength: 0, luck: 0, recovery: 0, stealth: 0 }, level: 1, xp: 99, nextXp: 100, totalKills: 0, difficulty: 1, pendingUpgrades: [] },
-      player: { x: 50, y: 50, resources: { health: resource(30, 30), stamina: resource(16, 16), offense: resource(6, 6), defense: resource(1, 1), mana: resource(12, 12), xp: { ...resource(99, 100), level: 1 } }, equipment: { weapons: [{ id: "stick", name: "Wooden Stick", group: "weapons", modifiers: { offense: 6 } }, null], armor: [null, null] }, inventory: [], inventoryCapacity: 10, abilities: ["heal", "wand", null], sneaking: false },
+      progression: { attributes: { health: 30, stamina: 16, offense: 0, defense: 1, mana: 12, vitality: 0, strength: 0, luck: 0, recovery: 0, stealth: 0 }, level: 2, xp: 0, nextXp: 100, totalKills: 0, difficulty: 1, attributePoints: 3 },
+      player: { x: 50, y: 50, resources: { health: resource(30, 30), stamina: resource(16, 16), offense: resource(6, 6), defense: resource(1, 1), mana: resource(12, 12), xp: { ...resource(0, 100), level: 2 } }, equipment: { weapons: [{ id: "stick", name: "Wooden Stick", group: "weapons", modifiers: { offense: 6 } }, null], armor: [null, null] }, inventory: [], inventoryCapacity: 10, abilities: ["heal", "wand", null], sneaking: false },
       counters: { keys: 1, gold: 55 }, objective: "Find the exit", log: [],
     }));
   }, GENERATOR_VERSION);
   await page.goto("/babylon-lite-rogues-dungeon/?mute=1");
   await page.getByRole("button", { name: /Saved Game 1/ }).click();
-  await page.keyboard.press("ArrowRight");
-  await expect(page.getByRole("heading", { name: "Level 2: Choose a Stat" })).toBeVisible();
-  await page.locator(".level-up-window").getByRole("button", { name: /Vitality/ }).click();
-  await expect(page.getByRole("heading", { name: "Level 2: Choose a Stat" })).toBeHidden();
+  await expect(page.getByRole("heading", { name: "LEVEL UP", exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Progression" })).toHaveCount(0);
 });
 
 test("@smoke keeps moving when Shift is added to a held direction", async ({ page }) => {
@@ -261,7 +259,7 @@ test("@smoke keeps moving when Shift is added to a held direction", async ({ pag
     localStorage.setItem("rogues-dungeon.slot.1", JSON.stringify({
       version: 3, world: "One", realm: "Underground 1",
       floor: { generatorVersion, seed: 1, width: 100, height: 100, map, start: { x: 50, y: 50 }, time: 0, level: 1, entities: [] },
-      progression: { attributes: { health: 30, stamina: 16, offense: 0, defense: 1, mana: 12, vitality: 0, strength: 0, luck: 0, recovery: 0, stealth: 0 }, level: 1, xp: 0, nextXp: 100, totalKills: 0, difficulty: 1, pendingUpgrades: [] },
+      progression: { attributes: { health: 30, stamina: 16, offense: 0, defense: 1, mana: 12, vitality: 0, strength: 0, luck: 0, recovery: 0, stealth: 0 }, level: 1, xp: 0, nextXp: 100, totalKills: 0, difficulty: 1, attributePoints: 0 },
       player: { x: 50, y: 50, resources: { health: resource(30, 30), stamina: resource(16, 16), offense: resource(8, 8), defense: resource(1, 1), mana: resource(12, 12), xp: { ...resource(0, 100), level: 1 } }, equipment: { weapons: [{ id: "starter-stick", name: "Wooden Stick", group: "weapons", modifiers: { offense: 8 } }, null], armor: [null, null] }, inventory: [], inventoryCapacity: 10, abilities: ["heal", "wand", null], sneaking: false },
       counters: { keys: 1, gold: 55 }, objective: "Find the exit", log: [],
     }));
@@ -290,7 +288,7 @@ test("@smoke opens a valid slot deep link and exposes map-fix controls only with
     localStorage.setItem("rogues-dungeon.slot.1", JSON.stringify({
       version: 3, world: "One", realm: "Underground 1",
       floor: { seed: 17, width: 100, height: 100, map, start: { x: 50, y: 50 }, time: 0, level: 1, entities: [] },
-      progression: { attributes: { health: 30, stamina: 16, offense: 0, defense: 1, mana: 12, vitality: 0, strength: 0, luck: 0, recovery: 0, stealth: 0 }, level: 1, xp: 0, nextXp: 100, totalKills: 0, difficulty: 1, pendingUpgrades: [] },
+      progression: { attributes: { health: 30, stamina: 16, offense: 0, defense: 1, mana: 12, vitality: 0, strength: 0, luck: 0, recovery: 0, stealth: 0 }, level: 1, xp: 0, nextXp: 100, totalKills: 0, difficulty: 1, attributePoints: 0 },
       player: { x: 50, y: 50, resources: { health: resource(30, 30), stamina: resource(16, 16), offense: resource(0, 0), defense: resource(1, 1), mana: resource(12, 12), xp: { ...resource(0, 100), level: 1 } }, equipment: { weapons: [null, null], armor: [null, null] }, inventory: [], inventoryCapacity: 10, abilities: ["heal", "wand", null], sneaking: false },
       counters: { keys: 1, gold: 0 }, objective: "Find the exit", log: [],
     }));

@@ -23,6 +23,11 @@ export const DAMAGE_PARTICLE_VERTICAL_OFFSET_TILES = .12;
 export const DAMAGE_PARTICLE_SHADOW_BOTTOM_OFFSET_TILES = 11 / 32;
 export function createSmokePuff(position: Position, startedAt = performance.now()): ParticleEffect { return { id: `smoke-poff-${startedAt}-${position.x}-${position.y}`, name: "smoke-poff", kind: "movement", x: position.x, y: position.y, startedAt }; }
 export function createAbilityParticle(kind: "heal" | "wand", position: Position, targetId?: string, startedAt = performance.now()): ParticleEffect { return { id: `${kind}-${startedAt}-${position.x}-${position.y}`, name: "smoke-poff", kind, targetId, x: position.x, y: position.y, startedAt }; }
+/** Four inward sparkles make each earned level visible without leaving a world decal. */
+export function createLevelUpSparkles(position: Position, levelCount = 1, startedAt = performance.now()): ParticleEffect[] {
+  const offsets = [{ x: -1, y: 0 }, { x: 1, y: 0 }, { x: 0, y: -1 }, { x: 0, y: 1 }];
+  return Array.from({ length: levelCount }, (_, level) => offsets.map((offset) => createAbilityParticle("wand", { x: position.x + offset.x, y: position.y + offset.y }, "player", startedAt + level))).flat();
+}
 export function createDamageParticles(position: Position, random = Math.random, startedAt = performance.now()): ParticleEffect[] { return Array.from({ length: 4 }, (_, index) => { const angle = random() * Math.PI * 2; const sizePx = DAMAGE_PARTICLE_MIN_SIZE_PX + random() * (DAMAGE_PARTICLE_MAX_SIZE_PX - DAMAGE_PARTICLE_MIN_SIZE_PX); const rotation = (random() * 2 - 1) * DAMAGE_PARTICLE_MAX_ROTATION_DEGREES * Math.PI / 180; return { id: `damage-${startedAt}-${position.x}-${position.y}-${index}`, name: "smoke-poff", kind: "damage", x: position.x, y: position.y, direction: { x: Math.cos(angle), y: Math.sin(angle) }, sizePx, rotation, startedAt }; }); }
 export function particleDurationMs(effect: ParticleEffect) { return effect.kind === "damage" ? DAMAGE_PARTICLE_PERSISTENCE_MS : effect.kind === "heal" ? HEAL_PARTICLE_DURATION_MS : smokePuffDurationMs; }
 /** Movement finishes quickly; damage decal fade uses the longer effect duration. */

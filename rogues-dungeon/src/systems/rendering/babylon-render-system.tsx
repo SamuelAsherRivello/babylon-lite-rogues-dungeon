@@ -494,6 +494,7 @@ export function BabylonWorld({ campaign, theme = 1, zoom = 1, minimap = false, c
         const campfireLayers = Array.from({ length: 20 }, () => createSprite2DLayer(campfireAtlas, { pivot: [0.5, 0.5] }));
         const stairLayers = Array.from({ length: 4 }, () => createSprite2DLayer(tileAtlas, { pivot: [0.5, 0.5] }));
         const particleLayers = particleAtlas ? Array.from({ length: 64 }, () => createSprite2DLayer(particleAtlas, { pivot: [0.5, 0.5] })) : [];
+        const projectileLayers = Array.from({ length: 16 }, () => createSprite2DLayer(itemAtlas, { pivot: [0.5, 0.5] }));
         const stairClipShader = createSprite2DCustomShader({ fragment: "if (fx.params.z > 0.5 && in.p.y >= fx.params.x) { discard; } return textureSample(atlasTex, atlasSamp, in.uv) * in.tint * L.opacityMul;" });
         const playerLayers = heroAtlas ? { shadow: createSprite2DLayer(heroAtlas, { pivot: [0.5, 0.5], customShader: stairClipShader }), main: createSprite2DLayer(heroAtlas, { pivot: [0.5, 1], customShader: stairClipShader }) } : null;
         const playerSprite = playerLayers ? createCharacterSprite(
@@ -539,7 +540,9 @@ export function BabylonWorld({ campaign, theme = 1, zoom = 1, minimap = false, c
         const campfires = campfireLayers.map((layer) => addSprite2D(layer, { positionPx: [-10000,-10000], sizePx: [30,30], frame: 0 }));
         const stairs = stairLayers.map((layer) => addSprite2D(layer, { positionPx: [-10000,-10000], sizePx: [32,32], frame: DUNGEON_STAIR_UP_FRAME }));
         const particles = particleLayers.map((layer) => addSprite2D(layer, { positionPx: [-10000,-10000], sizePx: [32,32], frame: 0 }));
-        const viewLayers = [terrainLayer, ...triggerLayers, ...wallLayers, debugLayer, ...itemLayers.flatMap((layers) => [layers.shadow, layers.main]), ...chestLayers.flatMap((layers) => [layers.shadow, layers.main]), ...closedCrateLayers, ...openCrateLayers, ...doorLayers, ...barrelLayers.flatMap((layers) => [layers.shadow, layers.main]), ...goldCoinLayers.flatMap((layers) => [layers.shadow, layers.main]), ...chestCoinLayers, ...torchLayers, ...trapLayers, ...campfireLayers, ...stairLayers, ...particleLayers, ...actorLayers.rat.flatMap((layers) => [layers.shadow, layers.main]), ...actorLayers.skeleton.flatMap((layers) => [layers.shadow, layers.main]), ...(playerLayers ? [playerLayers.shadow, playerLayers.main] : []), pivotMarkerLayer];
+        const projectiles = projectileLayers.map((layer) => addSprite2D(layer, { positionPx: [-10000,-10000], sizePx: [16,16], frame: 1 }));
+        const projectileStartedAt = new Map<string, number>();
+        const viewLayers = [terrainLayer, ...triggerLayers, ...wallLayers, debugLayer, ...itemLayers.flatMap((layers) => [layers.shadow, layers.main]), ...chestLayers.flatMap((layers) => [layers.shadow, layers.main]), ...closedCrateLayers, ...openCrateLayers, ...doorLayers, ...barrelLayers.flatMap((layers) => [layers.shadow, layers.main]), ...goldCoinLayers.flatMap((layers) => [layers.shadow, layers.main]), ...chestCoinLayers, ...torchLayers, ...trapLayers, ...campfireLayers, ...stairLayers, ...projectileLayers, ...particleLayers, ...actorLayers.rat.flatMap((layers) => [layers.shadow, layers.main]), ...actorLayers.skeleton.flatMap((layers) => [layers.shadow, layers.main]), ...(playerLayers ? [playerLayers.shadow, playerLayers.main] : []), pivotMarkerLayer];
         // Terrain and overlays use fixed passes. Every participating world layer
         // receives a shared order below, while its own sprites retain stable Y sort.
         viewLayers.filter((layer) => layer !== terrainLayer && layer !== debugLayer && layer !== pivotMarkerLayer).forEach((layer) => enableSprite2DYSort(layer));
@@ -675,6 +678,21 @@ export function BabylonWorld({ campaign, theme = 1, zoom = 1, minimap = false, c
           const campfireObjects = world.objects.filter((entity) => entity.kind === "campfire");
           campfires.forEach((sprite, i) => { const campfire = campfireObjects[i]; campfireLayers[i].order = FLOOR_TRAP_RENDER_ORDER; updateSprite2D(sprite, { frame: campfireFrame, positionPx: campfire ? [campfire.worldX, campfire.worldY] : [-10000, -10000] }); });
           stairs.forEach((sprite, i) => { const entity = stairObjects[i]; updateSprite2D(sprite, { frame: DUNGEON_STAIR_UP_FRAME, positionPx: entity ? [entity.worldX, entity.worldY] : [-10000,-10000], flipY: entity?.direction === "back" }); if (entity) addLayerDepth(entity.id, groundContactY(entity), WORLD_TIE_BREAK.stair, stairLayers[i]); });
+          const activeProjectiles = state.floor.projectiles ?? [];
+          const activeProjectileIds = new Set(activeProjectiles.map((projectile) => projectile.id));
+          for (const id of projectileStartedAt.keys()) if (!activeProjectileIds.has(id)) projectileStartedAt.delete(id);
+          projectiles.forEach((sprite, index) => {
+            const projectile = activeProjectiles[index];
+            if (!projectile) { updateSprite2D(sprite, { positionPx: [-10000, -10000] }); return; }
+            const startedAt = projectileStartedAt.get(projectile.id) ?? now;
+            projectileStartedAt.set(projectile.id, startedAt);
+            const progress = Math.max(0, Math.min(1, (now - startedAt) / 240));
+            const x = projectile.from.x + (projectile.to.x - projectile.from.x) * progress;
+            const y = projectile.from.y + (projectile.to.y - projectile.from.y) * progress;
+            const rotation = projectile.direction === "s" ? Math.PI / 2 : projectile.direction === "w" ? Math.PI : projectile.direction === "n" ? -Math.PI / 2 : 0;
+            updateSprite2D(sprite, { positionPx: [x * 32 + 16, y * 32 + 16], rotation });
+            addLayerDepth(projectile.id, y * 32 + 16, WORLD_TIE_BREAK.effect, projectileLayers[index]!);
+          });
           const activeParticles = latestRef.current.particleEffects.filter((effect) => !particleExpired(effect)).slice(-particleLayers.length);
           particles.forEach((sprite, i) => { const effect = activeParticles[i]; const now = performance.now(); const progress = effect ? particleProgress(effect, now) : 0; const ramp = effect?.kind === "damage" ? particleOpacity(effect, now) : progress < .25 ? progress / .25 : progress > .75 ? (1 - progress) / .25 : 1; const target = effect?.targetId ? world.actors.find((actor) => actor.id === effect.targetId) ?? null : null; const position = effect ? particlePosition(effect, target, now) : null; const offscreen = !isMinimap && position && isPositionOffscreen(position, cameraCenter, rect.width / cellSizeAt(rect) / 2 + 1, rect.height / cellSizeAt(rect) / 2 + 1); const sizePx = effect ? particleSizePx(effect, now) : 32; const purple = effect?.kind === "heal" || effect?.kind === "wand"; const damage = effect?.kind === "damage"; if (effect?.kind === "heal" || (damage && progress < 1)) particleLayers[i].order = OVERLAY_RENDER_ORDER - 1; else if (damage) particleLayers[i].order = LANDED_DAMAGE_PARTICLE_RENDER_ORDER; else if (effect && position && !offscreen) addLayerDepth(effect.id, groundContactY(position), WORLD_TIE_BREAK.effect, particleLayers[i]); updateSprite2D(sprite, { positionPx: position && !offscreen ? [position.x * 32 + 16, position.y * 32 + 16] : [-10000, -10000], sizePx: [sizePx, sizePx], frame: effect ? particleFrame(effect, now) : 0, rotation: effect?.rotation, color: purple ? [.72, .48, 1, ramp] : damage ? [1, .16, .08, ramp] : [1, 1, 1, ramp] }); });
           applyWorldDepth(worldDepthEntries);

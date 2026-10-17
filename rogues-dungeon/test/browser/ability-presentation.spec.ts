@@ -7,7 +7,7 @@ test("@smoke keeps actions available while Heal is presenting and cooling down",
     const resource = (current: number, currentMax: number) => ({ current, currentMax });
     localStorage.setItem("rogues-dungeon.slot.1", JSON.stringify({
       version: 5, world: "One", realm: "Underground 1", floor: { generatorVersion: "fixture", seed: 1, width: 100, height: 100, map, cells, start: { x: 50, y: 50 }, time: 0, level: 1, entities: [] },
-      progression: { attributes: { health: 30, stamina: 16, offense: 0, defense: 1, mana: 12, vitality: 0, strength: 0, luck: 0, recovery: 0, stealth: 0 }, level: 1, xp: 0, nextXp: 100, totalKills: 0, difficulty: 1, pendingUpgrades: [] },
+      progression: { attributes: { health: 30, stamina: 16, offense: 0, defense: 1, mana: 12, vitality: 0, strength: 0, luck: 0, recovery: 0, stealth: 0 }, level: 1, xp: 0, nextXp: 100, totalKills: 0, difficulty: 1, attributePoints: 0 },
       player: { x: 50, y: 50, resources: { health: resource(10, 30), stamina: resource(16, 16), offense: resource(8, 8), defense: resource(1, 1), mana: resource(12, 12), xp: { ...resource(0, 100), level: 1 } }, equipment: { weapons: [null, null], armor: [null, null] }, inventory: [], inventoryCapacity: 10, abilities: ["heal", "wand", null], sneaking: false }, counters: { keys: 1, gold: 0 }, objective: "Find the exit", log: [],
     }));
   });

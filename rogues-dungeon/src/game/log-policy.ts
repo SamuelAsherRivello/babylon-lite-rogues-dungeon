@@ -3,7 +3,7 @@ const LOG_RULES: Readonly<Partial<Record<string, (facts: EventFacts) => string>>
   "item.collected": (facts) => `You collect ${facts.name}.`,
   "potion.consumed": (facts) => `You restore ${facts.resource === "health" ? "Health" : "Mana"}.`,
   "quick-slot.use.rejected": (facts) => `${facts.item ?? "Potion"} cannot be used while ${facts.resource === "health" ? "Health" : "Mana"} is full.`,
-  "equipment.changed": (facts) => facts.item ? `You ${facts.action === "enabled" ? "equip" : facts.action === "returned to inventory" ? "return" : "rearrange"} ${facts.item}.` : "You change your equipment.",
+  "equipment.changed": (facts) => facts.item ? facts.action === "swapped" ? `You swap ${facts.item} for ${facts.displacedItems?.map((item) => item.name).join(" and ") ?? "equipped gear"}.` : `You ${facts.action === "enabled" ? "equip" : facts.action === "returned to inventory" ? "return" : "rearrange"} ${facts.item}.` : "You change your equipment.",
   "ability.used": (facts) => `You use ${facts.title}.`,
   "enemy.defeated": (facts) => `You defeat ${facts.name}.`,
   "realm.entered": (facts) => `You enter Level ${facts.level ?? facts.realm}.`,

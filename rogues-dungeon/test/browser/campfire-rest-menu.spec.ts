@@ -2,9 +2,6 @@ import { expect, test } from "@playwright/test";
 
 test("opens the campfire rest menu without a turn and rests for exactly one turn", async ({ page }) => {
   await page.goto("/babylon-lite-rogues-dungeon/?seed=1&level=1&level-1-test-mode=true&slot=3&mute=1");
-  await page.getByRole("button", { name: /Saved Game 3/ }).click();
-  const roll = page.getByRole("button", { name: "Roll", exact: true });
-  if (await roll.isVisible()) { await roll.click(); await page.getByRole("button", { name: "Confirm", exact: true }).click(); }
   await expect(page.locator(".world-view canvas")).toBeVisible();
   await page.keyboard.press("ArrowDown");
   const timeBeforeBump = await page.evaluate(() => JSON.parse(localStorage.getItem("rogues-dungeon.slot.3")!).floor.time);
