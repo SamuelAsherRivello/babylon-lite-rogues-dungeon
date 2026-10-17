@@ -3,7 +3,7 @@
 ## 1. Static presentation and game-view culling
 
 - [x] 1.1 Add a floor-keyed compiled static world presentation model that resolves autotile frames outside the render loop, with focused unit tests proving unchanged data is reused.
-- [ ] 1.2 Partition the compiled static presentation into camera-culled chunks and update the Babylon game view to patch only visible chunks, verifying camera movement, zoom, and resize retain correct map coordinates.
+- [x] 1.2 Partition the compiled static presentation into camera-culled chunks and update the Babylon game view to patch only visible chunks, verifying camera movement, zoom, and resize retain correct map coordinates.
 - [x] 1.3 Cull offscreen dynamic visual updates while preserving depth order and animated phase when a visual re-enters view; verify focused renderer tests pass.
 
 ## 2. Semantic minimap and future mask boundary

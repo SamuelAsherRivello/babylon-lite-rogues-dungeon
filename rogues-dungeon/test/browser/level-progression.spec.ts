@@ -13,6 +13,9 @@ async function openRolledCampaign(page: import("@playwright/test").Page) {
 }
 
 test("creates only confirmed characters and resumes the saved campaign", async ({ page }) => {
+  const consoleErrors: string[] = [];
+  page.on("console", (message) => { if (message.type() === "error") consoleErrors.push(message.text()); });
+  page.on("pageerror", (error) => consoleErrors.push(error.message));
   await page.goto("/babylon-lite-rogues-dungeon/?mute=1");
   await page.getByRole("button", { name: /Saved Game 1/ }).click();
   const dialog = page.getByRole("dialog", { name: "Create Character" });
@@ -22,6 +25,14 @@ test("creates only confirmed characters and resumes the saved campaign", async (
   await dialog.getByRole("button", { name: "Close dialog" }).click();
   await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), slotKey)).toBeNull();
   await openRolledCampaign(page);
+  await expect.poll(() => page.locator(".information-panels .info-panel--secondary .attribute_item b").evaluateAll((values) => values.reduce((total, value) => total + Number(value.textContent), 0))).toBe(30);
+  await expect.poll(() => page.evaluate((key) => {
+    const campaign = JSON.parse(localStorage.getItem(key)!);
+    return (["health", "stamina", "mana"] as const).every((name) => campaign.player.resources[name].currentMax === campaign.progression.attributes[name] * 10);
+  }, slotKey)).toBe(true);
+  await expect(page.locator(".world-view canvas")).toBeVisible();
+  await expect(page.getByText(/requires WebGPU/i)).toHaveCount(0);
+  expect(consoleErrors).toEqual([]);
   await expect.poll(() => page.evaluate((key) => Object.values(JSON.parse(localStorage.getItem(key)!).progression.attributes as Record<string, number>).reduce((total, value) => total + value, 0) === 30, slotKey)).toBe(true);
   await page.reload();
   await page.getByRole("button", { name: /Saved Game 1/ }).click();
@@ -41,17 +52,17 @@ test("keeps Attribute Point drafts local and retains the Attributes callout unti
   await expect(callout).toBeVisible();
   await page.getByRole("button", { name: "Open Progression" }).click();
   const progression = page.getByRole("dialog", { name: "Progression" });
-  await progression.getByRole("button", { name: "+" }).first().click();
+  await progression.getByRole("button", { name: "Increase Health" }).click();
   await progression.getByRole("button", { name: "Close dialog" }).click();
   await expect.poll(() => page.evaluate((key) => JSON.parse(localStorage.getItem(key)!).progression.attributePoints, slotKey)).toBe(3);
   await expect(callout).toBeVisible();
   await page.getByRole("button", { name: "Open Progression" }).click();
-  await progression.getByRole("button", { name: "+" }).first().click();
+  await progression.getByRole("button", { name: "Increase Health" }).click();
   await progression.getByRole("button", { name: "Confirm 1 Attribute Point" }).click();
   await expect(callout).toBeVisible();
   await page.getByRole("button", { name: "Open Progression" }).click();
-  await progression.getByRole("button", { name: "+" }).first().click();
-  await progression.getByRole("button", { name: "+" }).nth(1).click();
+  await progression.getByRole("button", { name: "Increase Health" }).click();
+  await progression.getByRole("button", { name: "Increase Stamina" }).click();
   await progression.getByRole("button", { name: "Confirm 2 Attribute Points" }).click();
   await expect(callout).toHaveCount(0);
 });

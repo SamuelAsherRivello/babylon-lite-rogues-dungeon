@@ -1,6 +1,7 @@
 import { GENERATOR_VERSION } from '../../src/systems/procedural/world-procedural-system.ts';
 import { expect, test } from "@playwright/test";
 import path from "node:path";
+import { openSavedGame } from "./start-saved-game.ts";
 
 test("@smoke opens the muted saved-game entry screen", async ({ page }) => {
   await page.goto("/babylon-lite-rogues-dungeon/?mute=1");
@@ -13,7 +14,7 @@ test("@smoke opens the muted saved-game entry screen", async ({ page }) => {
 
 test("@smoke shows My First Quest in a new muted Saved Game", async ({ page }) => {
   await page.goto("/babylon-lite-rogues-dungeon/?mute=1");
-  await page.getByRole("button", { name: /Saved Game 1/ }).click();
+  await openSavedGame(page);
   await expect(page.getByText("My First Quest", { exact: true })).toBeVisible();
   await expect(page.getByText("Walk through the stairs", { exact: true })).toBeVisible();
   await expect(page.getByText("Collect a Health Potion", { exact: true })).toBeVisible();
@@ -47,7 +48,7 @@ test("@smoke anchors settings to its menu panel or live game view", async ({ pag
   expect(menuPlacement.dialog.bottom).toBeGreaterThan(menuPlacement.panel.bottom);
   expect(menuPlacement.background).not.toBe("rgb(16, 14, 23)");
   await page.getByRole("button", { name: "Close dialog" }).click();
-  await page.getByRole("button", { name: /Saved Game 1/ }).click();
+  await openSavedGame(page);
   await expect(page.locator(".game-screen")).toBeVisible();
   await expect(page.locator(".world-view")).toBeVisible();
   await expect(page.locator(".minimap-view")).toBeVisible();
@@ -67,9 +68,7 @@ test("@smoke anchors settings to its menu panel or live game view", async ({ pag
 
 test("@smoke opens How To Play above Settings and returns without advancing time", async ({ page }) => {
   await page.goto("/babylon-lite-rogues-dungeon/?mute=1");
-  await page.getByRole("button", { name: /Saved Game 1/ }).click();
-  const roll = page.getByRole("button", { name: "Roll", exact: true });
-  if (await roll.isVisible()) { await roll.click(); await page.getByRole("button", { name: "Confirm", exact: true }).click(); }
+  await openSavedGame(page);
   await expect(page.locator(".game-screen")).toBeVisible();
   await page.keyboard.press("x");
   await expect.poll(() => page.evaluate(() => localStorage.getItem("rogues-dungeon.slot.1"))).not.toBeNull();
@@ -115,7 +114,7 @@ test("@smoke Tab never changes focus in the menu, game, or settings", async ({ p
     document.body.append(lateControl);
   });
   await expect.poll(() => page.getByRole("button", { name: "Late control" }).evaluate((element) => element.tabIndex)).toBe(-1);
-  await page.getByRole("button", { name: /Saved Game 1/ }).click();
+  await openSavedGame(page);
   await expect(page.getByRole("button", { name: "Settings", exact: true })).toBeVisible();
   await assertTabDoesNothing();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
@@ -140,7 +139,7 @@ test("@smoke expands the keyboard tray and logs temporary controls", async ({ pa
   const temporaryPresses: string[] = [];
   page.on("console", (message) => { if (message.text().includes("[keyboard-controls] Q pressed")) temporaryPresses.push(message.text()); });
   await page.goto("/babylon-lite-rogues-dungeon/?mute=1");
-  await page.getByRole("button", { name: /Saved Game 1/ }).click();
+  await openSavedGame(page);
   await expect(page.locator(".controls-area")).toBeVisible();
   await expect(page.locator(".keyboard_tray_panel")).toHaveAttribute("aria-hidden", "true");
   await expect(page.locator(".keyboard_tray_panel")).toHaveCSS("opacity", "0");
@@ -222,7 +221,7 @@ test("@smoke exposes only ability positions 1–3 and ignores key 4", async ({ p
     }));
   }, GENERATOR_VERSION);
   await page.goto("/babylon-lite-rogues-dungeon/?mute=1");
-  await page.getByRole("button", { name: /Saved Game 1/ }).click();
+  await openSavedGame(page);
   const abilityRows = page.locator(".information-panels .info-panel--primary .slot_item--ability");
   await expect(abilityRows).toHaveCount(3);
   await expect(abilityRows).toHaveText([/\[1\]/, /\[2\]/, /\[3\]/]);
@@ -246,7 +245,7 @@ test("@smoke displays the non-blocking Attribute Points callout", async ({ page 
     }));
   }, GENERATOR_VERSION);
   await page.goto("/babylon-lite-rogues-dungeon/?mute=1");
-  await page.getByRole("button", { name: /Saved Game 1/ }).click();
+  await openSavedGame(page);
   await expect(page.getByRole("heading", { name: "LEVEL UP", exact: true }).first()).toBeVisible();
   await expect(page.getByRole("dialog", { name: "Progression" })).toHaveCount(0);
 });
@@ -265,7 +264,7 @@ test("@smoke keeps moving when Shift is added to a held direction", async ({ pag
     }));
   }, GENERATOR_VERSION);
   await page.goto("/babylon-lite-rogues-dungeon/?mute=1");
-  await page.getByRole("button", { name: /Saved Game 1/ }).click();
+  await openSavedGame(page);
   await page.keyboard.down("ArrowRight");
   await page.waitForTimeout(40);
   await page.keyboard.down("Shift");

@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import type { Attributes } from "../types.ts";
-import { progressionStatNames, startingEffectiveAttributes } from "../../systems/procedural/world-procedural-system.ts";
+import { progressionStatNames } from "../../systems/procedural/world-procedural-system.ts";
 import { Dialog, type DialogBounds } from "../../ui/Dialog.tsx";
 import { AttributesCard } from "../panels/attribute-panel.tsx";
 
 export function CreateCharacterWindow({ attributes, bounds, onRoll, onConfirm, onClose }: { attributes: Attributes | null; bounds?: DialogBounds | null; onRoll(): void; onConfirm(): void; onClose(): void }) {
-  const displayedAttributes = attributes ? startingEffectiveAttributes(attributes) : Object.fromEntries(progressionStatNames.map((name) => [name, 0])) as Attributes;
+  const displayedAttributes = attributes ?? Object.fromEntries(progressionStatNames.map((name) => [name, 0])) as Attributes;
   const idleFramePath = (frame: number) => `${import.meta.env.BASE_URL}assets/art/vendors/dungeons-and-pixels-v1.4/characters/hero-warrior/frames/idle/down/${String(frame).padStart(2, "0")}.png`;
   const [randomizing, setRandomizing] = useState(false);
   const rollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);

@@ -1,11 +1,12 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from "@playwright/test";
+import { openSavedGame } from "./start-saved-game.ts";
 
 const mobileAgent = "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36";
 
 async function startCampaign(page: Page) {
   await page.goto("/babylon-lite-rogues-dungeon/?mute=1");
-  await page.getByRole("button", { name: /Saved Game 1/ }).click();
+  await openSavedGame(page);
   await expect(page.locator(".game-screen")).toBeVisible();
 }
 

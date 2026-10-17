@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 import { mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { openSavedGame } from "./start-saved-game.ts";
 
 const appPath = "/babylon-lite-rogues-dungeon/?mute=1";
 const evidenceDirectory = join(tmpdir(), "rogues-dungeon-visual-review");
@@ -10,7 +11,7 @@ mkdirSync(evidenceDirectory, { recursive: true });
 
 async function startGame(page: Page) {
   await page.goto(appPath);
-  await page.getByRole("button", { name: /Saved Game 1/ }).click();
+  await openSavedGame(page);
   await expect(page.locator(".game-screen")).toBeVisible();
   await expect(page.locator(".title-bar__identity")).toHaveText("Rogue's Dungeon");
 }
@@ -30,7 +31,7 @@ test("@layout landscape and PC portrait preview retain the full game UI", async 
   await expect(viewport).toHaveAttribute("data-orientation", "landscape");
   await expect(page.locator(".information-panels")).toBeVisible();
   await expect(page.getByRole("heading", { name: "MINIMAP" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "RESOURCES" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "STATUS" })).toBeVisible();
   await expect(page.locator(".mobile_bottom")).toBeHidden();
   await expect(page.locator("[data-corner], .app_corner")).toHaveCount(0);
   const landscape = await shell.evaluate((element) => {
@@ -64,7 +65,7 @@ test("@layout landscape and PC portrait preview retain the full game UI", async 
   await expect(page.locator(".mobile-controls")).toBeHidden();
   await expect(page.locator(".mobile-information-panels")).toBeVisible();
   await expect(page.getByRole("heading", { name: "MINIMAP" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "RESOURCES" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "STATUS" })).toBeVisible();
   await capture(page, "portrait-info-dpr1-windowed");
   await page.getByRole("button", { name: "Control", exact: true }).click();
   await expect(page.locator(".mobile-controls")).toBeVisible();
@@ -101,7 +102,7 @@ test("@layout mobile defaults to portrait and preserves the requested DPR", asyn
     await capture(page, `mobile-portrait-controls-dpr${deviceScaleFactor}`);
     await page.getByRole("button", { name: "Info", exact: true }).click();
     await expect(page.locator(".mobile-information-panels")).toBeVisible();
-    await expect(page.getByRole("heading", { name: "RESOURCES" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "STATUS" })).toBeVisible();
     await capture(page, `mobile-portrait-info-dpr${deviceScaleFactor}`);
     await context.close();
   }

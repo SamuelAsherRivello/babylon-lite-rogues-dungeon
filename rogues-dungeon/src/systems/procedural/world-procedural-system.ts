@@ -22,8 +22,8 @@ export const GAME_TUNING = Object.freeze({
   healthPotionRestore: 10, manaPotionRestore: 8,
   xpPerAttack: 5, xpPerKillBase: 10, xpPerContainer: 10, xpPerDiscovery: 5, xpPerFloor: 20, xpThreshold: 100,
   enemyAwareness: 6, enemyActionCooldown: 2, sneakingAwarenessReduction: 3,
-  vitalityHealthBonus: 3, strengthOffenseBonus: 1, recoveryMoveBonus: 1,
-  luckTierRanks: 2, stealthAwarenessRanks: 2,
+  recoveryMoveBonus: 1,
+  luckTierRanks: 2,
 });
 export const STAIRS_MAX_DISTANCE_FROM_START = 10;
 
@@ -324,7 +324,7 @@ function lootTier(campaign: Campaign) { return Math.floor(statRank(campaign.prog
 function recoveryAmount(campaign: Campaign) { return GAME_TUNING.moveStaminaRecovery + statRank(campaign.progression.attributes, "recovery") * GAME_TUNING.recoveryMoveBonus; }
 function effectiveAwareness(campaign: Campaign, enemy: Enemy) {
   const base = Number(enemy.awareness ?? GAME_TUNING.enemyAwareness);
-  const stealthReduction = Math.floor(statRank(campaign.progression.attributes, "stealth") / GAME_TUNING.stealthAwarenessRanks);
+  const stealthReduction = 0;
   return Math.max(1, base - stealthReduction - (campaign.player.sneaking ? GAME_TUNING.sneakingAwarenessReduction : 0));
 }
 
@@ -512,14 +512,15 @@ export function generateFloor(level: number, seed = seedNow(), difficulty = leve
       if (cell) add({ id: `campfire-${index + 1}`, kind: "campfire", name: "CampFire", ...cell });
     }
     if (level1TestMode) {
-      const testEnemy = (id: string, name: "Rat" | "Skeleton", offsets: readonly Position[]) => {
+      const testEnemy = (id: string, name: "Rat" | "Skeleton" | "Skeleton Archer", offsets: readonly Position[]) => {
         const cell = nearStartBlocking(offsets); if (!cell) return;
-        const skeleton = name === "Skeleton"; const health = skeleton ? 20 : 12; const damage = skeleton ? 6 : 3;
-        const enemy: Omit<Enemy, "resources"> = { id, kind: "enemy", x: cell.x, y: cell.y, hasMass: true, hp: health, maxHp: health, damage, awareness: GAME_TUNING.enemyAwareness, actionCooldown: GAME_TUNING.enemyActionCooldown, nextActionAt: GAME_TUNING.enemyActionCooldown, name, xp: GAME_TUNING.xpPerKillBase + difficulty, heading: "e", ai: { state: "idle", targetId: null } };
+        const skeleton = name === "Skeleton" || name === "Skeleton Archer"; const archer = name === "Skeleton Archer"; const health = skeleton ? 20 : 12; const damage = archer ? 4 : skeleton ? 6 : 3;
+        const enemy: Omit<Enemy, "resources"> = { id, kind: "enemy", x: cell.x, y: cell.y, hasMass: true, hp: health, maxHp: health, damage, awareness: GAME_TUNING.enemyAwareness, actionCooldown: GAME_TUNING.enemyActionCooldown, nextActionAt: GAME_TUNING.enemyActionCooldown, name, attackKind: archer ? "ranged" : "melee", attackRange: archer ? 5 : 1, xp: GAME_TUNING.xpPerKillBase + difficulty, heading: "e", ai: { state: "idle", targetId: null } };
         add({ ...enemy, resources: enemyResources(enemy, level) });
       };
       testEnemy("test-rat", "Rat", [{ x: -1, y: 0 }, { x: -1, y: -1 }]);
       testEnemy("test-skeleton", "Skeleton", [{ x: 0, y: -1 }, { x: 1, y: -1 }, { x: 1, y: -2 }, { x: 2, y: -1 }, { x: -1, y: -2 }]);
+      testEnemy("test-archer", "Skeleton Archer", [{ x: 4, y: 0 }, { x: 3, y: 0 }]);
     }
     // Pickup counts are area-scaled from the visible 1x landscape screen and
     // use seeded stochastic rounding. Object cells and pickup cells share the
@@ -559,21 +560,17 @@ export function effectiveAttributesFor(base: Attributes, equipment: Equipment): 
   }, {});
   const vitality = statRank(base, "vitality"); const strength = statRank(base, "strength");
   return {
-    health: Math.max(1, Number(base.health ?? GAME_TUNING.startingHealth) * 10 + vitality * GAME_TUNING.vitalityHealthBonus + Number(mods.health ?? 0)),
-    stamina: Math.max(0, Number(base.stamina ?? GAME_TUNING.startingStamina) * 5 + Number(mods.stamina ?? 0)),
-    offense: Math.max(1, Number(base.offense ?? 1) + strength * GAME_TUNING.strengthOffenseBonus + Number(mods.offense ?? 0)),
+    health: Math.max(1, Number(base.health ?? GAME_TUNING.startingHealth) * 10 + Number(mods.health ?? 0)),
+    stamina: Math.max(0, Number(base.stamina ?? GAME_TUNING.startingStamina) * 10 + Number(mods.stamina ?? 0)),
+    offense: Math.max(1, Number(base.offense ?? 1) + Number(mods.offense ?? 0)),
     defense: Math.max(0, Number(base.defense ?? GAME_TUNING.innateDefense) + Number(mods.defense ?? 0)),
-    mana: Math.max(0, Number(base.mana ?? GAME_TUNING.startingMana) * 5 + Number(mods.mana ?? 0)),
+    mana: Math.max(0, Number(base.mana ?? GAME_TUNING.startingMana) * 10 + Number(mods.mana ?? 0)),
     vitality, strength, luck: statRank(base, "luck"), recovery: statRank(base, "recovery"), stealth: statRank(base, "stealth"),
   };
 }
 
 export function effectiveAttributes(campaign: Campaign, equipment: Equipment = campaign.player.equipment): Attributes {
   return effectiveAttributesFor(campaign.progression.attributes, equipment);
-}
-
-export function startingEffectiveAttributes(attributes: Attributes): Attributes {
-  return effectiveAttributesFor(attributes, { weapons: [itemInstance(itemCatalog[7], "starter-stick"), null], armor: [null, null] });
 }
 
 export function resourceState(campaign: Campaign) {
@@ -589,9 +586,10 @@ export function rollStartingAttributes(random = Math.random): Attributes {
   return attributes;
 }
 
-export function createCampaign(seed = seedNow(), difficulty = 1, level = 1, options: { level1TestMode?: boolean; attributes?: Attributes } = {}): Campaign {
+export function createCampaign(seed = seedNow(), difficulty = 1, level = 1, options: { level1TestMode?: boolean; attributes?: Attributes; starterEquipment?: boolean } = {}): Campaign {
   const floor = generateFloor(level, seed, difficulty, options); const attributes = options.attributes ? { ...options.attributes } : rollStartingAttributes(rng(seed));
-  const campaign: Campaign = { version: 5, world: "One", realm: `Underground ${floor.level}`, floor, combatRollState: seed >>> 0, generatorVersion: GENERATOR_VERSION, levelStates: {}, floors: { [level]: structuredClone(floor) }, progression: { attributes, level: 1, xp: 0, nextXp: GAME_TUNING.xpThreshold, totalKills: 0, difficulty, attributePoints: 0 }, player: { x: floor.start.x, y: floor.start.y, hasMass: true, heading: "e", resources: createResourcesModel(), equipment: { weapons: [itemInstance(itemCatalog[7], "starter-stick"), null], armor: [null, null] }, inventory: [consumableInstance("health", "starter-health-potion"), consumableInstance("mana", "starter-mana-potion", 2)], inventoryCapacity: ITEM_CAPACITY, abilities: ["heal", "wand", null], quickSlots: [null, null], sneaking: false, encumberedDirection: null }, starterConsumablesSeeded: true, counters: { keys: 1, gold: 55 }, objective: "Find the exit", quest: { id: "my-first-quest", title: "My First Quest", items: [{ id: "walk-through-stairs", title: "Walk through the stairs", complete: false }, { id: "collect-health-potion", title: "Collect a Health Potion", complete: false }, { id: "collect-coin", title: "Collect a coin", complete: false }], activeItemId: "walk-through-stairs" }, log: [] };
+  const starterEquipment = options.starterEquipment ? itemCatalog.slice(0, 6).map((item, index) => itemInstance(item, `new-character-${index + 1}`)) : [];
+  const campaign: Campaign = { version: 5, world: "One", realm: `Underground ${floor.level}`, floor, combatRollState: seed >>> 0, generatorVersion: GENERATOR_VERSION, levelStates: {}, floors: { [level]: structuredClone(floor) }, progression: { attributes, level: 1, xp: 0, nextXp: GAME_TUNING.xpThreshold, totalKills: 0, difficulty, attributePoints: 0 }, player: { x: floor.start.x, y: floor.start.y, hasMass: true, heading: "e", resources: createResourcesModel(), equipment: { weapons: [itemInstance(itemCatalog[7], "starter-stick"), null], armor: [null, null] }, inventory: [consumableInstance("health", "starter-health-potion"), consumableInstance("mana", "starter-mana-potion", 2), ...starterEquipment], inventoryCapacity: ITEM_CAPACITY, abilities: ["heal", "wand", null], quickSlots: [null, null], sneaking: false, encumberedDirection: null }, starterConsumablesSeeded: true, counters: { keys: 1, gold: 55 }, objective: "Find the exit", quest: { id: "my-first-quest", title: "My First Quest", items: [{ id: "walk-through-stairs", title: "Walk through the stairs", complete: false }, { id: "collect-health-potion", title: "Collect a Health Potion", complete: false }, { id: "collect-coin", title: "Collect a coin", complete: false }], activeItemId: "walk-through-stairs" }, log: [] };
   campaign.player.resources = playerResourcesFromCampaign(campaign, { health: effectiveAttributes(campaign).health, stamina: effectiveAttributes(campaign).stamina, mana: effectiveAttributes(campaign).mana });
   return campaign;
 }
@@ -763,7 +761,7 @@ export function restoreCompactCampaign(campaign: Campaign) {
   return upgradeCampaignResources(campaign);
 }
 
-export function createRunCampaign(worldSeed: number, slot: number, run: number, difficulty = 1, level = 1, options: { level1TestMode?: boolean; attributes?: Attributes } = {}) {
+export function createRunCampaign(worldSeed: number, slot: number, run: number, difficulty = 1, level = 1, options: { level1TestMode?: boolean; attributes?: Attributes; starterEquipment?: boolean } = {}) {
   const campaign = createCampaign(worldFloorSeed(worldSeed, slot, run, level), difficulty, level, options);
   campaign.worldSeed = worldSeed >>> 0;
   campaign.slot = slot;

@@ -23,10 +23,10 @@
 - [x] 4.1 Add Skeleton Archer generation and five-tile cardinal line-of-sight attack behavior while preserving Rat and Skeleton melee-only behavior; verify focused enemy and world-generation tests.
 - [x] 4.2 Project and render transient archer projectiles before their non-authoritative impact feedback; verify renderer ordering, path, and cleanup tests.
 - [x] 4.3 Render directional player received-damage feedback and normal, CRIT, and MISS player attack feedback; verify focused feedback and particle projection tests.
-- [ ] 4.4 Run a muted Edge check for an archer projectile and directional impact feedback; record the focused browser evidence and reserve the applicable full browser suite for finalization.
+- [x] 4.4 Run a muted Edge check for an archer projectile and directional impact feedback; record the focused browser evidence and reserve the applicable full browser suite for finalization.
 
 ## 5. Update loadout and comparison interface
 
 - [x] 5.1 Render two-slot occupancy, item Offense, Defense, Mana, HIT, CRIT, and perks in equipment and Inventory details; verify page tests cover the requested names and labels.
 - [x] 5.2 Render complete before-and-after comparison deltas for valid empty and occupied drop targets, including both slots for a two-slot item; verify component tests and drag-state cleanup.
-- [ ] 5.3 Run a muted Edge drag-and-drop check that previews and commits a valid occupied-slot swap, then run `npm test` and `npm run typecheck`; resolve regressions caused by this change.
+- [x] 5.3 Run a muted Edge drag-and-drop check that previews and commits a valid occupied-slot swap, then run `npm test` and `npm run typecheck`; resolve regressions caused by this change.

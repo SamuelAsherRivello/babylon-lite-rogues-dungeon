@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { AttributeName, Campaign } from "../types.ts";
-import { attributeLabels, progressionStatNames } from "../../systems/procedural/world-procedural-system.ts";
 import { Dialog } from "../../ui/Dialog.tsx";
+import { AttributesCard } from "../panels/attribute-panel.tsx";
 
 export function ProgressionWindow({ campaign, onClose, onConfirm }: { campaign: Campaign; onClose(): void; onConfirm(allocation: Partial<Record<AttributeName, number>>): void }) {
   const [draft, setDraft] = useState<Partial<Record<AttributeName, number>>>({});
@@ -13,5 +13,13 @@ export function ProgressionWindow({ campaign, onClose, onConfirm }: { campaign: 
     if (remaining <= 0 || campaign.progression.attributes[name] + allocated >= 99) return current;
     return { ...current, [name]: allocated + 1 };
   });
-  return <Dialog title="Progression" onClose={onClose} className="progression-window"><p>You have {campaign.progression.attributePoints} Attribute Points.</p><div className="progression-window__attributes">{progressionStatNames.map((name) => <div key={name}><span>{attributeLabels[name]} {campaign.progression.attributes[name]}{draft[name] ? ` + ${draft[name]}` : ""}</span><small>{name === "health" ? "Grows your Health Status bar." : name === "stamina" ? "Grows your Stamina Status bar." : name === "mana" ? "Grows your Mana Status bar." : `Improves ${attributeLabels[name]}.`}</small><button type="button" disabled={!draft[name]} onClick={() => change(name, -1)}>−</button><button type="button" disabled={remaining <= 0 || campaign.progression.attributes[name] + (draft[name] ?? 0) >= 99} onClick={() => change(name, 1)}>+</button></div>)}</div><button type="button" disabled={!spent} onClick={() => onConfirm(draft)}>Confirm {spent} Attribute Point{spent === 1 ? "" : "s"}</button></Dialog>;
+  const preview = { ...campaign.progression.attributes };
+  for (const [name, amount] of Object.entries(draft) as [AttributeName, number][]) preview[name] += amount;
+  const adjustments = {
+    canDecrease: (name: AttributeName) => Boolean(draft[name]),
+    canIncrease: (name: AttributeName) => remaining > 0 && campaign.progression.attributes[name] + (draft[name] ?? 0) < 99,
+    onDecrease: (name: AttributeName) => change(name, -1),
+    onIncrease: (name: AttributeName) => change(name, 1),
+  };
+  return <Dialog title="Progression" onClose={onClose} className="progression-window"><p>Spend {campaign.progression.attributePoints} Attribute Points.</p><div className="progression-window__attributes"><AttributesCard attributes={campaign.progression.attributes} preview={preview} adjustments={adjustments} /></div><button type="button" disabled={!spent} onClick={() => onConfirm(draft)}>Confirm {spent} Attribute Point{spent === 1 ? "" : "s"}</button></Dialog>;
 }

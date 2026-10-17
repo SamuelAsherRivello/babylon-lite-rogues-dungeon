@@ -474,7 +474,7 @@ export function BabylonWorld({ campaign, theme = 1, zoom = 1, minimap = false, c
         const heroFrameIndexes = new Map(heroAtlasPaths.map((path, index) => [path, index]));
         const enemyFrameIndexes = new Map(enemyAtlasPaths.map((path, index) => [path, index]));
         const model = WorldRender.Render({ cells: campaign.floor.cells, entities: campaign.floor.entities, decorations: campaign.floor.decorations, objectSets: campaign.floor.objectSets, player: campaign.player, start: campaign.floor.start, groundTiles: campaign.floor.tiledGrounds, wallTiles: campaign.floor.tiledWalls, view: minimap ? "minimap" : "game", detail: minimap ? "simplified" : "full" });
-        const terrainLayer = createSprite2DLayer(tileAtlas, { pivot: [0.5, 0.5], order: TERRAIN_RENDER_ORDER });
+        const terrainLayers = Array.from({ length: model.height }, () => createSprite2DLayer(tileAtlas, { pivot: [0.5, 0.5], order: TERRAIN_RENDER_ORDER }));
         const wallLayers = Array.from({ length: model.height }, () => createSprite2DLayer(tileAtlas, { pivot: [0.5, 0.5] }));
         const debugLayer = createSprite2DLayer(debugAtlas, { pivot: [0.5, 0.5] });
         const pivotMarkerLayer = createSprite2DLayer(pivotAtlas, { pivot: [0.5, 0.5] });
@@ -501,7 +501,7 @@ export function BabylonWorld({ campaign, theme = 1, zoom = 1, minimap = false, c
           { handle: addSprite2D(playerLayers.main, { positionPx: [-10000, -10000], sizePx: [32, 48], frame: 0 }), offsetPx: [-1, 6] },
           { handle: addSprite2D(playerLayers.shadow, { positionPx: [-10000, -10000], sizePx: [32, 32], frame: heroFrameIndexes.get(heroShadowPath) ?? 0 }), offsetPx: [0, -5] },
         ) : null;
-        const terrainHandles = model.grounds.map(({ worldX, worldY, frame }) => addSprite2D(terrainLayer, { positionPx: frame === null ? [-10000, -10000] : [worldX, worldY], sizePx: [32, 32], frame: frame ?? 0 }));
+        const terrainHandles = model.grounds.map(({ y, worldX, worldY, frame }) => addSprite2D(terrainLayers[y]!, { positionPx: frame === null ? [-10000, -10000] : [worldX, worldY], sizePx: [32, 32], frame: frame ?? 0 }));
         const wallHandles = model.walls.map(({ y, worldX, worldY, frame }) => addSprite2D(wallLayers[y], { positionPx: frame === null ? [-10000, -10000] : [worldX, worldY], sizePx: [32, 32], frame: frame ?? 0 }));
         const debugHandles = [...model.diagnostics, ...model.wallDiagnostics].map(({ worldX, worldY }) => addSprite2D(debugLayer, { positionPx: [worldX, worldY], sizePx: [32, 32], frame: 0 }));
         const actors: Record<EnemyIdleAnimationName, CharacterSprite[]> = { rat: [], skeleton: [] };
@@ -542,10 +542,10 @@ export function BabylonWorld({ campaign, theme = 1, zoom = 1, minimap = false, c
         const particles = particleLayers.map((layer) => addSprite2D(layer, { positionPx: [-10000,-10000], sizePx: [32,32], frame: 0 }));
         const projectiles = projectileLayers.map((layer) => addSprite2D(layer, { positionPx: [-10000,-10000], sizePx: [16,16], frame: 1 }));
         const projectileStartedAt = new Map<string, number>();
-        const viewLayers = [terrainLayer, ...triggerLayers, ...wallLayers, debugLayer, ...itemLayers.flatMap((layers) => [layers.shadow, layers.main]), ...chestLayers.flatMap((layers) => [layers.shadow, layers.main]), ...closedCrateLayers, ...openCrateLayers, ...doorLayers, ...barrelLayers.flatMap((layers) => [layers.shadow, layers.main]), ...goldCoinLayers.flatMap((layers) => [layers.shadow, layers.main]), ...chestCoinLayers, ...torchLayers, ...trapLayers, ...campfireLayers, ...stairLayers, ...projectileLayers, ...particleLayers, ...actorLayers.rat.flatMap((layers) => [layers.shadow, layers.main]), ...actorLayers.skeleton.flatMap((layers) => [layers.shadow, layers.main]), ...(playerLayers ? [playerLayers.shadow, playerLayers.main] : []), pivotMarkerLayer];
+        const viewLayers = [...terrainLayers, ...triggerLayers, ...wallLayers, debugLayer, ...itemLayers.flatMap((layers) => [layers.shadow, layers.main]), ...chestLayers.flatMap((layers) => [layers.shadow, layers.main]), ...closedCrateLayers, ...openCrateLayers, ...doorLayers, ...barrelLayers.flatMap((layers) => [layers.shadow, layers.main]), ...goldCoinLayers.flatMap((layers) => [layers.shadow, layers.main]), ...chestCoinLayers, ...torchLayers, ...trapLayers, ...campfireLayers, ...stairLayers, ...projectileLayers, ...particleLayers, ...actorLayers.rat.flatMap((layers) => [layers.shadow, layers.main]), ...actorLayers.skeleton.flatMap((layers) => [layers.shadow, layers.main]), ...(playerLayers ? [playerLayers.shadow, playerLayers.main] : []), pivotMarkerLayer];
         // Terrain and overlays use fixed passes. Every participating world layer
         // receives a shared order below, while its own sprites retain stable Y sort.
-        viewLayers.filter((layer) => layer !== terrainLayer && layer !== debugLayer && layer !== pivotMarkerLayer).forEach((layer) => enableSprite2DYSort(layer));
+        viewLayers.filter((layer) => !terrainLayers.includes(layer) && layer !== debugLayer && layer !== pivotMarkerLayer).forEach((layer) => enableSprite2DYSort(layer));
         renderer = createSpriteRenderer(surface, { layers: viewLayers, clear: true, clearValue: clear });
         registerSpriteRenderer(renderer);
         let stairClipTopWorldY: number | null = null;
@@ -591,7 +591,7 @@ export function BabylonWorld({ campaign, theme = 1, zoom = 1, minimap = false, c
             setSprite2DShaderParams(playerLayers.main, [clipY, 0, clipActive, 0]);
             setSprite2DShaderParams(playerLayers.shadow, [clipY, 0, clipActive, 0]);
           }
-          terrainLayer.order = TERRAIN_RENDER_ORDER;
+          terrainLayers.forEach((layer) => { layer.order = TERRAIN_RENDER_ORDER; });
           debugLayer.order = OVERLAY_RENDER_ORDER;
           pivotMarkerLayer.order = OVERLAY_RENDER_ORDER + 1;
           const worldDepthEntries: WorldDepthEntry[] = [];
@@ -600,7 +600,7 @@ export function BabylonWorld({ campaign, theme = 1, zoom = 1, minimap = false, c
           const addCharacterDepth = (id: string, y: number, character: CharacterSprite, bumpTieBreak = 0) => worldDepthEntries.push({ id, pass: GRID_RENDER_PASS.world, y, tieBreak: WORLD_TIE_BREAK.entity + bumpTieBreak, applyOrder: (order) => setCharacterSpriteOrder(character, order) });
           const addPickupDepth = (id: string, y: number, pickup: CharacterSprite) => worldDepthEntries.push({ id, pass: GRID_RENDER_PASS.world, y, tieBreak: WORLD_TIE_BREAK.pickup, applyOrder: (order) => setCharacterSpriteOrder(pickup, order) });
           if (world.grounds !== renderedStaticGrounds || world.walls !== renderedStaticWalls) {
-            while (terrainHandles.length < world.grounds.length) terrainHandles.push(addSprite2D(terrainLayer, { positionPx: [-10000, -10000], sizePx: [32, 32], frame: 0 }));
+            while (terrainHandles.length < world.grounds.length) { const terrain = world.grounds[terrainHandles.length]!; terrainHandles.push(addSprite2D(terrainLayers[terrain.y]!, { positionPx: [-10000, -10000], sizePx: [32, 32], frame: 0 })); }
             while (wallHandles.length < world.walls.length) { const wall = world.walls[wallHandles.length]!; wallHandles.push(addSprite2D(wallLayers[wall.y]!, { positionPx: [-10000, -10000], sizePx: [32, 32], frame: 0 })); }
             while (debugHandles.length < world.diagnostics.length + world.wallDiagnostics.length) debugHandles.push(addSprite2D(debugLayer, { positionPx: [-10000, -10000], sizePx: [32, 32], frame: 0 }));
             world.grounds.forEach((tile, index) => updateSprite2D(terrainHandles[index], { positionPx: tile.frame === null ? [-10000, -10000] : [tile.worldX, tile.worldY], frame: tile.frame ?? 0 }));
@@ -627,6 +627,8 @@ export function BabylonWorld({ campaign, theme = 1, zoom = 1, minimap = false, c
           if (playerSprite) { const positionPx: [number, number] = [playerPosition.x * 32 + 16, playerPosition.y * 32 + 16 + departureOffsetY]; const damageScale = (isMinimap ? 1 : turnPresentation?.damageScaleOf("player", now) ?? 1) * (1 - departureProgress * .15); updateCharacterSprite(playerSprite, positionPx, 0, { sizePx: [activeHeroFrame.widthPx * damageScale, activeHeroFrame.heightPx * damageScale], frame: heroFrameIndexes.get(activeHeroFrame.path) ?? 0, flipX: playerHeading === "w", color: [1, 1, 1, 1] }, playerMovementPulse, PLAYER_HOP_HEIGHT_PX, 1); addCharacterDepth("player", groundContactY(playerDepthPosition), playerSprite, turnPresentation?.bumpDepthTieBreakOf("player", now) ?? 0); updatePivotMarkers(playerPivotMarkers, playerSprite, positionPx, pivotsVisible); }
           const visibleBounds = getVisibleWorldCellBounds(cameraCenter, rect.width / cellSizeAt(rect), rect.height / cellSizeAt(rect));
           const dynamicVisible = (position: { x: number; y: number }) => isMinimap || isWorldCellVisible(position, visibleBounds);
+          terrainLayers.forEach((layer, row) => { layer.visible = isMinimap || (row >= visibleBounds.minY - 1 && row <= visibleBounds.maxY + 1); });
+          wallLayers.forEach((layer, row) => { layer.visible = isMinimap || (row >= visibleBounds.minY - 1 && row <= visibleBounds.maxY + 1); });
           const byKind: Record<string, typeof world.actors> = { rat: world.actors.filter((actor) => actor.kind === "rat" && dynamicVisible(actor)), skeleton: world.actors.filter((actor) => actor.kind === "skeleton" && dynamicVisible(actor)) };
           for (const key of Object.keys(actors) as EnemyIdleAnimationName[]) { const frame = activeEnemyAnimations[key].getState().frame; actors[key].forEach((character, i) => { const actor = byKind[key][i]; const position = actor && turnPresentation?.positionOf(actor.id, actor); if (!position) { hideCharacterSprite(character); updatePivotMarkers(actorPivotMarkers[key][i], character, [-10000, -10000], false); return; } const positionPx: [number, number] = [position.x * 32 + 16, position.y * 32 + 16]; const movementPulse = isMinimap ? 0 : turnPresentation?.movementPulseOf(actor.id, now) ?? 0; const damageScale = isMinimap ? 1 : turnPresentation?.damageScaleOf(actor.id, now) ?? 1; updateCharacterSprite(character, positionPx, 0, { sizePx: [frame.widthPx * damageScale, frame.heightPx * damageScale], frame: enemyFrameIndexes.get(frame.path) ?? 0, flipX: actor?.heading === "w" }, movementPulse); addCharacterDepth(actor.id, groundContactY(position), character, turnPresentation?.bumpDepthTieBreakOf(actor.id, now) ?? 0); updatePivotMarkers(actorPivotMarkers[key][i], character, positionPx, pivotsVisible); }); }
           const itemObjects = world.objects.filter((entity) => (entity.kind === "item" || entity.kind === "potion" || entity.kind === "key" || entity.kind === "discovery") && dynamicVisible(entity));

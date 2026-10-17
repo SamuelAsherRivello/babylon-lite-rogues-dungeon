@@ -275,7 +275,9 @@ test('places level-one test-mode stairs and starter entities beside the start on
     assert.ok(crate && Math.max(Math.abs(crate.x - floor.start.x), Math.abs(crate.y - floor.start.y)) === 1);
     assert.ok(floor.entities.some((entity) => entity.id === 'starter-gold' && entity.kind === 'gold'));
     const testEnemies = floor.entities.filter((entity): entity is Enemy => entity.kind === 'enemy' && entity.id.startsWith('test-'));
-    assert.deepEqual(testEnemies.map((entity) => entity.name).sort(), ['Rat', 'Skeleton']);
+    assert.deepEqual(testEnemies.map((entity) => entity.name).sort(), ['Rat', 'Skeleton', 'Skeleton Archer']);
+    const archer = testEnemies.find((entity) => entity.id === 'test-archer');
+    assert.deepEqual(archer && { attackKind: archer.attackKind, attackRange: archer.attackRange }, { attackKind: 'ranged', attackRange: 5 });
     assert.ok(testEnemies.every((entity) => Math.hypot(entity.x - floor.start.x, entity.y - floor.start.y) <= 10));
   }
 });
@@ -590,6 +592,14 @@ test('starts a current campaign with a valid rolled character and bindings', () 
   assert.deepEqual(campaign.counters, { keys: 1, gold: 55 });
   assert.equal(campaign.objective, 'Find the exit'); assert.deepEqual(campaign.log, []);
   assert.deepEqual(Object.keys(campaign.progression.attributes), ['health', 'stamina', 'offense', 'defense', 'mana', 'vitality', 'strength', 'luck', 'recovery', 'stealth']);
+});
+
+test('new-character starter equipment grants one copy of each new item without changing later runs', () => {
+  const starter = createRunCampaign(123, 1, 1, 1, 1, { starterEquipment: true });
+  assert.deepEqual(starter.player.inventory.filter((item) => item.category !== 'consumable').map((item) => item.name), ['Dagger (Magic)', 'Sword', 'Two-Handed Sword', 'Leg Armor (Magic)', 'Chest Armor', 'Suit of Armor']);
+  assert.equal(starter.player.inventory.length, 8);
+  const later = createRunCampaign(123, 1, 2);
+  assert.deepEqual(later.player.inventory.map((item) => item.name), ['Health Potion', 'Mana Potion']);
 });
 
 test('accepted move and equipment changes emit events and cost one time unit', () => {
