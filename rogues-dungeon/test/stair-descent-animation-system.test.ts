@@ -29,9 +29,10 @@ test("stair descent turns a north-facing hero south without changing other headi
 
 test("the stair clip hides the player without drawing a foreground floor and clears after iris closure", () => {
   const source = readFileSync(new URL("../src/systems/rendering/babylon-render-system.tsx", import.meta.url), "utf8");
-  assert.match(source, /beginStairClip\(\)/);
-  assert.match(source, /color: \[1, 1, 1, playerIsUnderStairs \? 0 : 1\]/);
-  assert.match(source, /playerIsUnderStairs \? 0 : 1/);
+  assert.match(source, /beginStairClip\(origin: Position\)/);
+  assert.match(source, /in\.p\.y >= fx\.params\.x\) \{ discard; \}/);
+  assert.match(source, /stairClipTopWorldY = origin\.y \* 32 \+ 32/);
+  assert.match(source, /setSprite2DShaderParams\(playerLayers\.main/);
   assert.doesNotMatch(source, /stairOcclusionLayer|stairOcclusions|stairLip/);
   assert.match(source, /sceneRef\.current\?\.clearStairClip\(\);[\s\S]*onStairDepartureComplete\?\.\(\);/);
 });

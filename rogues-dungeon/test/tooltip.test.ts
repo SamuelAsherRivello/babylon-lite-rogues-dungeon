@@ -107,9 +107,10 @@ test("renders and measures the in-world tooltip after its React node mounts", as
   assert.match(world, /if \(tooltipRef\.current\) observer\.observe\(tooltipRef\.current\)/);
   assert.match(world, /<h2>Enemy: \{tooltipEnemy\.name\}<\/h2>/);
   assert.match(world, /<h2>RESOURCES<\/h2>/);
-  assert.match(world, /<div className="world-view__enemy-tooltip-portrait-box"><img/);
-  assert.match(css, /\.world-view__enemy-tooltip-section--portrait \{[^}]*grid-template-rows:auto minmax\(0,1fr\)/);
+  assert.match(world, /world-view__enemy-tooltip-portrait-box--\$\{tooltipEnemy\.name\.toLowerCase\(\)\}/);
+  assert.match(css, /\.world-view__enemy-tooltip-section--portrait \{[^}]*grid-template-rows:\.5rem minmax\(0,1fr\);[^}]*gap:0/);
   assert.match(css, /\.world-view__enemy-tooltip-portrait-box img \{[^}]*width:100%;[^}]*height:100%;[^}]*object-fit:contain/);
+  assert.match(css, /\.world-view__enemy-tooltip-portrait-box--rat img \{ transform:translateY\(-9\.375%\); \}/);
 });
 
 test("animates the enemy information panel in and out through the shared UI motion system", async () => {

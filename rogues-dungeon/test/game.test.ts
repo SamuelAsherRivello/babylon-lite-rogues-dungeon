@@ -252,6 +252,16 @@ test('does not place a solid object in the reported level-three passage cell', (
   assert.equal(solidObject, undefined);
 });
 
+test('rejects chest placements that split adjacent floor paths', () => {
+  const corridor = createLevelContext({ worldId: 'test', realmId: 'test', levelId: 1, seed: 1, width: 5, height: 3, start: { x: 0, y: 1 }, exit: { x: 4, y: 1 } });
+  for (let x = 0; x < 5; x++) corridor.writeCell(x, 1, { walkable: true });
+  assert.equal(isNonBlockingChestPlacementCell(corridor.cells, { x: 2, y: 1 }), false);
+
+  const alcove = createLevelContext({ worldId: 'test', realmId: 'test', levelId: 1, seed: 1, width: 3, height: 3, start: { x: 0, y: 1 }, exit: { x: 2, y: 1 } });
+  for (let y = 0; y < 3; y++) for (let x = 0; x < 3; x++) alcove.writeCell(x, y, { walkable: true });
+  assert.equal(isNonBlockingChestPlacementCell(alcove.cells, { x: 1, y: 1 }), true);
+});
+
 test('places seeded dungeon objects on unique walkable cells while preserving the exit route', () => {
   for (const seed of [17, 914]) {
     const floor = generateFloor(1, seed, 1);
@@ -1208,6 +1218,16 @@ test('turn presentation exposes a hop and shadow pulse only during character mov
   assert.equal(presentation.movementPulseOf('player', CHARACTER_MOVEMENT_DURATION_MS / 2), 1);
   assert.equal(presentation.movementPulseOf('player', CHARACTER_MOVEMENT_DURATION_MS), 0);
   assert.equal(presentation.movementPulseOf('missing', CHARACTER_MOVEMENT_DURATION_MS / 2), 0);
+});
+
+test('turn presentation shrinks the player after any Health loss', () => {
+  const previous = createCampaign(731); const current = structuredClone(previous);
+  current.player.resources.health.current--;
+  const presentation = new TurnPresentationSystem();
+  presentation.begin(previous, current, new Set(), 0);
+  assert.equal(presentation.damageScaleOf('player', 0), 1);
+  assert.equal(presentation.damageScaleOf('player', CHARACTER_MOVEMENT_DURATION_MS / 2), .9);
+  assert.equal(presentation.damageScaleOf('player', CHARACTER_MOVEMENT_DURATION_MS), 1);
 });
 
 test('turn presentation changes player depth to the destination tile at the movement apex', () => {

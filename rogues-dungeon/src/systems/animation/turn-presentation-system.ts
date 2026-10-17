@@ -61,6 +61,7 @@ export class TurnPresentationSystem {
     for (const enemy of visible) if (!this.ranks.has(enemy.id)) this.ranks.set(enemy.id, this.nextRank++);
     const changed = visible.filter((enemy) => !samePosition(before.get(enemy.id), enemy)).sort((a, b) => this.rankOf(a.id) - this.rankOf(b.id));
     for (const enemy of enemies(current)) if ((beforeEnemies.get(enemy.id)?.hp ?? enemy.hp) > enemy.hp) this.beginDamageReaction(enemy.id, now);
+    if (previous.player.resources.health.current > current.player.resources.health.current) this.beginDamageReaction("player", now);
     if (previous.player.resources.health.current > current.player.resources.health.current) {
       const attacker = enemies(current).find((enemy) => beforeEnemies.get(enemy.id)?.nextActionAt !== enemy.nextActionAt && Math.max(Math.abs(current.player.x - enemy.x), Math.abs(current.player.y - enemy.y)) <= 1);
       if (attacker) this.beginBump(attacker.id, attacker, { x: Math.sign(current.player.x - attacker.x), y: Math.sign(current.player.y - attacker.y) }, now);
