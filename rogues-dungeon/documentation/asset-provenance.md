@@ -15,4 +15,11 @@ The following original menu assets were generated with the built-in image-genera
 - `public/assets/art/menu/dungeon-hero-background.png` — 16-bit-style dungeon corridor, with the hero composed in the lower-right-center and open space for the menu and logo.
 - `public/assets/art/menu/rogues-dungeon-logo.png` — transparent 16-bit-style title treatment with the exact text `ROGUE'S DUNGEON`.
 
+On 2026-10-17, the original menu background was used as the edit target for four transparent parallax layers generated with the built-in image-generation tool:
+
+- `public/assets/art/menu/dungeon-hallway-rear.png` — distant hall and throne.
+- `public/assets/art/menu/dungeon-environment-frame.png` — surrounding hallway frame.
+- `public/assets/art/menu/dungeon-hero.png` — hero cutout.
+- `public/assets/art/menu/dungeon-foreground-rocks.png` — rocks in front of the hero.
+
 They are project-owned generated artwork; they do not derive from the supplied Dungeons-and-Pixels vendor pack.

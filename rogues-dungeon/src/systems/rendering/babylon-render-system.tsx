@@ -1,12 +1,12 @@
 import type { MouseEvent } from "react";
-import type { EngineContext, SurfaceContext, Texture2D, DynamicTexture2D, SpriteAtlas, SpriteRenderer, Sprite2DHandle, Sprite2DLayer } from "@babylonjs/lite";
+import type { EngineContext, SurfaceContext, Texture2D, DynamicTexture2D, SpriteAtlas, SpriteRenderer, Sprite2DLayer } from "@babylonjs/lite";
 import type { Campaign, Enemy, Feedback, Position, Resources, SelectedCell } from "../../game/types.ts";
 interface SharedEngine { engine: EngineContext; primaryCanvas: HTMLCanvasElement; started: boolean }
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   addSprite2D, centerSprite2DView, createDynamicTexture, createEngine, createGridSpriteAtlas, createSpriteAtlasFromFrames, createSprite2DLayer,
   createSpriteRenderer, createSurface, disposeEngine, disposeSpriteAtlas, disposeSpriteRenderer, disposeSurface,
-  enableSprite2DYSort, loadTexture2D, registerSpriteRenderer, releaseTexture, resizeSurface, setGpuTimingEnabled, startEngine, updateDynamicTexture, updateSprite2D,
+  enableSprite2DYSort, loadTexture2D, registerSpriteRenderer, releaseTexture, resizeSurface, startEngine, updateDynamicTexture, updateSprite2D,
 } from "@babylonjs/lite";
 import { getCameraCenter, getWorldCellAtScreenPosition, getWorldCellScreenCenter, getWorldScreenPosition, WorldRender } from "./world-render-system.ts";
 import { getRenderedTileCssSize } from "../../content/world/zoom.ts";
@@ -21,16 +21,19 @@ import { createEnemyIdleAnimationEntities, type EnemyIdleAnimationName } from ".
 import { HEAL_PARTICLE_PLAYER_LAYER_OFFSET, particleBoundsAt, particleBoundsAtTile, particleExpired, particleFrame, particleFrameUrl, particlePosition, particleProgress, particleScale, type ParticleEffect } from "../animation/particle-effects-system.ts";
 import { UiIrisTransition, type UiIrisPhase } from "../../ui/ui-transition-system.tsx";
 import { sortGridRenderEntries } from "./grid-render-order-system.ts";
-import { DUNGEON_STAIR_UP_FRAME, itemSpriteFrame } from "./world-object-sprite-system.ts";
+import { chestSpriteFrame, DUNGEON_STAIR_UP_FRAME, itemSpriteFrame, puzzleObjectSpriteFrame } from "./world-object-sprite-system.ts";
 import { TurnPresentationSystem } from "../animation/turn-presentation-system.ts";
 import { CameraAnimationSystem, PLAYER_TAKE_DAMAGE_ANIMATION } from "../animation/camera-animation-system.ts";
 import { trapFrameAt } from "../procedural/world-hazards-system.ts";
+import { gameViewShaderSystem } from "./game-view-shader-system.ts";
+import { createCharacterSprite, hideCharacterSprite, updateCharacterSprite, type CharacterSprite } from "./character-sprite-system.ts";
 
 const texturePaths = {
   tiles: `${import.meta.env.BASE_URL}assets/art/vendors/dungeons-and-pixels-v1.4/tilesets/tileset-dungeon.png`,
   rat: `${import.meta.env.BASE_URL}assets/art/vendors/dungeons-and-pixels-v1.4/enemies/rat/frames/idle/00.png`,
   skeleton: `${import.meta.env.BASE_URL}assets/art/vendors/dungeons-and-pixels-v1.4/enemies/skeleton-warrior/frames/idle/down/00.png`,
   items: `${import.meta.env.BASE_URL}assets/art/vendors/dungeons-and-pixels-v1.4/tilesets/items-static.png`,
+  objectsOverlay: `${import.meta.env.BASE_URL}assets/art/vendors/dungeons-and-pixels-v1.4/tilesets/objects-overlay.png`,
   goldCoin: `${import.meta.env.BASE_URL}assets/art/vendors/dungeons-and-pixels-v1.4/items/animated/gold-coin.png`,
 };
 
@@ -38,6 +41,11 @@ const goldCoinFramePaths = Array.from({ length: 4 }, (_, index) => `${import.met
 const torchFramePaths = Array.from({ length: 3 }, (_, index) => `${import.meta.env.BASE_URL}assets/art/vendors/dungeons-and-pixels-v1.4/props/animated/frames/torch/${String(index).padStart(2, "0")}.png`);
 const trapFramePaths = Array.from({ length: 7 }, (_, index) => `${import.meta.env.BASE_URL}assets/art/vendors/dungeons-and-pixels-v1.4/props/animated/frames/trap1/${String(index).padStart(2, "0")}.png`);
 const smokePuffFramePaths = Array.from({ length: 9 }, (_, index) => `${import.meta.env.BASE_URL}assets/art/custom/particles/smoke-poff/smoke-poff-${index + 1}.png`);
+const heroShadowPath = `${import.meta.env.BASE_URL}assets/art/vendors/dungeons-and-pixels-v1.4/characters/hero-warrior/shadow.png`;
+const enemyShadowPaths = {
+  rat: `${import.meta.env.BASE_URL}assets/art/vendors/dungeons-and-pixels-v1.4/enemies/rat/shadow.png`,
+  skeleton: `${import.meta.env.BASE_URL}assets/art/vendors/dungeons-and-pixels-v1.4/enemies/skeleton-warrior/shadow.png`,
+} as const;
 
 const clear = { r: 0.06, g: 0.05, b: 0.09, a: 1 };
 const PLAYER_RENDER_DEPTH_OFFSET = 50;
@@ -204,8 +212,9 @@ export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "ce
     // must keep its current camera position while adapting its bounds. Center
     // and screen modes derive their centers directly from the new dimensions.
     const resetKey = [state.floor.seed, mapWidth, mapHeight, cameraNow, zoomNow].join(":");
-    const previousCenter = cameraCenterRef.current?.key === resetKey ? cameraCenterRef.current : state.player;
-    const center = getCameraCenter({ mode: cameraNow, player: state.player, previousCenter, visibleWidth, visibleHeight, mapWidth, mapHeight });
+    const playerPosition = turnPresentation?.playerPositionOf(state.player) ?? state.player;
+    const previousCenter = cameraCenterRef.current?.key === resetKey ? cameraCenterRef.current : playerPosition;
+    const center = getCameraCenter({ mode: cameraNow, player: playerPosition, previousCenter, visibleWidth, visibleHeight, mapWidth, mapHeight });
     cameraCenterRef.current = { key: resetKey, ...center };
     return center;
   };
@@ -238,7 +247,7 @@ export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "ce
 
   useEffect(() => {
     const host = hostRef.current!; const canvas = canvasRef.current!;
-    let cancelled = false; let engine: EngineContext | null = null; let surface: SurfaceContext | null = null; let renderer: SpriteRenderer | null = null; let atlases: SpriteAtlas[] = []; let textures: Record<string, Texture2D> = {}; let acquiredTexturePaths: string[] = []; let observers: { disconnect(): void }[] = []; let debugTexture: DynamicTexture2D | null = null; let animationFrameId = 0; let fpsIntervalId = 0; let heroAnimation: ReturnType<typeof createHeroWarriorAnimationEntity> | null = null; let enemyAnimations: ReturnType<typeof createEnemyIdleAnimationEntities> | null = null;
+    let cancelled = false; let engine: EngineContext | null = null; let surface: SurfaceContext | null = null; let renderer: SpriteRenderer | null = null; let atlases: SpriteAtlas[] = []; let textures: Record<string, Texture2D> = {}; let acquiredTexturePaths: string[] = []; let observers: { disconnect(): void }[] = []; let debugTexture: DynamicTexture2D | null = null; let animationFrameId = 0; let fpsSampleStartedAt = 0; let fpsFrameCount = 0; let heroAnimation: ReturnType<typeof createHeroWarriorAnimationEntity> | null = null; let enemyAnimations: ReturnType<typeof createEnemyIdleAnimationEntities> | null = null;
     const setup = async () => {
       try {
         if (!navigator.gpu) throw new Error("WebGPU is not available in this browser.");
@@ -255,16 +264,19 @@ export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "ce
         }
         const tileAtlas = createGridSpriteAtlas(textures.tiles, { cellWidthPx: 32, cellHeightPx: 32, columns: 12, rows: 9, pivot: [0.5, 0.5] });
         const debugCanvas = document.createElement("canvas"); debugCanvas.width = 32; debugCanvas.height = 32;
-        const contextGetter = "getContext"; const debugContext = debugCanvas[contextGetter]("2d")!; debugContext.fillStyle = "rgba(235, 35, 45, 0.52)"; debugContext.fillRect(0, 0, 32, 32);
+        const contextGetter = "getContext"; const debugContext = debugCanvas[contextGetter]("2d")!; debugContext.strokeStyle = "#ff3b3b"; debugContext.lineWidth = 3; debugContext.strokeRect(1.5, 1.5, 29, 29);
         debugTexture = createDynamicTexture(engine, 32, 32, { minFilter: "nearest", magFilter: "nearest", mipMaps: false });
         updateDynamicTexture(engine, debugTexture, debugCanvas, { invertY: false });
         const debugAtlas = createGridSpriteAtlas(debugTexture, { cellWidthPx: 32, cellHeightPx: 32, columns: 1, rows: 1, pivot: [0.5, 0.5] });
         const enemyFramePaths = [...new Set(Object.values(activeEnemyAnimations).flatMap((animation) => animation.listAnimations().flatMap(({ frames }) => frames.map(({ path }) => path))))];
-        const enemyAtlas = createSpriteAtlasFromFrames(engine, await Promise.all(enemyFramePaths.map(loadSpriteAtlasFrame)), { paddingPx: 1, sampling: "nearest" });
+        const enemyAtlasPaths = [...enemyFramePaths, ...Object.values(enemyShadowPaths)];
+        const enemyAtlas = createSpriteAtlasFromFrames(engine, await Promise.all(enemyAtlasPaths.map(loadSpriteAtlasFrame)), { paddingPx: 1, sampling: "nearest" });
         atlases.push(enemyAtlas);
         const itemAtlas = createGridSpriteAtlas(textures.items, { cellWidthPx: 32, cellHeightPx: 32, columns: 3, rows: 3, pivot: [0.5, 0.5] });
+        const objectsOverlayAtlas = createGridSpriteAtlas(textures.objectsOverlay, { cellWidthPx: 32, cellHeightPx: 32, columns: 7, rows: 6, pivot: [0.5, 0.5] });
         const heroFramePaths = [...new Set(activeHeroAnimation.listAnimations().flatMap((animation) => animation.frames.map((frame) => frame.path)))];
-        const heroAtlas = minimap ? null : createSpriteAtlasFromFrames(engine, await Promise.all(heroFramePaths.map(loadSpriteAtlasFrame)), { paddingPx: 1, sampling: "nearest" });
+        const heroAtlasPaths = [...heroFramePaths, heroShadowPath];
+        const heroAtlas = minimap ? null : createSpriteAtlasFromFrames(engine, await Promise.all(heroAtlasPaths.map(loadSpriteAtlasFrame)), { paddingPx: 1, sampling: "nearest" });
         if (heroAtlas) atlases.push(heroAtlas);
         const goldCoinAtlas = createSpriteAtlasFromFrames(engine, await Promise.all(goldCoinFramePaths.map(loadSpriteAtlasFrame)), { paddingPx: 1, sampling: "nearest" });
         atlases.push(goldCoinAtlas);
@@ -273,33 +285,45 @@ export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "ce
         atlases.push(torchAtlas, trapAtlas);
         const particleAtlas = minimap ? null : createSpriteAtlasFromFrames(engine, await Promise.all(smokePuffFramePaths.map(loadSpriteAtlasFrame)), { paddingPx: 1, sampling: "nearest" });
         if (particleAtlas) atlases.push(particleAtlas);
-        const heroFrameIndexes = new Map(heroFramePaths.map((path, index) => [path, index]));
-        const enemyFrameIndexes = new Map(enemyFramePaths.map((path, index) => [path, index]));
+        const heroFrameIndexes = new Map(heroAtlasPaths.map((path, index) => [path, index]));
+        const enemyFrameIndexes = new Map(enemyAtlasPaths.map((path, index) => [path, index]));
         const terrainLayer = createSprite2DLayer(tileAtlas, { pivot: [0.5, 0.5] });
         const wallLayer = createSprite2DLayer(tileAtlas, { pivot: [0.5, 0.5] });
         const debugLayer = createSprite2DLayer(debugAtlas, { pivot: [0.5, 0.5] });
-        const actorLayers = { rat: Array.from({ length: 40 }, () => createSprite2DLayer(enemyAtlas, { pivot: [0.5, 0.5] })), skeleton: Array.from({ length: 40 }, () => createSprite2DLayer(enemyAtlas, { pivot: [0.5, 1] })) };
+        const actorLayers = { rat: Array.from({ length: 40 }, () => ({ shadow: createSprite2DLayer(enemyAtlas, { pivot: [0.5, 0.5] }), main: createSprite2DLayer(enemyAtlas, { pivot: [0.5, 0.5] }) })), skeleton: Array.from({ length: 40 }, () => ({ shadow: createSprite2DLayer(enemyAtlas, { pivot: [0.5, 0.5] }), main: createSprite2DLayer(enemyAtlas, { pivot: [0.5, 1] }) })) };
         const itemLayers = Array.from({ length: 40 }, () => createSprite2DLayer(itemAtlas, { pivot: [0.5, 0.5] }));
+        const puzzleObjectLayers = Array.from({ length: 4 }, () => createSprite2DLayer(objectsOverlayAtlas, { pivot: [0.5, 0.5] }));
         const goldCoinLayers = Array.from({ length: 40 }, () => createSprite2DLayer(goldCoinAtlas, { pivot: [0.5, 0.5] }));
         const torchLayers = Array.from({ length: 40 }, () => createSprite2DLayer(torchAtlas, { pivot: [0.5, 0.5] }));
         const trapLayers = Array.from({ length: 20 }, () => createSprite2DLayer(trapAtlas, { pivot: [0.5, 0.5] }));
         const stairLayers = Array.from({ length: 4 }, () => createSprite2DLayer(tileAtlas, { pivot: [0.5, 0.5] }));
         const particleLayers = particleAtlas ? Array.from({ length: 16 }, () => createSprite2DLayer(particleAtlas, { pivot: [0.5, 0.5] })) : [];
-        const playerLayer = heroAtlas ? createSprite2DLayer(heroAtlas, { pivot: [0.5, 1] }) : null;
-        const playerSprite = playerLayer ? addSprite2D(playerLayer, { positionPx: [-10000, -10000], sizePx: [32, 48], frame: 0 }) : null;
-        const model = WorldRender.Render({ cells: campaign.floor.cells, entities: campaign.floor.entities, decorations: campaign.floor.decorations, player: campaign.player, start: campaign.floor.start, groundTiles: campaign.floor.tiledGrounds, wallTiles: campaign.floor.tiledWalls, view: minimap ? "minimap" : "game", detail: minimap ? "simplified" : "full" });
+        const playerLayers = heroAtlas ? { shadow: createSprite2DLayer(heroAtlas, { pivot: [0.5, 0.5] }), main: createSprite2DLayer(heroAtlas, { pivot: [0.5, 1] }) } : null;
+        const playerSprite = playerLayers ? createCharacterSprite(
+          { handle: addSprite2D(playerLayers.main, { positionPx: [-10000, -10000], sizePx: [32, 48], frame: 0 }), offsetPx: [0, 16] },
+          { handle: addSprite2D(playerLayers.shadow, { positionPx: [-10000, -10000], sizePx: [32, 32], frame: heroFrameIndexes.get(heroShadowPath) ?? 0 }), offsetPx: [0, 0] },
+        ) : null;
+        const model = WorldRender.Render({ cells: campaign.floor.cells, entities: campaign.floor.entities, decorations: campaign.floor.decorations, objectSets: campaign.floor.objectSets, player: campaign.player, start: campaign.floor.start, groundTiles: campaign.floor.tiledGrounds, wallTiles: campaign.floor.tiledWalls, view: minimap ? "minimap" : "game", detail: minimap ? "simplified" : "full" });
         const terrainHandles = model.grounds.map(({ worldX, worldY, frame }) => addSprite2D(terrainLayer, { positionPx: frame === null ? [-10000, -10000] : [worldX, worldY], sizePx: [32, 32], frame: frame ?? 0 }));
         const wallHandles = model.walls.map(({ worldX, worldY, frame }) => addSprite2D(wallLayer, { positionPx: frame === null ? [-10000, -10000] : [worldX, worldY], sizePx: [32, 32], frame: frame ?? 0 }));
         const debugHandles = [...model.diagnostics, ...model.wallDiagnostics].map(({ worldX, worldY }) => addSprite2D(debugLayer, { positionPx: [worldX, worldY], sizePx: [32, 32], frame: 0 }));
-        const actors: Record<string, Sprite2DHandle[]> = { rat: [], skeleton: [] };
-        for (const key of Object.keys(actors) as EnemyIdleAnimationName[]) for (let i = 0; i < 40; i++) actors[key].push(addSprite2D(actorLayers[key][i], { positionPx: [-10000,-10000], sizePx: [32, key === "skeleton" ? 48 : 32], frame: 0 }));
+        const chestDebugHandles = Array.from({ length: 4 }, () => addSprite2D(debugLayer, { positionPx: [-10000, -10000], sizePx: [32, 32], frame: 0 }));
+        const actors: Record<EnemyIdleAnimationName, CharacterSprite[]> = { rat: [], skeleton: [] };
+        for (const key of Object.keys(actors) as EnemyIdleAnimationName[]) for (let i = 0; i < 40; i++) {
+          const mainHeight = key === "skeleton" ? 48 : 32;
+          actors[key].push(createCharacterSprite(
+            { handle: addSprite2D(actorLayers[key][i].main, { positionPx: [-10000, -10000], sizePx: [32, mainHeight], frame: 0 }), offsetPx: [0, mainHeight / 2 - 16] },
+            { handle: addSprite2D(actorLayers[key][i].shadow, { positionPx: [-10000, -10000], sizePx: [32, 32], frame: enemyFrameIndexes.get(enemyShadowPaths[key]) ?? 0 }), offsetPx: [0, 0] },
+          ));
+        }
         const items = itemLayers.map((layer, i) => addSprite2D(layer, { positionPx: [-10000,-10000], sizePx: [32,32], frame: i % 9 }));
+        const puzzleObjects = puzzleObjectLayers.map((layer) => addSprite2D(layer, { positionPx: [-10000,-10000], sizePx: [32,32], frame: 0 }));
         const goldCoins = goldCoinLayers.map((layer) => addSprite2D(layer, { positionPx: [-10000,-10000], sizePx: [32,32], frame: 0 }));
         const torches = torchLayers.map((layer) => addSprite2D(layer, { positionPx: [-10000,-10000], sizePx: [32,32], frame: 0 }));
         const traps = trapLayers.map((layer) => addSprite2D(layer, { positionPx: [-10000,-10000], sizePx: [32,32], frame: 0 }));
         const stairs = stairLayers.map((layer) => addSprite2D(layer, { positionPx: [-10000,-10000], sizePx: [32,32], frame: DUNGEON_STAIR_UP_FRAME }));
         const particles = particleLayers.map((layer) => addSprite2D(layer, { positionPx: [-10000,-10000], sizePx: [32,32], frame: 0 }));
-        const viewLayers = [terrainLayer, wallLayer, debugLayer, ...itemLayers, ...goldCoinLayers, ...torchLayers, ...trapLayers, ...stairLayers, ...particleLayers, ...actorLayers.rat, ...actorLayers.skeleton, ...(playerLayer ? [playerLayer] : [])];
+        const viewLayers = [terrainLayer, wallLayer, debugLayer, ...itemLayers, ...puzzleObjectLayers, ...goldCoinLayers, ...torchLayers, ...trapLayers, ...stairLayers, ...particleLayers, ...actorLayers.rat.flatMap((layers) => [layers.shadow, layers.main]), ...actorLayers.skeleton.flatMap((layers) => [layers.shadow, layers.main]), ...(playerLayers ? [playerLayers.shadow, playerLayers.main] : [])];
         // Every world layer uses the same ascending +Y draw rule.  This keeps
         // entities in a layer stable while their shared layer order handles the
         // cross-atlas tie-breaking below.
@@ -313,7 +337,7 @@ export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "ce
           const scale = typeof zoomNow === "number" ? zoomNow : 1;
           const renderWidth = canvas.width || canvas.clientWidth || host.clientWidth || 320;
           const renderHeight = canvas.height || canvas.clientHeight || host.clientHeight || 180;
-          const world = WorldRender.Render({ cells: state.floor.cells, entities: state.floor.entities, decorations: state.floor.decorations, player: state.player, start: state.floor.start, groundTiles: state.floor.tiledGrounds, wallTiles: state.floor.tiledWalls, view: isMinimap ? "minimap" : "game", detail: isMinimap ? "simplified" : "full" });
+          const world = WorldRender.Render({ cells: state.floor.cells, entities: state.floor.entities, decorations: state.floor.decorations, objectSets: state.floor.objectSets, player: state.player, start: state.floor.start, groundTiles: state.floor.tiledGrounds, wallTiles: state.floor.tiledWalls, view: isMinimap ? "minimap" : "game", detail: isMinimap ? "simplified" : "full" });
           const mapWidth = world.width * 32;
           const mapHeight = world.height * 32;
           const mapScale = Math.min(renderWidth / mapWidth, renderHeight / mapHeight) * 0.92;
@@ -340,13 +364,18 @@ export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "ce
           const desiredIdleAnimation = heroWarriorIdleAnimationForHeading(playerHeading);
           if (activeHeroAnimation.getState().animation !== desiredIdleAnimation) activeHeroAnimation.selectAnimation(desiredIdleAnimation);
           const activeHeroFrame = activeHeroAnimation.getState().frame;
-          if (playerSprite) { playerLayer!.order = state.player.y * 100 + PLAYER_RENDER_DEPTH_OFFSET; updateSprite2D(playerSprite, { positionPx: [state.player.x * 32 + 16, state.player.y * 32 + 32], sizePx: [activeHeroFrame.widthPx, activeHeroFrame.heightPx], frame: heroFrameIndexes.get(activeHeroFrame.path) ?? 0, flipX: state.player.heading === "w" }); }
+          const playerPosition = turnPresentation?.playerPositionOf(state.player) ?? state.player;
+          if (playerSprite) updateCharacterSprite(playerSprite, [playerPosition.x * 32 + 16, playerPosition.y * 32 + 16], playerPosition.y * 100 + PLAYER_RENDER_DEPTH_OFFSET, { sizePx: [activeHeroFrame.widthPx, activeHeroFrame.heightPx], frame: heroFrameIndexes.get(activeHeroFrame.path) ?? 0, flipX: state.player.heading === "w" });
           const byKind: Record<string, typeof world.actors> = { rat: world.actors.filter((actor) => actor.kind === "rat"), skeleton: world.actors.filter((actor) => actor.kind === "skeleton") };
-          for (const key of Object.keys(actors) as EnemyIdleAnimationName[]) { const frame = activeEnemyAnimations[key].getState().frame; const footOffset = key === "skeleton" ? 32 : 16; actors[key].forEach((sprite, i) => { const actor = byKind[key][i]; const position = actor && turnPresentation?.positionOf(actor.id, actor); actorLayers[key][i].order = (position?.y ?? -10000) * 100 + 40; updateSprite2D(sprite, { positionPx: position ? [position.x * 32 + 16, position.y * 32 + footOffset] : [-10000,-10000], sizePx: [frame.widthPx, frame.heightPx], frame: enemyFrameIndexes.get(frame.path) ?? 0, flipX: actor?.heading === "w" }); }); }
-          const itemObjects = world.objects.filter((entity) => entity.kind !== "stairs" && entity.kind !== "gold");
+          for (const key of Object.keys(actors) as EnemyIdleAnimationName[]) { const frame = activeEnemyAnimations[key].getState().frame; actors[key].forEach((character, i) => { const actor = byKind[key][i]; const position = actor && turnPresentation?.positionOf(actor.id, actor); if (!position) { hideCharacterSprite(character); return; } updateCharacterSprite(character, [position.x * 32 + 16, position.y * 32 + 16], position.y * 100 + 40, { sizePx: [frame.widthPx, frame.heightPx], frame: enemyFrameIndexes.get(frame.path) ?? 0, flipX: actor?.heading === "w" }); }); }
+          const itemObjects = world.objects.filter((entity) => entity.kind !== "stairs" && entity.kind !== "gold" && entity.kind !== "chest");
+          const chestObjects = world.objects.filter((entity) => entity.kind === "chest");
+          chestDebugHandles.forEach((sprite, i) => { const chest = chestObjects[i]; updateSprite2D(sprite, { positionPx: chest ? [chest.worldX, chest.worldY] : [-10000, -10000], sizePx: [32, 32], frame: 0 }); });
           const goldObjects = world.objects.filter((entity) => entity.kind === "gold");
           const stairObjects = world.objects.filter((entity) => entity.kind === "stairs");
           items.forEach((sprite, i) => { const entity = itemObjects[i]; itemLayers[i].order = (entity?.y ?? -10000) * 100 + 20; updateSprite2D(sprite, { frame: itemSpriteFrame(entity?.kind, entity?.resource), positionPx: entity ? [entity.worldX, entity.worldY] : [-10000,-10000] }); });
+          const overlayObjects = [...chestObjects, ...world.puzzleObjects];
+          puzzleObjects.forEach((sprite, i) => { const entity = overlayObjects[i]; const isChest = entity?.kind === "chest"; const isPuzzleObject = !!entity && "active" in entity; puzzleObjectLayers[i].order = (entity?.y ?? -10000) * 100 + 20; updateSprite2D(sprite, { frame: isChest ? chestSpriteFrame(entity.opened) : isPuzzleObject ? puzzleObjectSpriteFrame(entity.kind, entity.active) : 0, positionPx: entity ? [entity.worldX, entity.worldY + (isChest ? -8 : 0)] : [-10000,-10000], sizePx: [32, isChest ? 48 : 32] }); });
           const goldCoinFrame = Math.floor(performance.now() / 120) % goldCoinFramePaths.length;
           goldCoins.forEach((sprite, i) => { const entity = goldObjects[i]; goldCoinLayers[i].order = (entity?.y ?? -10000) * 100 + 20; updateSprite2D(sprite, { frame: goldCoinFrame, positionPx: entity ? [entity.worldX, entity.worldY] : [-10000,-10000] }); });
           const torchFrame = Math.floor(performance.now() / 200) % torchFramePaths.length;
@@ -372,6 +401,16 @@ export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "ce
             Object.values(activeEnemyAnimations).forEach((animation) => animation.update(Math.max(0, time - lastAnimationTime)));
             lastAnimationTime = time;
             draw();
+            if (acquired.isPrimary && onFpsChangeRef.current) {
+              if (!fpsSampleStartedAt) fpsSampleStartedAt = time;
+              fpsFrameCount++;
+              const elapsedMs = time - fpsSampleStartedAt;
+              if (elapsedMs >= 1000) {
+                onFpsChangeRef.current(Math.round(fpsFrameCount * 1000 / elapsedMs));
+                fpsSampleStartedAt = time;
+                fpsFrameCount = 0;
+              }
+            }
             animationFrameId = requestAnimationFrame(animate);
           };
           animationFrameId = requestAnimationFrame(animate);
@@ -379,13 +418,6 @@ export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "ce
         sceneRef.current = { draw, activate };
         resizeSurface(surface); draw();
         if (acquired.isPrimary && sharedEngineRecord && !sharedEngineRecord.started) { await startEngine(engine); sharedEngineRecord.started = true; }
-        if (acquired.isPrimary && onFpsChangeRef.current) {
-          setGpuTimingEnabled(engine, true);
-          fpsIntervalId = window.setInterval(() => {
-          const frameTimeMs = engine?.gpuFrameTimeMs ?? 0;
-          onFpsChangeRef.current?.(frameTimeMs > 0 ? Math.round(1000 / frameTimeMs) : null);
-          }, 1000);
-        }
         if (cancelled) return;
         const observer = new ResizeObserver(() => { resizeSurface(surface!); draw(); }); observer.observe(host); observers.push(observer);
         window.addEventListener("resize", draw); observers.push({ disconnect: () => window.removeEventListener("resize", draw) });
@@ -404,7 +436,7 @@ export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "ce
     };
     queueMicrotask(() => { if (!cancelled) void setup(); });
     return () => {
-      cancelled = true; cancelAnimationFrame(animationFrameId); window.clearInterval(fpsIntervalId); observers.forEach((observer) => observer.disconnect()); sceneRef.current = null;
+      cancelled = true; cancelAnimationFrame(animationFrameId); observers.forEach((observer) => observer.disconnect()); sceneRef.current = null;
       if (renderer) disposeSpriteRenderer(renderer); atlases.forEach((atlas) => disposeSpriteAtlas(atlas)); if (debugTexture) releaseTexture(debugTexture); heroAnimation?.dispose(); heroAnimation = null; Object.values(enemyAnimations ?? {}).forEach((animation) => animation.dispose()); enemyAnimations = null; acquiredTexturePaths.forEach(releaseSharedTexture); if (surface) releaseSharedSurface(surface);
     };
   }, [minimap]);
@@ -455,10 +487,12 @@ export function BabylonWorld({ campaign, zoom = 1, minimap = false, camera = "ce
     return () => { observer.disconnect(); window.removeEventListener("resize", update); };
   }, [hoveredEnemy, selectedCell, campaign.player.x, campaign.player.y, zoom, camera]);
   const offsets = new Map();
+  const shaderLayers = gameViewShaderSystem.layersFor({ minimap });
+  const chestSprites = null;
   const reticleKind = selectedCellReachable === false ? "invalid" : targetKindAt(selectedCell?.x, selectedCell?.y);
   const finishIrisPhase = (phase: UiIrisPhase) => {
     if (phase === "closing") setIrisPhase("closed");
     if (phase === "opening") { setIrisPhase("open"); if (rendererLoaded) setWorldAlive(true); }
   };
-  return <div className={minimap ? "minimap-view" : "world-view"} ref={hostRef} data-renderer="babylon-lite" data-content-style="2d" onMouseMove={mouseInteraction && worldAlive ? pointerMove : undefined} onMouseLeave={mouseInteraction && worldAlive ? pointerLeave : undefined} onMouseDown={mouseInteraction && worldAlive ? pointerDown : undefined} onMouseUp={mouseInteraction && worldAlive ? pointerUp : undefined} onWheel={mouseInteraction && worldAlive ? (event) => { event.preventDefault(); onZoom?.(event.deltaY < 0 ? 1 : -1); } : undefined} onContextMenu={mouseInteraction && worldAlive ? (event) => event.preventDefault() : undefined}><canvas tabIndex={-1} ref={canvasRef} className={minimap ? "minimap-view__canvas" : "world-view__canvas"} aria-label={minimap ? "Dungeon minimap" : "Pixel-perfect dungeon map"}/>{worldAlive && !minimap && feedbackCenter && floatingFeedback.map((effect) => { const key = `${effect.x},${effect.y}`; const index = offsets.get(key) ?? 0; offsets.set(key, index + 1); const position = getWorldScreenPosition({ x: effect.x, y: effect.y, center: feedbackCenter, viewportWidth: feedbackRect!.width, viewportHeight: feedbackRect!.height, tileCssSize: feedbackCellSize }); const zoomScale = typeof zoom === "number" ? zoom : 1; return <span key={effect.id} className={`world-view__floating-text world-view__floating-text--${effect.color}`} style={{ left: position.left, top: position.top - index * 12 * zoomScale, fontSize: `${14 * zoomScale}px`, "--world-floating-travel": `${11 * zoomScale}px` }} aria-hidden="true">{effect.text}</span>; })}{hoveredEnemy && !minimap && <section ref={tooltipRef} className="world-view__enemy-tooltip" aria-label={`${hoveredEnemy.name} information`} style={{ left: tooltipPosition?.left ?? -10000, top: tooltipPosition?.top ?? -10000, visibility: tooltipPosition ? "visible" : "hidden" }}><div className="world-view__enemy-tooltip-section world-view__enemy-tooltip-section--portrait"><h2>ENEMY: {hoveredEnemy.name} information</h2><img src={hoveredEnemy.name === "Skeleton" ? texturePaths.skeleton : texturePaths.rat} alt="" /></div><div className="world-view__enemy-tooltip-section world-view__enemy-tooltip-section--resource-panel"><h2>RESOURCES</h2><EnemyResourceRows resources={hoveredEnemy.resources} /></div></section>}{mouseInteraction && worldAlive && selectedCell && reticleStyle && <i className={`world-view__grid-reticle world-view__grid-reticle--${reticleKind}`} style={reticleStyle} />}{!minimap && <UiIrisTransition phase={irisPhase} label={message} onPhaseComplete={finishIrisPhase} />}{!minimap && irisPhase === "open" && !rendererLoaded && message && <div role="status" className={minimap ? "minimap-view__message" : "world-view__message"}>{message}</div>}</div>;
+  return <div className={minimap ? "minimap-view" : "world-view"} ref={hostRef} data-renderer="babylon-lite" data-content-style="2d" onMouseMove={mouseInteraction && worldAlive ? pointerMove : undefined} onMouseLeave={mouseInteraction && worldAlive ? pointerLeave : undefined} onMouseDown={mouseInteraction && worldAlive ? pointerDown : undefined} onMouseUp={mouseInteraction && worldAlive ? pointerUp : undefined} onWheel={mouseInteraction && worldAlive ? (event) => { event.preventDefault(); onZoom?.(event.deltaY < 0 ? 1 : -1); } : undefined} onContextMenu={mouseInteraction && worldAlive ? (event) => event.preventDefault() : undefined}><canvas tabIndex={-1} ref={canvasRef} className={minimap ? "minimap-view__canvas" : "world-view__canvas"} aria-label={minimap ? "Dungeon minimap" : "Pixel-perfect dungeon map"}/>{shaderLayers.map((layer) => <i key={layer.id} className="world-view__shader-layer" style={{ backgroundColor: layer.color, opacity: layer.opacity, mixBlendMode: layer.blendMode }} aria-hidden="true" />)}{chestSprites}{worldAlive && !minimap && feedbackCenter && floatingFeedback.map((effect) => { const key = `${effect.x},${effect.y}`; const index = offsets.get(key) ?? 0; offsets.set(key, index + 1); const position = getWorldScreenPosition({ x: effect.x, y: effect.y, center: feedbackCenter, viewportWidth: feedbackRect!.width, viewportHeight: feedbackRect!.height, tileCssSize: feedbackCellSize }); const zoomScale = typeof zoom === "number" ? zoom : 1; return <span key={effect.id} className={`world-view__floating-text world-view__floating-text--${effect.color}`} style={{ left: position.left, top: position.top - index * 12 * zoomScale, fontSize: `${14 * zoomScale}px`, "--world-floating-travel": `${11 * zoomScale}px` }} aria-hidden="true">{effect.text}</span>; })}{hoveredEnemy && !minimap && <section ref={tooltipRef} className="world-view__enemy-tooltip" aria-label={`${hoveredEnemy.name} information`} style={{ left: tooltipPosition?.left ?? -10000, top: tooltipPosition?.top ?? -10000, visibility: tooltipPosition ? "visible" : "hidden" }}><div className="world-view__enemy-tooltip-section world-view__enemy-tooltip-section--portrait"><h2>ENEMY: {hoveredEnemy.name} information</h2><img src={hoveredEnemy.name === "Skeleton" ? texturePaths.skeleton : texturePaths.rat} alt="" /></div><div className="world-view__enemy-tooltip-section world-view__enemy-tooltip-section--resource-panel"><h2>RESOURCES</h2><EnemyResourceRows resources={hoveredEnemy.resources} /></div></section>}{mouseInteraction && worldAlive && selectedCell && reticleStyle && <i className={`world-view__grid-reticle world-view__grid-reticle--${reticleKind}`} style={reticleStyle} />}{!minimap && <UiIrisTransition phase={irisPhase} label={message} onPhaseComplete={finishIrisPhase} />}{!minimap && irisPhase === "open" && !rendererLoaded && message && <div role="status" className={minimap ? "minimap-view__message" : "world-view__message"}>{message}</div>}</div>;
 }

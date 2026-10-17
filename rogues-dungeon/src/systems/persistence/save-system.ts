@@ -17,7 +17,7 @@ const PREFIX = "rogues-dungeon.slot.";
 const BACKUP_PREFIX = "rogues-dungeon.slot.v1-backup.";
 const PREFERENCE_KEY = "rogues-dungeon.preferences.v1";
 export const SLOT_IDS = Object.freeze(["1", "2", "3"]);
-export const DEFAULT_PREFERENCES: Readonly<Preferences> = Object.freeze({ zoom: 1, camera: "center", fullscreenDesired: false, sfxVolume: 80, musicVolume: 20, muteAll: false });
+export const DEFAULT_PREFERENCES: Readonly<Preferences> = Object.freeze({ zoom: 1, camera: "center", fullscreenDesired: false, sfxVolume: 80, musicVolume: 5, muteAll: false });
 const DEFAULT_ABILITIES: readonly (AbilityId | null)[] = Object.freeze(["heal", "wand", null]);
 
 function normalizeAbilityBindings(value: { player?: { abilities?: (AbilityId | null)[] } }) {

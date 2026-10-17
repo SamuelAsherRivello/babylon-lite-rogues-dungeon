@@ -22,5 +22,5 @@
 
 ## 4. Integration verification
 
-- [ ] 4.1 Run one focused Playwright check with a deterministic map-fix URL and verify visible Grounds, rendered corridor Walls, sparse background, and the Map Fix controls.
+- [x] 4.1 Run one focused Playwright check with a deterministic map-fix URL and verify visible Grounds, rendered corridor Walls, sparse background, and the Map Fix controls.
 - [x] 4.2 Run the applicable focused Node tests and production build, then run the full applicable suite during finalization and record any pre-existing browser or tooltip failures separately.

@@ -51,7 +51,10 @@ test('mounts the dungeon and minimap in Babylon Lite from the same world compone
   assert.match(source, /resizeSurface\(surface\)/);
   assert.match(source, /disposeSurface\(surface\)/);
   assert.match(source, /minimap = false/);
-  assert.match(source, /centerSprite2DView\(layer\.view, centerX, centerY/);
+  assert.match(source, /centerSprite2DView\(layer\.view, cameraTransform\.positionPx\[0\], cameraTransform\.positionPx\[1\]/);
+  assert.match(source, /playerPositionOf\(state\.player\)/);
+  assert.match(source, /player: playerPosition, previousCenter/);
+  assert.match(source, /positionOf\(actor\.id, actor\)/);
   assert.match(source, /disposeSpriteRenderer\(renderer\)/);
   assert.match(source, /createDynamicTexture\(engine, 32, 32/);
   assert.match(source, /updateDynamicTexture\(engine, debugTexture/);

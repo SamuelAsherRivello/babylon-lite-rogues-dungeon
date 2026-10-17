@@ -43,7 +43,7 @@ test('uses a command desk and removes template corner units', async () => {
   const [game, controlsArea, app, css, settingsWindow, mobileControls, titleBar, informationPanels] = await Promise.all(['src/game/game.tsx', 'src/ui/ControlsArea.tsx', 'src/ui/App.tsx', 'src/ui/style.css', 'src/game/windows/settings-window.tsx', 'src/game/controls/mobile-controls.tsx', 'src/game/panels/title-bar.tsx', 'src/game/panels/information-panels.tsx'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
   assert.match(informationPanels, /PrimaryInfoPanel/); assert.match(informationPanels, /SecondaryInfoPanel/); assert.match(game, /Choose Your Descent/); assert.match(game, /Dev Settings/);
   assert.match(titleBar, /className="title-bar__left"/); assert.match(titleBar, /className="title-bar__right"/); assert.match(titleBar, /className="title-bar__identity"/); assert.match(titleBar, /className="title-bar__progress"/); assert.match(titleBar, /World: \{campaign\.world === "One" \? 1 : campaign\.world\}/);
-  assert.match(titleBar, /aria-label="Time">⏱️<\/span>/); assert.match(titleBar, /data-ui-counter-icon="gold" role="img" aria-label="Gold">🪙<\/span><span className="title-bar__counter-value">\{counters\.gold\}/); assert.match(titleBar, /data-ui-counter-icon="key" role="img" aria-label="Keys">🔑<\/span><span className="title-bar__counter-value">\{String\(counters\.keys\)/);
+  assert.match(titleBar, /aria-label="Time">⏱️<\/span>/); assert.match(titleBar, /data-ui-counter-icon="gold" role="img" aria-label="Gold"><img className="title-bar__icon-image" src=\{`\$\{itemArtBase\}animated\/frames\/gold-coin\/00\.png`\} alt="" \/><\/span><span className="title-bar__counter-value">\{counters\.gold\}/); assert.match(titleBar, /data-ui-counter-icon="key" role="img" aria-label="Keys"><img className="title-bar__icon-image" src=\{`\$\{itemArtBase\}static\/golden-key\.png`\} alt="" \/><\/span><span className="title-bar__counter-value">\{String\(counters\.keys\)/);
   assert.doesNotMatch(titleBar, /titlebar_icon_group/); assert.doesNotMatch(css, /titlebar_icon_group/);
   assert.match(titleBar, /className="title-bar__identity">Rogue's Dungeon<\/span>/);
   assert.doesNotMatch(titleBar, /Dungeon Roguelite/);
@@ -74,6 +74,11 @@ test('hands pickups from the rendered Babylon projection into their destination 
   assert.match(game, /data-ui-pickup-fallback/);
   assert.match(css, /z-index:10000/);
 });
+test('centers a new screen-mode page on the player', async () => {
+  const renderer = await readFile(new URL('../src/systems/rendering/babylon-render-system.tsx', import.meta.url), 'utf8');
+  assert.match(renderer, /const resetKey = \[state\.floor\.seed, mapWidth, mapHeight, cameraNow, zoomNow\]\.join\(":"\)/);
+  assert.match(renderer, /previousCenter = cameraCenterRef\.current\?\.key === resetKey \? cameraCenterRef\.current : playerPosition/);
+});
 test('returns to the saved-game menu when a player death event is committed', async () => {
   const game = await readFile(new URL('../src/game/game.tsx', import.meta.url), 'utf8');
   assert.match(game, /event\.type === "player\.died"/); assert.match(game, /returnToMainMenu\(\); return;/);
@@ -82,7 +87,7 @@ test('returns to the saved-game menu when a player death event is committed', as
 test('uses randomSeed to seed only a newly selected save slot', async () => {
   const game = await readFile(new URL('../src/game/game.tsx', import.meta.url), 'utf8');
   assert.match(game, /parseGameUrlOptions\(window\.location\.search\)/);
-  assert.match(game, /existing \?\? createCampaign\(randomSeed \?\? undefined, urlOptions\.level, urlOptions\.level, \{ level1TestMode: urlOptions\.level1TestMode \}\)/);
+  assert.match(game, /const initial = urlOptions\.level1TestMode \? freshTestCampaign : existing \?\? freshTestCampaign/);
   assert.match(game, /New Game · Seed \$\{randomSeed\}/);
 });
 test('supports deterministic direct-slot map-fix URLs', async () => {
@@ -171,11 +176,19 @@ test('fills unused inventory capacity with empty plus slots', async () => {
 test('uses permanent in-game scrollbars for the log and inventory', async () => {
   const css = await readFile(new URL('../src/ui/style.css', import.meta.url), 'utf8');
   assert.match(css, /\.log_scroll,\.inventory_scroll \{ position:relative; height:100%; min-height:0;[^}]*overflow:visible/);
-  assert.match(css, /\.scroll-area__viewport \{[^}]*overflow-x:hidden; overflow-y:scroll/);
-  assert.match(css, /\.scroll-area__track \{ position:absolute; top:0; right:-5px; bottom:0; width:4px;/);
-  assert.match(css, /\.info-panel--primary \.inventory_scroll \.scroll-area__track,\.info-panel__log-card \.log_scroll \.scroll-area__track \{ top:1\.1rem; \}/);
+  assert.match(css, /\.scroll-area__viewport \{[^}]*border:1px solid #f28bbd;[^}]*overflow-x:hidden; overflow-y:scroll/);
+  assert.match(css, /\.info-panel--primary \.inventory_scroll,\.info-panel__log-card \.log_scroll \{ height:calc\(100% - 4px\); margin-top:0; \}/);
+  assert.match(css, /\.scroll-area__track \{ position:absolute; top:0; right:-2px; bottom:0; width:4px;/);
   assert.match(css, /\.scroll-area__thumb \{ width:4px; min-height:12px;[^}]*background:#e4b85e;/);
   assert.match(css, /\.slot_scroll \{ height:100%; min-height:0;[^}]*overflow-y:scroll/);
+});
+test('composites the permanent green shader over the game view only', async () => {
+  const [renderer, shader, css] = await Promise.all(['src/systems/rendering/babylon-render-system.tsx', 'src/systems/rendering/game-view-shader-system.ts', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
+  assert.match(shader, /id: "green-tint", color: "rgb\(54 220 112\)", opacity: 0\.1, blendMode: "screen"/);
+  assert.match(shader, /return minimap \? \[\] : this\.permanentLayers/);
+  assert.match(renderer, /gameViewShaderSystem\.layersFor\(\{ minimap \}\)/);
+  assert.match(renderer, /className="world-view__shader-layer"/);
+  assert.match(css, /\.world-view__shader-layer \{ position:absolute; z-index:1; inset:0;[^}]*pointer-events:none/);
 });
 test('renders transient item drag feedback without intercepting drops', async () => {
   const [game, dragPreview, css] = await Promise.all(['src/game/game.tsx', 'src/game/controls/item-drag-preview.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));

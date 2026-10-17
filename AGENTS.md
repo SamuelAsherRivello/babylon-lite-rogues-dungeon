@@ -82,6 +82,9 @@ AI agents can access and test the local browser experience through Microsoft
 Edge. Use the Playwright CLI with the Edge browser explicitly for browser
 verification.
 
+For Rogue's Dungeon, use the project-specific three-context verification flow
+in `rogues-dungeon/AGENTS.md`.
+
 - Do not leave dead code or dead styles. Remove unused React components,
   imports, variables, CSS selectors, and custom properties when they are no
   longer used.

@@ -28,6 +28,12 @@ export type Entity = Enemy
   | (Position & { id: string; kind: "discovery"; name?: string })
   | (Position & { id: string; kind: "chest"; opened?: boolean })
   | (Position & { id: string; kind: "item"; item: Item });
+export type ObjectSetRegionRole = "optional-reward" | "exit";
+export interface FloorTriggerDoorBarrelSet {
+  id: string; kind: "floor-trigger-door-barrel"; barrel: Position; trigger: Position; door: Position;
+  regionRole: ObjectSetRegionRole;
+}
+export type ObjectSet = FloorTriggerDoorBarrelSet;
 export interface WorldDecoration extends Position { id: string; kind: "torch" | "trap"; wallMounted: boolean }
 export interface Floor {
   seed: number; width: number; height: number; cells: TerrainCell[][]; map?: number[][];
@@ -36,6 +42,7 @@ export interface Floor {
   generation?: { seed: number; generator: string | null; passes?: { id: string; diagnostics: number }[] };
   tiledGrounds?: number[]; tiledWalls?: number[];
   decorations?: WorldDecoration[];
+  objectSets?: ObjectSet[];
 }
 export type QuestItemId = "walk-through-stairs" | "collect-health-potion" | "collect-coin";
 export interface QuestItem { id: QuestItemId; title: string; complete: boolean }

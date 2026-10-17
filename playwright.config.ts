@@ -18,7 +18,7 @@ export default defineConfig({
     screenshot: "only-on-failure",
     video: "retain-on-failure",
   },
-  projects: [{ name: "edge", use: { ...devices["Desktop Edge"], launchOptions: { channel: "msedge", args: ["--enable-unsafe-webgpu", "--use-angle=swiftshader"] } } }],
+  projects: [{ name: "edge", use: { ...devices["Desktop Edge"], launchOptions: { channel: "msedge" } } }],
   webServer: {
     command: `npm run dev -- --host ${host} --port ${port}`,
     url: baseURL,

@@ -6,11 +6,11 @@ Manage collected items, compatible equipment groups, and live drag previews so o
 ## Requirements
 
 ### Requirement: Collect ordinary items into Inventory
-Ordinary item pickups SHALL enter Inventory immediately without auto-equipping, prompting, or suspending gameplay. Inventory-held items SHALL have no effect on the player. Resource potion pickups SHALL follow resource-meter collection rules instead.
+Ordinary item pickups SHALL enter Inventory without auto-equipping, prompting, or suspending gameplay. Inventory-held items SHALL have no effect on the player. The accepted collection's visible Inventory credit SHALL appear after its world-to-UI transfer completes. Resource potion pickups SHALL follow resource-meter collection rules.
 
 #### Scenario: Collect a sword
 - **WHEN** the player walks onto a sword with Inventory capacity available
-- **THEN** it leaves the world and appears in Inventory, with no equipment or attribute change and no dialog
+- **THEN** it leaves the world, transfers to its planned Inventory row, and appears there after the transfer without an equipment or attribute change or dialog
 
 ### Requirement: Display bounded alphabetical Inventory
 Inventory SHALL show full-width horizontal item entries without groups, ordered alphabetically by item name. Its bordered card title SHALL show current/max carry with at least two-digit counts, such as `Inventory 07/10`. Inventory SHALL always show a vertical scroll track. Capacity SHALL count Inventory entries; equipped items SHALL be outside that count.

@@ -3,6 +3,8 @@ import type { Campaign, Preferences } from "../types.ts";
 import { gameZoomPresets } from "../../content/world/zoom.ts";
 import { Tooltip } from "../../ui/Tooltip.tsx";
 
+const itemArtBase = `${import.meta.env.BASE_URL}assets/art/vendors/dungeons-and-pixels-v1.4/items/`;
+
 const cameraHelp = {
   center: "Center: Keeps the player centered.",
   deadzone: "Deadzone: Follows near view edges.",
@@ -32,8 +34,8 @@ export function TitleBar({ campaign, visibleCounters, preferences, setPreference
       </span>
       <span className="title-bar__counters">
         <Tooltip content="Time advances 1 per tick."><span className="title-bar__counter"><span className="title-bar__icon title-bar__icon--time" role="img" aria-label="Time">⏱️</span><span className="title-bar__counter-value">{String(campaign.floor.time).padStart(2, "0")}</span></span></Tooltip>
-        <Tooltip content="Gold pays for goods."><span className="title-bar__counter" data-ui-counter="gold"><span className="title-bar__icon title-bar__icon--gold" data-ui-counter-icon="gold" role="img" aria-label="Gold">🪙</span><span className="title-bar__counter-value">{counters.gold}</span></span></Tooltip>
-        <Tooltip content="Keys open doors."><span className="title-bar__counter" data-ui-counter="key"><span className="title-bar__icon title-bar__icon--keys" data-ui-counter-icon="key" role="img" aria-label="Keys">🔑</span><span className="title-bar__counter-value">{String(counters.keys).padStart(2, "0")}</span></span></Tooltip>
+        <Tooltip content="Gold pays for goods."><span className="title-bar__counter" data-ui-counter="gold"><span className="title-bar__icon title-bar__icon--gold" data-ui-counter-icon="gold" role="img" aria-label="Gold"><img className="title-bar__icon-image" src={`${itemArtBase}animated/frames/gold-coin/00.png`} alt="" /></span><span className="title-bar__counter-value">{counters.gold}</span></span></Tooltip>
+        <Tooltip content="Keys open doors."><span className="title-bar__counter" data-ui-counter="key"><span className="title-bar__icon title-bar__icon--keys" data-ui-counter-icon="key" role="img" aria-label="Keys"><img className="title-bar__icon-image" src={`${itemArtBase}static/golden-key.png`} alt="" /></span><span className="title-bar__counter-value">{String(counters.keys).padStart(2, "0")}</span></span></Tooltip>
       </span>
     </div>
     <div className="title-bar__right">

@@ -17,10 +17,10 @@ test('query mute prevents audio creation and stays authoritative over preference
   assert.equal(fake.made.length, 0);
 });
 
-test('prewarming loads the complete catalog before ordinary playback begins', async () => {
+test('prewarming loads the complete catalog while ordinary playback stays available', async () => {
   const fake = recorder(); const audio = createAudioManager({ createAudio: fake.createAudio, random: () => 0 });
   audio.setPreferences({ sfxVolume: 35, musicVolume: 24, muteAll: false });
-  assert.equal(audio.playCue('accepted'), false);
+  assert.equal(audio.playCue('accepted'), true);
   const firstWarmup = audio.prewarm();
   assert.equal(audio.isPrewarmed(), false);
   assert.equal(audio.prewarm(), firstWarmup);
@@ -36,6 +36,13 @@ test('prewarming loads the complete catalog before ordinary playback begins', as
   assert.equal(audio.playCue('accepted'), false);
   audio.setPreferences({ sfxVolume: 80, musicVolume: 20, muteAll: true });
   assert.equal(music.volume, 0); assert.equal(audio.playCue('accepted'), false); assert.equal(audio.isMuted(), true);
+});
+
+test('music begins from the activating gesture before preloading completes', () => {
+  const fake = recorder(); const audio = createAudioManager({ createAudio: fake.createAudio, random: () => 0 });
+  assert.equal(audio.isPrewarmed(), false);
+  assert.equal(audio.startMusic(), true);
+  assert.equal(fake.made[0].playCount, 1);
 });
 
 test('committed simulation events map to one cue and rejected events stay quiet', async () => {
@@ -69,7 +76,6 @@ test('equipment drop feedback distinguishes accepted and rejected drops', async 
 
 test('footsteps are rate-limited and bundled audio assets exist', async () => {
   const fake = recorder(); const audio = createAudioManager({ createAudio: fake.createAudio });
-  assert.equal(audio.playCue('footstep', 900), false);
   await audio.prewarm();
   assert.equal(audio.playCue('footstep', 1000), true); assert.equal(fake.made.find(({ src }) => src === AUDIO_ASSETS.sfx.footstep)?.volume, 0.2); assert.equal(audio.playCue('footstep', 1100), false); assert.equal(audio.playCue('footstep', 1140), true);
   audio.playCue('key'); assert.equal(fake.made.find(({ src }) => src === AUDIO_ASSETS.sfx.key)?.volume, 0.4);

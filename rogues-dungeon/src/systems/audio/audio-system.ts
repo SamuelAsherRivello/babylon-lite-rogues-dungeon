@@ -76,7 +76,7 @@ function warmAudio(audio: AudioHandle) {
 
 export function createAudioManager({ search = "", createAudio = (src) => new Audio(src), random = Math.random }: { search?: string; createAudio?: (src: string) => AudioHandle; random?: () => number } = {}) {
   const hardMuted = muteFromSearch(search);
-  let preferences = { sfxVolume: 80, musicVolume: 20, muteAll: false };
+  let preferences = { sfxVolume: 80, musicVolume: 5, muteAll: false };
   let musicAudio: AudioHandle | null = null;
   const prewarmedMusic: AudioHandle[] = [];
   const prewarmedSfx = new Map<keyof typeof AUDIO_ASSETS.sfx, AudioHandle[]>();
@@ -89,7 +89,7 @@ export function createAudioManager({ search = "", createAudio = (src) => new Aud
   const setPreferences = (value: Partial<Pick<Preferences, "sfxVolume" | "musicVolume" | "muteAll">> = {}) => {
     preferences = {
       sfxVolume: readVolume(value.sfxVolume, 80),
-      musicVolume: readVolume(value.musicVolume, 20),
+      musicVolume: readVolume(value.musicVolume, 5),
       muteAll: value.muteAll === true,
     };
     if (musicAudio) musicAudio.volume = busMuted("music") ? 0 : preferences.musicVolume / 100;
@@ -110,7 +110,11 @@ export function createAudioManager({ search = "", createAudio = (src) => new Aud
 
   const playCue = (cue: keyof typeof AUDIO_ASSETS.sfx, now = Date.now()) => {
     const src = AUDIO_ASSETS.sfx[cue];
-    if (!src || !warmupComplete || busMuted("sfx")) return false;
+    if (!src || busMuted("sfx")) return false;
+    // Calling play() while an element is still loading is supported by browsers and
+    // preserves the user-gesture authorization that unlocked audio. Waiting for
+    // canplay here loses that authorization on slower connections.
+    prewarm();
     if (cue === "footstep") {
       if (now - lastFootstepAt < 140) return false;
       lastFootstepAt = now;
@@ -137,7 +141,11 @@ export function createAudioManager({ search = "", createAudio = (src) => new Aud
   };
 
   const startMusic = () => {
-    if (!warmupComplete || busMuted("music")) return false;
+    if (busMuted("music")) return false;
+    // Create and begin the selected track during the input event. Its pending
+    // play request will resolve once it has buffered instead of being rejected by
+    // autoplay policy after asynchronous preloading completes.
+    prewarm();
     if (musicAudio) return true;
     const tracks = AUDIO_ASSETS.music;
     const index = Math.min(tracks.length - 1, Math.max(0, Math.floor(random() * tracks.length)));
