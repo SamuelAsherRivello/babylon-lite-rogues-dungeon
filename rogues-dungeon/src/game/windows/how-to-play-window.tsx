@@ -16,5 +16,25 @@ const topics = [
 export function HowToPlayWindow({ onClose, origin, bounds }: { onClose(): void; origin: "menu" | "game"; bounds?: DialogBounds | null }) {
   const [selectedTopic, setSelectedTopic] = useState(0);
   const [title, content] = topics[selectedTopic];
-  return <Dialog title="How To Play" onClose={onClose} className={`how-to-play-window how-to-play-window--${origin}`} bounds={bounds} menuMotion><label className="how-to-play-window__topics">Topic<select tabIndex={-1} value={selectedTopic} onChange={(event) => setSelectedTopic(Number(event.target.value))}>{topics.map(([topic], index) => <option key={topic} value={index}>{index + 1}. {topic}</option>)}</select></label><section id="how-to-play-topic" className="how-to-play-window__topic" aria-label={title}><h3>{title}</h3>{content.split("\n\n").map((paragraph) => <p key={paragraph}>{paragraph}</p>)}</section></Dialog>;
+  return <Dialog
+    title="How To Play"
+    onClose={onClose}
+    className={`how-to-play-window how-to-play-window--${origin}`}
+    bounds={bounds}
+    menuMotion
+    footer={<>
+      <button type="button" onClick={() => setSelectedTopic((topic) => topic - 1)} disabled={selectedTopic === 0}>Previous</button>
+      <button type="button" onClick={() => setSelectedTopic((topic) => topic + 1)} disabled={selectedTopic === topics.length - 1}>Next</button>
+    </>}
+  >
+    <label className="how-to-play-window__topics">Topic
+      <select tabIndex={-1} value={selectedTopic} onChange={(event) => setSelectedTopic(Number(event.target.value))}>
+        {topics.map(([topic], index) => <option key={topic} value={index}>{index + 1}. {topic}</option>)}
+      </select>
+    </label>
+    <section id="how-to-play-topic" className="how-to-play-window__topic" aria-label={title}>
+      <h3>{title}</h3>
+      {content.split("\n\n").map((paragraph) => <p className="body_text" key={paragraph}>{paragraph}</p>)}
+    </section>
+  </Dialog>;
 }

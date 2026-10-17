@@ -16,6 +16,7 @@ test("renders a muted Skeleton Archer shot and its east-side received-damage fee
   await page.getByRole("button", { name: /Saved Game 1/ }).click();
   await expect(page.locator(".game-screen")).toBeVisible();
   await expect(page.locator("canvas").first()).toBeVisible();
+  await expect(page.locator(".dev_settings output")).not.toHaveText("FPS: --");
   await page.keyboard.press("ArrowLeft");
   await page.keyboard.press("ArrowRight");
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("rogues-dungeon.slot.1")!).player.resources.health.current)).toBeLessThan(30);

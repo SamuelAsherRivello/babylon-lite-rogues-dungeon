@@ -24,5 +24,5 @@
 ## 4. Integration verification
 
 - [x] 4.1 Run `npm run typecheck` and the focused Node test files changed by progression, persistence, and presentation work; verify both commands pass.
-- [ ] 4.2 Run one muted Playwright flow in Microsoft Edge that creates a character, gains a level, observes the Status and Attributes callout, allocates points, and reloads; verify the campaign resumes without console errors.
+- [x] 4.2 Run one muted Playwright flow in Microsoft Edge that creates a character, gains a level, observes the Status and Attributes callout, allocates points, and reloads; verify the campaign resumes without console errors.
 - [ ] 4.3 During finalization, run the full applicable Rogue's Dungeon browser verification in Playwright, desktop Edge, and the built-in browser on `?mute=1`; verify the game view is playable, a canvas is present, WebGPU fallback messaging is absent, and console errors are absent.

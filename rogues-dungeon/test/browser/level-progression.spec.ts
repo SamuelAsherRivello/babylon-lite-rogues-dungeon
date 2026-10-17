@@ -16,6 +16,8 @@ test("creates only confirmed characters and resumes the saved campaign", async (
   await page.goto("/babylon-lite-rogues-dungeon/?mute=1");
   await page.getByRole("button", { name: /Saved Game 1/ }).click();
   const dialog = page.getByRole("dialog", { name: "Create Character" });
+  await expect(dialog).toHaveClass(/create-character-window--menu/);
+  await expect(dialog.locator(".create-character-window__attributes .attribute_item b")).toHaveText(Array.from({ length: 10 }, () => "0"));
   await expect(dialog.getByRole("button", { name: "Confirm" })).toBeDisabled();
   await dialog.getByRole("button", { name: "Close dialog" }).click();
   await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), slotKey)).toBeNull();

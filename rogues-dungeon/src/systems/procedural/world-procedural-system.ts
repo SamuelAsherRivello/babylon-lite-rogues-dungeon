@@ -552,8 +552,8 @@ export function generateFloor(level: number, seed = seedNow(), difficulty = leve
   return normalizeObjectSets(ensureSemanticCells(floor));
 }
 
-export function effectiveAttributes(campaign: Campaign, equipment: Equipment = campaign.player.equipment): Attributes {
-  const base = campaign.progression.attributes; const seen = new Set<string>(); const mods = Object.values(equipment).flat().filter((item): item is Item => item !== null && !seen.has(item.id) && (seen.add(item.id), true)).reduce<Partial<Attributes>>((all, item) => {
+export function effectiveAttributesFor(base: Attributes, equipment: Equipment): Attributes {
+  const seen = new Set<string>(); const mods = Object.values(equipment).flat().filter((item): item is Item => item !== null && !seen.has(item.id) && (seen.add(item.id), true)).reduce<Partial<Attributes>>((all, item) => {
     for (const [key, value] of Object.entries(item.modifiers ?? {}) as [AttributeName, number][]) all[key] = (all[key] ?? 0) + value;
     return all;
   }, {});
@@ -566,6 +566,14 @@ export function effectiveAttributes(campaign: Campaign, equipment: Equipment = c
     mana: Math.max(0, Number(base.mana ?? GAME_TUNING.startingMana) * 5 + Number(mods.mana ?? 0)),
     vitality, strength, luck: statRank(base, "luck"), recovery: statRank(base, "recovery"), stealth: statRank(base, "stealth"),
   };
+}
+
+export function effectiveAttributes(campaign: Campaign, equipment: Equipment = campaign.player.equipment): Attributes {
+  return effectiveAttributesFor(campaign.progression.attributes, equipment);
+}
+
+export function startingEffectiveAttributes(attributes: Attributes): Attributes {
+  return effectiveAttributesFor(attributes, { weapons: [itemInstance(itemCatalog[7], "starter-stick"), null], armor: [null, null] });
 }
 
 export function resourceState(campaign: Campaign) {

@@ -116,7 +116,7 @@ test('removes fitted gutters while the browser surface is fullscreen', async () 
 });
 test('uses a command desk and removes template corner units', async () => {
   const [game, controlsArea, app, css, settingsWindow, mobileControls, titleBar, informationPanels] = await Promise.all(['src/game/game.tsx', 'src/ui/ControlsArea.tsx', 'src/ui/App.tsx', 'src/ui/style.css', 'src/game/windows/settings-window.tsx', 'src/game/controls/mobile-controls.tsx', 'src/game/panels/title-bar.tsx', 'src/game/panels/information-panels.tsx'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
-  assert.match(informationPanels, /PrimaryInfoPanel/); assert.match(informationPanels, /SecondaryInfoPanel/); assert.match(game, /Choose Your Descent/); assert.match(game, /Dev Settings/);
+  assert.match(informationPanels, /PrimaryInfoPanel/); assert.match(informationPanels, /SecondaryInfoPanel/); assert.match(game, /Start Game/); assert.match(game, /Dev Settings/);
   assert.match(titleBar, /className="title-bar__left"/); assert.match(titleBar, /className="title-bar__right"/); assert.match(titleBar, /className="title-bar__identity"/); assert.match(titleBar, /className="title-bar__progress"/); assert.match(titleBar, /World: \{campaign\.world === "One" \? 1 : campaign\.world\}/);
   assert.match(titleBar, /aria-label="Time">⏱️<\/span>/); assert.match(titleBar, /data-ui-counter-icon="gold" role="img" aria-label="Gold"><img className="title-bar__icon-image" src=\{`\$\{itemArtBase\}animated\/frames\/gold-coin\/00\.png`\} alt="" \/><\/span><span className="title-bar__counter-value">\{counters\.gold\}/); assert.match(titleBar, /data-ui-counter-icon="key" role="img" aria-label="Keys"><img className="title-bar__icon-image" src=\{`\$\{itemArtBase\}static\/golden-key\.png`\} alt="" \/><\/span><span className="title-bar__counter-value">\{String\(counters\.keys\)/);
   assert.doesNotMatch(titleBar, /titlebar_icon_group/); assert.doesNotMatch(css, /titlebar_icon_group/);
@@ -163,7 +163,7 @@ test('returns to the saved-game menu when a player death event is committed', as
 
 test('saves a running game before returning to the main menu', async () => {
   const [game, settingsWindow] = await Promise.all(['../src/game/game.tsx', '../src/game/windows/settings-window.tsx'].map((path) => readFile(new URL(path, import.meta.url), 'utf8')));
-  assert.match(settingsWindow, /Save &amp; Quit to Main Menu/);
+  assert.match(settingsWindow, /Save &amp; Exit/);
   assert.match(game, /const saveAndQuit = useCallback/);
   assert.match(game, /writeSlot\(localStorage, slot, campaign\);[\s\S]*setSummaries\(readSlotSummary\(localStorage\)\);[\s\S]*returnToMainMenu\(\);/);
   assert.match(game, /onSaveAndQuit=\{saveAndQuit\}/);
@@ -308,18 +308,18 @@ test('dims keyboard inputs while their ability or quick slot is being dragged', 
 });
 
 test('renders the Stealth stat and progression dialog from game-rule state', async () => {
-  const [game, progressionWindow] = await Promise.all(['../src/game/game.tsx', '../src/game/windows/progression-window.tsx'].map((path) => readFile(new URL(path, import.meta.url), 'utf8')));
-  assert.match(game, /\["vitality", "strength", "luck", "recovery", "stealth"\]/);
+  const [game, attributePanel, progressionWindow] = await Promise.all(['../src/game/game.tsx', '../src/game/panels/attribute-panel.tsx', '../src/game/windows/progression-window.tsx'].map((path) => readFile(new URL(path, import.meta.url), 'utf8')));
+  assert.match(attributePanel, /progressionStatNames\.slice\(5\)/);
   assert.match(progressionWindow, /export function ProgressionWindow/);
   assert.match(game, /spend-attribute-points/);
   assert.match(progressionWindow, /Attribute Points/);
 });
 
 test('uses delta values to pulse only when an attribute turns red or green', async () => {
-  const [game, css] = await Promise.all(['src/game/game.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
-  assert.match(game, /export function DeltaValue/);
-  assert.match(game, /if \(toneChanged && tone\) setPulseVersion/);
-  assert.match(game, /<DeltaValue value=\{value\} tone=\{tone\}/);
+  const [attributePanel, css] = await Promise.all(['src/game/panels/attribute-panel.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
+  assert.match(attributePanel, /export function DeltaValue/);
+  assert.match(attributePanel, /if \(toneChanged && tone\) setPulseVersion/);
+  assert.match(attributePanel, /<DeltaValue value=\{value\} tone=\{tone\}/);
   assert.match(css, /\.delta_value_number \{ color:#e8dec4; \}/);
   assert.match(css, /\.delta_value_green \{ color:#76c878; \}/);
   assert.match(css, /\.delta_value_red \{ color:#df6161; \}/);
@@ -331,9 +331,10 @@ test('adds a nested How To Play reference dialog to Settings', async () => {
   const [game, settingsWindow, helpWindow, dialog, css] = await Promise.all(['src/game/game.tsx', 'src/game/windows/settings-window.tsx', 'src/game/windows/how-to-play-window.tsx', 'src/ui/Dialog.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
   for (const topic of ['The Basics', 'Movement', 'Combat', 'Exploration', 'Quests', 'Items', 'Leveling Up', 'Saving Your Game', 'Tips']) assert.match(helpWindow, new RegExp(`\\["${topic}"`));
   assert.match(helpWindow, /title="How To Play"/); assert.match(helpWindow, /<select/); assert.match(helpWindow, /\{index \+ 1\}\. \{topic\}/); assert.match(helpWindow, /Left-click to walk or attack\. Right-click to run or attack\./);
+  assert.match(helpWindow, /setSelectedTopic\(\(topic\) => topic - 1\)/); assert.match(helpWindow, /setSelectedTopic\(\(topic\) => topic \+ 1\)/); assert.match(helpWindow, /disabled=\{selectedTopic === 0\}/); assert.match(helpWindow, /disabled=\{selectedTopic === topics\.length - 1\}/);
   assert.match(settingsWindow, /How To Play/); assert.match(settingsWindow, /onOpenHowToPlay/); assert.match(settingsWindow, /dismissible=\{!helpOpen\}/);
   assert.match(settingsWindow, /bounds=\{bounds\}/); assert.match(settingsWindow, /onOpenHowToPlay\(dialogBounds\(event\.currentTarget\.closest\("\.settings-window"\)!\)\)/); assert.match(helpWindow, /bounds=\{bounds\}/);
   assert.match(game, /const \[howToPlay, setHowToPlay\] = useState\(false\)/); assert.match(game, /<HowToPlayWindow origin="menu"/); assert.match(game, /<HowToPlayWindow origin="game"/);
   assert.match(dialog, /dismissible = true/); assert.match(dialog, /export interface DialogBounds/); assert.match(dialog, /function dialogBounds\(element: Element\)/); assert.match(dialog, /width: bounds\.width, height: bounds\.height/); assert.match(dialog, /if \(!dismissible\) return undefined/); assert.match(dialog, /onClick=\{dismissible \? requestClose : undefined\}/);
-  assert.match(css, /\.dialog_backdrop:has\(\.how-to-play-window\) \{ z-index:4; \}/); assert.match(css, /\.dialog--bounded \{ box-sizing:border-box; max-width:none; max-height:none; \}/); assert.match(css, /\.how-to-play-window__topics select \{ width:100%;/);
+  assert.match(css, /\.dialog_backdrop:has\(\.how-to-play-window\) \{ z-index:4; \}/); assert.match(css, /\.dialog--bounded \{ box-sizing:border-box; max-width:none; max-height:none; \}/); assert.match(css, /\.how-to-play-window__topics select \{ width:100%;/); assert.match(css, /\.how-to-play-window \.dialog_footer \{ justify-content:space-between; gap:\.5rem; \}/);
 });

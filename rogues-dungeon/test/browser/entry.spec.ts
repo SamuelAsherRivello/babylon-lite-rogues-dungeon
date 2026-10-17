@@ -7,7 +7,7 @@ test("@smoke opens the muted saved-game entry screen", async ({ page }) => {
 
   await expect(page).toHaveURL(/\/babylon-lite-rogues-dungeon\/\?mute=1$/);
   await expect(page.getByRole("heading", { name: "Rogue's Dungeon" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Choose Your Descent" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Start Game" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Saved Game [1-3]/ })).toHaveCount(3);
 });
 
@@ -27,9 +27,9 @@ test("@smoke clears local storage from the main menu", async ({ page }) => {
     localStorage.setItem("rogues-dungeon.preferences.v1", "preferences");
   });
   await page.reload();
-  page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Clear Local Storage" }).click();
-  await expect(page.getByRole("heading", { name: "Choose Your Descent" })).toBeVisible();
+  await page.getByRole("button", { name: "Confirm" }).click();
+  await expect(page.getByRole("heading", { name: "Start Game" })).toBeVisible();
   await expect.poll(() => page.evaluate(() => ({ slot: localStorage.getItem("rogues-dungeon.slot.1"), preferences: localStorage.getItem("rogues-dungeon.preferences.v1") }))).toEqual({ slot: null, preferences: null });
 });
 

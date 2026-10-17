@@ -42,9 +42,10 @@ test("translates a fitted viewport tooltip from viewport coordinates to page coo
 });
 
 test("wires UI tooltips to pointer and keyboard focus with accessible descriptions", async () => {
-  const [tooltip, game, titleBar, gameCard] = await Promise.all([
+  const [tooltip, game, attributePanel, titleBar, gameCard] = await Promise.all([
     readFile(new URL("../src/ui/Tooltip.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/game/game.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/game/panels/attribute-panel.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/game/panels/title-bar.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/game/cards/game-card.tsx", import.meta.url), "utf8"),
   ]);
@@ -60,9 +61,9 @@ test("wires UI tooltips to pointer and keyboard focus with accessible descriptio
   assert.match(game, /<Tooltip key=\{name\} content=\{`\$\{prefix\} \$\{resourceHelp\[name\]\}`\}/);
   assert.match(game, /className="resource_tooltip_trigger"/);
   assert.match(gameCard, /className="game-card__title-trigger"/);
-  assert.match(game, /className="attribute_tooltip_trigger"/);
+  assert.match(attributePanel, /className="attribute_tooltip_trigger"/);
   assert.match(gameCard, /const cardHelp[^=]*=/);
-  assert.match(game, /const attributeHelp[^=]*=/);
+  assert.match(attributePanel, /export const attributeHelp[^=]*=/);
   assert.match(game, /function abilityHelp\(ability: [^)]+\)/);
   assert.match(game, /function equipmentSlotHelp\(item: [^)]+\)/);
   assert.match(game, /tooltip=\{abilityHelp\(ability\)\}/);

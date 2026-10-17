@@ -41,7 +41,7 @@ export function Dialog({ title, onClose, children, footer = null, className = ""
       <section className={`dialog${bounds ? " dialog--bounded" : ""}${center ? " dialog--centered" : ""} ${className}`.trim()} style={{ ...positionedStyle, ...(menuMotion ? motion : {}) }} role="dialog" aria-modal="true" aria-labelledby={titleId} onClick={(event) => event.stopPropagation()}>
         <header className="dialog_header">
           <h2 id={titleId}>{title}</h2>
-          <button tabIndex={-1} className="dialog_close" type="button" onClick={requestClose} aria-label="Close dialog">×</button>
+          {dismissible && <button tabIndex={-1} className="dialog_close" type="button" onClick={requestClose} aria-label="Close dialog">×</button>}
         </header>
         <div className="dialog_body">{children}</div>
         {footer && <footer className="dialog_footer">{footer}</footer>}

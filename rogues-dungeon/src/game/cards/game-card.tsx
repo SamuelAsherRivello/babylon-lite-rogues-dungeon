@@ -4,8 +4,8 @@ import { Tooltip } from "../../ui/Tooltip.tsx";
 
 export type PanelPopup = {
   title: string;
-  body: string;
-  actionLabel: string;
+  body?: string;
+  actionLabel?: string;
   onAction?(): void;
 };
 
@@ -36,6 +36,6 @@ export function GameCard({ title, children, className = "", showTab = false, tab
   return <section className={`game-card ${className}`}>
     {showTab && onTabClick && <div className="game-card__tab-placement" style={{ top: tabOffsetY }}><TabControl ariaLabel={tabAriaLabel} expanded={tabExpanded} onClick={onTabClick} /></div>}
     <div aria-hidden={contentHidden || undefined}><h2><Tooltip content={cardHelp[key] ?? title}><button tabIndex={-1} type="button" className="game-card__title-trigger">{title}</button></Tooltip></h2>{children}</div>
-    {panelPopup && <section className="panel-popup" aria-labelledby={`${key.toLowerCase().replaceAll(" ", "-")}-panel-popup-title`}><div className="panel-popup__content"><h3 id={`${key.toLowerCase().replaceAll(" ", "-")}-panel-popup-title`}>{panelPopup.title}</h3><p>{panelPopup.body}</p><button type="button" onClick={panelPopup.onAction}>{panelPopup.actionLabel}</button></div></section>}
+    {panelPopup && <section className="panel-popup" aria-labelledby={`${key.toLowerCase().replaceAll(" ", "-")}-panel-popup-title`}><div className="panel-popup__content"><h3 id={`${key.toLowerCase().replaceAll(" ", "-")}-panel-popup-title`}>{panelPopup.title}</h3>{panelPopup.body && <p>{panelPopup.body}</p>}{panelPopup.actionLabel && <button type="button" onClick={panelPopup.onAction}>{panelPopup.actionLabel}</button>}</div></section>}
   </section>;
 }
