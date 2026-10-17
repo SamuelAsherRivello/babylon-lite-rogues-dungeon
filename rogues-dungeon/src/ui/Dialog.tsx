@@ -4,9 +4,14 @@ import { easeInCubic, easeOutCubic } from "../systems/animation/tween-animation-
 import { useUiMotion } from "./ui-transition-system.tsx";
 
 export interface DialogBounds { left: number; top: number; width: number; height: number }
-export function dialogBounds(element: Element): DialogBounds { const { left, top, width, height } = element.getBoundingClientRect(); return { left, top, width, height }; }
+export interface DialogCenter { left: number; top: number }
+export function dialogBounds(element: Element): DialogBounds {
+  const { left, top, width, height } = element.getBoundingClientRect();
+  const viewport = document.getElementById("viewport")?.getBoundingClientRect();
+  return { left: left - (viewport?.left ?? 0), top: top - (viewport?.top ?? 0), width, height };
+}
 
-export function Dialog({ title, onClose, children, footer = null, className = "", bounds, menuMotion = false, dismissible = true }: { title: ReactNode; onClose(): void; children?: ReactNode; footer?: ReactNode; className?: string; bounds?: DialogBounds | null; menuMotion?: boolean; dismissible?: boolean }) {
+export function Dialog({ title, onClose, children, footer = null, className = "", bounds, center, menuMotion = false, dismissible = true }: { title: ReactNode; onClose(): void; children?: ReactNode; footer?: ReactNode; className?: string; bounds?: DialogBounds | null; center?: DialogCenter | null; menuMotion?: boolean; dismissible?: boolean }) {
   const closeRef = useRef(onClose);
   const titleId = useId();
   const [visible, setVisible] = useState(!menuMotion);
@@ -30,10 +35,10 @@ export function Dialog({ title, onClose, children, footer = null, className = ""
     document.addEventListener("keydown", keydown);
     return () => { document.removeEventListener("keydown", keydown); };
   }, [dismissible, menuMotion, visible]);
-  const boundedStyle = bounds ? { left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height } : undefined;
+  const positionedStyle = bounds ? { left: bounds.left, top: bounds.top, width: bounds.width, height: bounds.height } : center ? { left: center.left, top: center.top } : undefined;
   return (
     <div className={`dialog_backdrop${bounds ? " dialog_backdrop--bounded" : ""}${dismissible ? "" : " dialog_backdrop--dismiss-disabled"}`} role="presentation" onClick={dismissible ? requestClose : undefined}>
-      <section className={`dialog${bounds ? " dialog--bounded" : ""} ${className}`.trim()} style={{ ...boundedStyle, ...(menuMotion ? motion : {}) }} role="dialog" aria-modal="true" aria-labelledby={titleId} onClick={(event) => event.stopPropagation()}>
+      <section className={`dialog${bounds ? " dialog--bounded" : ""}${center ? " dialog--centered" : ""} ${className}`.trim()} style={{ ...positionedStyle, ...(menuMotion ? motion : {}) }} role="dialog" aria-modal="true" aria-labelledby={titleId} onClick={(event) => event.stopPropagation()}>
         <header className="dialog_header">
           <h2 id={titleId}>{title}</h2>
           <button tabIndex={-1} className="dialog_close" type="button" onClick={requestClose} aria-label="Close dialog">×</button>

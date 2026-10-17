@@ -12,7 +12,7 @@ import { findCardinalPath } from '../src/game/a-star.ts';
 import { ENEMY_PATH_MAX_NODES, planEnemyActions } from '../src/game/enemy-ai-system.ts';
 import { getMouseMovementFromSelectedCell, getMousePathFromSelectedCell } from '../src/game/mouse-selection.ts';
 import { describeInventoryDrop, previewInventoryDrop, resolveInventoryDrop } from '../src/game/inventory-drag.ts';
-import { getCameraCenter, getWorldCellAtScreenPosition, getWorldCellScreenCenter, getWorldScreenPosition, WorldRender } from '../src/systems/rendering/world-render-system.ts';
+import { getCameraCenter, getMouseScreenEdgeExit, getWorldCellAtScreenPosition, getWorldCellScreenCenter, getWorldScreenPosition, WorldRender } from '../src/systems/rendering/world-render-system.ts';
 import { findWorldTooltipPosition } from '../src/content/world/tooltip-placement.ts';
 import { gameZoomPresets, getTileCssSize } from '../src/content/world/zoom.ts';
 import { clearRoguesDungeonStorage, formatSavedAgo, migrateCampaign, readPreferences, readSlot, readSlotSummary, readWorldSeed, writePreferences, writeSlot } from '../src/systems/persistence/save-system.ts';
@@ -957,6 +957,19 @@ test('attacks charge once, award attack and kill XP, and carry threshold overflo
   assert.equal(result.events.filter((event) => event.type === 'resource.changed' && event.facts.resource === 'stamina').length, 1);
 });
 
+test('progression caps levels and attributes without consuming time for point spending', () => {
+  const campaign = createCampaign(369); campaign.progression.level = 98; campaign.progression.xp = 99;
+  const target = { x: campaign.player.x + 1, y: campaign.player.y }; campaign.floor.map![target.y][target.x] = 0;
+  campaign.floor.entities = [legacyEnemy({ id: 'cap-rat', kind: 'enemy', name: 'Rat', x: target.x, y: target.y, hp: 1, damage: 0, xp: 10 })];
+  const gained = applyAction(campaign, { type: 'move', direction: 'e' });
+  assert.equal(gained.state.progression.level, 99); assert.equal(gained.state.progression.attributePoints, 3);
+  const beforeTime = gained.state.floor.time; gained.state.progression.attributes.health = 98;
+  const capped = applyAction(gained.state, { type: 'spend-attribute-points', allocation: { health: 2 } });
+  assert.equal(capped.accepted, false); assert.equal(capped.state.progression.attributes.health, 98); assert.equal(capped.state.floor.time, beforeTime);
+  const spent = applyAction(gained.state, { type: 'spend-attribute-points', allocation: { health: 1 } });
+  assert.equal(spent.accepted, true); assert.equal(spent.state.progression.attributes.health, 99); assert.equal(spent.state.floor.time, beforeTime);
+});
+
 test('persistent ranks deterministically improve resources, loot, recovery, and awareness', () => {
   const campaign = createCampaign(370); campaign.floor.entities = [];
   Object.assign(campaign.progression.attributes, { vitality: 2, strength: 1, luck: 2, recovery: 2, stealth: 2 });
@@ -1008,6 +1021,21 @@ test('a crate takes two bumps to break, then releases three coins', () => {
   const steppedThrough = applyAction(opened.state, { type: 'move', direction: 'e' });
   assert.equal(steppedThrough.accepted, true);
   assert.deepEqual({ x: steppedThrough.state.player.x, y: steppedThrough.state.player.y }, cratePosition);
+});
+
+test('XP awards are one-time and never come from waiting or ordinary movement', () => {
+  const campaign = createCampaign(373); campaign.floor.entities = []; campaign.floor.objectSets = [];
+  const x = campaign.player.x + 1; const y = campaign.player.y;
+  for (let row = y - 1; row <= y + 1; row++) for (let column = campaign.player.x; column <= x + 1; column++) campaign.floor.map![row][column] = 0;
+  const waiting = applyAction(campaign, { type: 'wait' });
+  assert.equal(waiting.state.progression.xp, 0);
+  const moving = applyAction(waiting.state, { type: 'move', direction: 'e' });
+  assert.equal(moving.state.progression.xp, 0);
+  moving.state.player.x--; moving.state.floor.entities = [{ id: 'one-chest', kind: 'chest', x, y, opened: false }];
+  const opened = applyAction(moving.state, { type: 'move', direction: 'e' });
+  assert.equal(opened.state.progression.xp, GAME_TUNING.xpPerContainer);
+  const reopened = applyAction(opened.state, { type: 'move', direction: 'e' });
+  assert.equal(reopened.state.progression.xp, GAME_TUNING.xpPerContainer);
 });
 
 test('Attribute Points remain available during tactical actions and spend without another turn', () => {
@@ -1244,6 +1272,10 @@ test('WorldRender shares exact terrain and entity coordinates while camera polic
   assert.deepEqual(getCameraCenter({ mode: 'center', player: { x: 10.5, y: 10 }, visibleWidth: 20, visibleHeight: 10 }), { x: 10.5, y: 10 });
   assert.deepEqual(getCameraCenter({ mode: 'deadzone', player: { x: 14.5, y: 10 }, previousCenter: player, visibleWidth: 20, visibleHeight: 10 }), { x: 11.5, y: 10 });
   assert.deepEqual(getCameraCenter({ mode: 'screen', player: { x: 20.5, y: 10 }, visibleWidth: 10, visibleHeight: 8 }), { x: 20.5, y: 10 });
+  assert.equal(getMouseScreenEdgeExit({ mode: 'screen', player: { x: 24, y: 10 }, target: { x: 24, y: 10 }, direction: 'e', previousCenter: screen, visibleWidth: 10, visibleHeight: 8 }), 'e');
+  assert.equal(getMouseScreenEdgeExit({ mode: 'screen', player: { x: 24, y: 10 }, target: { x: 24, y: 10 }, direction: 'w', previousCenter: screen, visibleWidth: 10, visibleHeight: 8 }), null);
+  assert.equal(getMouseScreenEdgeExit({ mode: 'screen', player: { x: 24, y: 10 }, target: { x: 23, y: 10 }, direction: 'e', previousCenter: screen, visibleWidth: 10, visibleHeight: 8 }), null);
+  assert.equal(getMouseScreenEdgeExit({ mode: 'screen', player: { x: 99, y: 10 }, target: { x: 99, y: 10 }, direction: 'e', previousCenter: { x: 89.5, y: 10 }, visibleWidth: 20, visibleHeight: 10, mapWidth: 100, mapHeight: 100 }), null);
   assert.deepEqual({ x: campaign.player.x, y: campaign.player.y }, game.markers.player); // Camera framing never mutates map coordinates.
   assert.ok(game.terrain.length < campaign.floor.map!.length * campaign.floor.map![0].length, 'deep blocked interiors are omitted from sparse terrain');
   assert.ok(game.terrain.every((tile) => campaign.floor.map![tile.y][tile.x] === 0), 'terrain entries are walkable cells only');

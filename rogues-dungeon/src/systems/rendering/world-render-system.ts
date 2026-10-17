@@ -1,4 +1,4 @@
-import type { Entity, FloorTriggerDoorBarrelSet, MassBearingPosition, Position, TerrainCell, WorldDecoration } from "../../game/types.ts";
+import type { Direction, Entity, FloorTriggerDoorBarrelSet, MassBearingPosition, Position, TerrainCell, WorldDecoration } from "../../game/types.ts";
 type RenderGrid = number[][] | TerrainCell[][];
 interface WangEntry extends Position { mask: number; worldX: number; worldY: number; frame: number | null; floorFrame?: number | null }
 interface WangModel { tileSize: number; terrain: WangEntry[]; walls: WangEntry[]; diagnostics: Omit<WangEntry, "frame">[]; wallDiagnostics: Omit<WangEntry, "frame">[] }
@@ -119,6 +119,14 @@ export function getCameraCenter({ mode = "center", player, previousCenter = play
     center = { x: player.x < previousCenter.x - halfX ? player.x + halfX : player.x > previousCenter.x + halfX ? player.x - halfX : previousCenter.x, y: player.y < previousCenter.y - halfY ? player.y + halfY : player.y > previousCenter.y + halfY ? player.y - halfY : previousCenter.y };
   } else center = { x: player.x, y: player.y };
   return { x: clampCameraAxis(center.x, visibleWidth, mapWidth), y: clampCameraAxis(center.y, visibleHeight, mapHeight) };
+}
+
+/** Return the mouse-only step that crosses a Screen-mode page boundary. */
+export function getMouseScreenEdgeExit({ mode, player, target, direction, previousCenter, visibleWidth, visibleHeight, mapWidth, mapHeight }: { mode?: string; player: Position; target: Position | null; direction: Direction | null; previousCenter: Position; visibleWidth: number; visibleHeight: number; mapWidth?: number; mapHeight?: number }) {
+  if (mode !== "screen" || !target || !direction || player.x !== target.x || player.y !== target.y) return null;
+  const [dx, dy] = direction === "e" ? [1, 0] : direction === "w" ? [-1, 0] : direction === "s" ? [0, 1] : [0, -1];
+  const nextCenter = getCameraCenter({ mode, player: { x: player.x + dx, y: player.y + dy }, previousCenter, visibleWidth, visibleHeight, mapWidth, mapHeight });
+  return nextCenter.x !== previousCenter.x || nextCenter.y !== previousCenter.y ? direction : null;
 }
 
 /** Project a world-cell coordinate into viewport CSS pixels using the active camera and zoom. */

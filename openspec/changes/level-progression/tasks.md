@@ -2,10 +2,10 @@
 
 ## 1. Progression rules and persisted data
 
-- [ ] 1.1 Replace forced upgrade-option state with capped level, ten attributes, and unspent Attribute Points in the campaign types and pure world rules; verify focused Node tests cover level 99, attribute 99, excess XP, three points per level, deferred spending, and no extra time tick.
-- [ ] 1.2 Add bounded 30-point character-sheet rolling with an injectable random source, and create campaigns only from confirmed sheets; verify unit tests prove each roll totals 30 with every attribute from 1 through 5.
-- [ ] 1.3 Add configured, one-time XP awards for successful hits, defeats, discoveries, first chest/crate opens, and first floor arrival; verify focused Node tests reject XP from waiting, movement, repeat opens, and revisits.
-- [ ] 1.4 Update death reset and save migration for the new progression version, preserving committed progression and valid resource fullness while removing obsolete forced-option state; verify migration and death-reset tests pass.
+- [x] 1.1 Replace forced upgrade-option state with capped level, ten attributes, and unspent Attribute Points in the campaign types and pure world rules; verify focused Node tests cover level 99, attribute 99, excess XP, three points per level, deferred spending, and no extra time tick.
+- [x] 1.2 Add bounded 30-point character-sheet rolling with an injectable random source, and create campaigns only from confirmed sheets; verify unit tests prove each roll totals 30 with every attribute from 1 through 5.
+- [x] 1.3 Add configured, one-time XP awards for successful hits, defeats, discoveries, first chest/crate opens, and first floor arrival; verify focused Node tests reject XP from waiting, movement, repeat opens, and revisits.
+- [x] 1.4 Update death reset and save migration for the new progression version, preserving committed progression and valid resource fullness while removing obsolete forced-option state; verify migration and death-reset tests pass.
 
 ## 2. Character creation and Progression UI
 

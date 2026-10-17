@@ -19,8 +19,8 @@ test("auto scroll starts at the bottom, pauses, resumes, and supports opt-out", 
     };
     window.renderScrollAreas();
   });
-  const following = page.getByTestId("following");
-  const normal = page.getByTestId("normal");
+  const following = page.getByTestId("following").locator(".scroll-area__viewport");
+  const normal = page.getByTestId("normal").locator(".scroll-area__viewport");
   const bottomGap = () => following.evaluate((element) => element.scrollHeight - element.clientHeight - element.scrollTop);
   await expect.poll(bottomGap).toBeLessThanOrEqual(1);
   await expect.poll(() => normal.evaluate((element) => element.scrollTop)).toBe(0);

@@ -302,11 +302,11 @@ test('uses delta values to pulse only when an attribute turns red or green', asy
 
 test('adds a nested How To Play reference dialog to Settings', async () => {
   const [game, settingsWindow, helpWindow, dialog, css] = await Promise.all(['src/game/game.tsx', 'src/game/windows/settings-window.tsx', 'src/game/windows/how-to-play-window.tsx', 'src/ui/Dialog.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
-  for (const topic of ['Basics', 'Combat', 'Exploration', 'Items and gear', 'Abilities and stamina', 'Progression', 'Saving and controls']) assert.match(helpWindow, new RegExp(`\\["${topic}"`));
-  assert.match(helpWindow, /title="How To Play"/); assert.match(helpWindow, /role="tablist"/); assert.match(helpWindow, /aria-selected=\{selectedTopic === index\}/);
+  for (const topic of ['The Basics', 'Movement', 'Combat', 'Exploration', 'Quests', 'Items', 'Leveling Up', 'Saving Your Game']) assert.match(helpWindow, new RegExp(`\\["${topic}"`));
+  assert.match(helpWindow, /title="How To Play"/); assert.match(helpWindow, /<select/); assert.match(helpWindow, /\{index \+ 1\}\. \{topic\}/); assert.match(helpWindow, /Left-click to walk or attack\. Right-click to run or attack\./);
   assert.match(settingsWindow, /How To Play/); assert.match(settingsWindow, /onOpenHowToPlay/); assert.match(settingsWindow, /dismissible=\{!helpOpen\}/);
   assert.match(settingsWindow, /bounds=\{bounds\}/); assert.match(settingsWindow, /onOpenHowToPlay\(dialogBounds\(event\.currentTarget\.closest\("\.settings-window"\)!\)\)/); assert.match(helpWindow, /bounds=\{bounds\}/);
   assert.match(game, /const \[howToPlay, setHowToPlay\] = useState\(false\)/); assert.match(game, /<HowToPlayWindow origin="menu"/); assert.match(game, /<HowToPlayWindow origin="game"/);
   assert.match(dialog, /dismissible = true/); assert.match(dialog, /export interface DialogBounds/); assert.match(dialog, /function dialogBounds\(element: Element\)/); assert.match(dialog, /width: bounds\.width, height: bounds\.height/); assert.match(dialog, /if \(!dismissible\) return undefined/); assert.match(dialog, /onClick=\{dismissible \? requestClose : undefined\}/);
-  assert.match(css, /\.dialog_backdrop:has\(\.how-to-play-window\) \{ z-index:4; \}/); assert.match(css, /\.dialog--bounded \{ box-sizing:border-box; max-width:none; max-height:none; \}/); assert.match(css, /\.how-to-play-window__topics \{ display:flex; flex-wrap:wrap;/);
+  assert.match(css, /\.dialog_backdrop:has\(\.how-to-play-window\) \{ z-index:4; \}/); assert.match(css, /\.dialog--bounded \{ box-sizing:border-box; max-width:none; max-height:none; \}/); assert.match(css, /\.how-to-play-window__topics select \{ width:100%;/);
 });
