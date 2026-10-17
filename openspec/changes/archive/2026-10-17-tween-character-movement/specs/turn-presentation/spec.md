@@ -44,3 +44,9 @@ The game SHALL accept later actions while character movement is active. When a l
 #### Scenario: Rejected action during character travel
 - **WHEN** a player action is rejected while character movement is active
 - **THEN** the active movement continues unchanged
+
+## REMOVED Requirements
+
+### Requirement: Catch up presentation before a later action
+**Reason**: Accepted later actions now retarget active character travel from its displayed position instead of flushing it.
+**Migration**: Use the retargeted presentation behavior for later accepted actions.

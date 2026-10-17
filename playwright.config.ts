@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const host = "127.0.0.1";
-const port = 4173;
+const port = 6500;
 const basePath = "/babylon-lite-rogues-dungeon/";
 const baseURL = `http://${host}:${port}${basePath}`;
 
@@ -20,7 +20,7 @@ export default defineConfig({
   },
   projects: [{ name: "edge", use: { ...devices["Desktop Edge"], launchOptions: { channel: "msedge" } } }],
   webServer: {
-    command: `npm run dev -- --host ${host} --port ${port}`,
+    command: `npm run dev -- --host ${host} --port ${port} --strictPort`,
     url: baseURL,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

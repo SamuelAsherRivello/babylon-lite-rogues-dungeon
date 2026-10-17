@@ -33,6 +33,17 @@ test('keeps the developer aspect override behind the development build flag', as
   assert.match(css, /\.game-screen\[data-orientation="portrait"\]/);
   assert.doesNotMatch(css, /@media\s*\(max-aspect-ratio|@container\s*\(max-aspect-ratio/);
 });
+test('loads Libron locally as the global game font', async () => {
+  const [app, css, license] = await Promise.all([
+    readFile(new URL('../src/ui/App.tsx', import.meta.url), 'utf8'),
+    readFile(new URL('../src/ui/style.css', import.meta.url), 'utf8'),
+    readFile(new URL('../public/assets/fonts/libron/OFL.txt', import.meta.url), 'utf8'),
+  ]);
+  assert.doesNotMatch(app, /useLibron|toggleFont|data-game-font/);
+  assert.match(css, /@font-face \{ font-family:"Libron"/);
+  assert.match(css, /#browser_surface,#browser_surface \* \{ font-family:"Libron",serif !important; \}/);
+  assert.match(license, /SIL OPEN FONT LICENSE/);
+});
 test('removes fitted gutters while the browser surface is fullscreen', async () => {
   const surface = await readFile(new URL('../src/ui/BrowserSurface.tsx', import.meta.url), 'utf8');
   assert.match(surface, /fullscreen \? \{ x: 0, y: 0, width: size\.width, height: size\.height \}/);
@@ -176,19 +187,27 @@ test('fills unused inventory capacity with empty plus slots', async () => {
 test('uses permanent in-game scrollbars for the log and inventory', async () => {
   const css = await readFile(new URL('../src/ui/style.css', import.meta.url), 'utf8');
   assert.match(css, /\.log_scroll,\.inventory_scroll \{ position:relative; height:100%; min-height:0;[^}]*overflow:visible/);
-  assert.match(css, /\.scroll-area__viewport \{[^}]*border:1px solid #f28bbd;[^}]*overflow-x:hidden; overflow-y:scroll/);
+  assert.doesNotMatch(css, /\.scroll-area__viewport \{[^}]*border:/);
   assert.match(css, /\.info-panel--primary \.inventory_scroll,\.info-panel__log-card \.log_scroll \{ height:calc\(100% - 4px\); margin-top:0; \}/);
   assert.match(css, /\.scroll-area__track \{ position:absolute; top:0; right:-2px; bottom:0; width:4px;/);
   assert.match(css, /\.scroll-area__thumb \{ width:4px; min-height:12px;[^}]*background:#e4b85e;/);
   assert.match(css, /\.slot_scroll \{ height:100%; min-height:0;[^}]*overflow-y:scroll/);
 });
-test('composites the permanent green shader over the game view only', async () => {
-  const [renderer, shader, css] = await Promise.all(['src/systems/rendering/babylon-render-system.tsx', 'src/systems/rendering/game-view-shader-system.ts', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
-  assert.match(shader, /id: "green-tint", color: "rgb\(54 220 112\)", opacity: 0\.1, blendMode: "screen"/);
-  assert.match(shader, /return minimap \? \[\] : this\.permanentLayers/);
-  assert.match(renderer, /gameViewShaderSystem\.layersFor\(\{ minimap \}\)/);
-  assert.match(renderer, /className="world-view__shader-layer"/);
-  assert.match(css, /\.world-view__shader-layer \{ position:absolute; z-index:1; inset:0;[^}]*pointer-events:none/);
+test('removes the permanent green tint from the game view', async () => {
+  const [renderer, css] = await Promise.all(['src/systems/rendering/babylon-render-system.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
+  assert.doesNotMatch(renderer, /gameViewShaderSystem|green-tint|world-view__shader-layer/);
+  assert.doesNotMatch(css, /world-view__shader-layer|rgb\(54 220 112\)/);
+});
+test('renders one transient resource pulse over the game view only', async () => {
+  const [game, renderer, css] = await Promise.all(['src/game/game.tsx', 'src/systems/rendering/babylon-render-system.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));
+  assert.match(game, /resourceChangeEffects=\{resourceChangeEffects\}/);
+  assert.match(renderer, /!minimap && resourceChangeEffects\.map/);
+  assert.match(renderer, /world-view__resource-change-effect--\$\{effect\.color\}/);
+  assert.match(css, /\.world-view__resource-change-effect \{ position:absolute; z-index:1; inset:1rem;[^}]*pointer-events:none;[^}]*animation:world-view-resource-change 350ms/);
+  assert.match(css, /world-view__resource-change-effect--health-loss[^}]*#ff625f/);
+  assert.match(css, /world-view__resource-change-effect--health-gain[^}]*#67e879/);
+  assert.match(css, /world-view__resource-change-effect--mana[^}]*#b88cff/);
+  assert.match(css, /@keyframes world-view-resource-change \{ to \{ transform:scale\(1\.12\); opacity:0; \} \}/);
 });
 test('renders transient item drag feedback without intercepting drops', async () => {
   const [game, dragPreview, css] = await Promise.all(['src/game/game.tsx', 'src/game/controls/item-drag-preview.tsx', 'src/ui/style.css'].map((path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8')));

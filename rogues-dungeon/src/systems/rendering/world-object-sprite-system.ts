@@ -1,13 +1,12 @@
 export const DUNGEON_STAIR_UP_FRAME = 42;
-export const OBJECTS_OVERLAY_CHEST_CLOSED_FRAME = 0;
-export const OBJECTS_OVERLAY_CHEST_OPEN_FRAME = 1;
 export const OBJECTS_OVERLAY_BARREL_FRAME = 0;
-export const OBJECTS_OVERLAY_TRIGGER_INACTIVE_FRAME = 1;
-export const OBJECTS_OVERLAY_TRIGGER_ACTIVE_FRAME = 12;
-export const OBJECTS_OVERLAY_DOOR_CLOSED_FRAME = 10;
-export const OBJECTS_OVERLAY_DOOR_OPEN_FRAME = 11;
+// The authored door images are visually opposite their source-file names.
+export const OBJECTS_OVERLAY_DOOR_OPEN_FRAME = 0;
+export const OBJECTS_OVERLAY_DOOR_CLOSED_FRAME = 1;
+export const OBJECTS_OVERLAY_CRATE_CLOSED_FRAME = 57;
+export const PROPS_STATIC_CRATE_OPEN_FRAMES = Object.freeze([1, 5] as const);
 
-type ItemKind = "item" | "potion" | "key" | "gold" | "chest" | "discovery" | "enemy" | "stairs" | undefined;
+type ItemKind = "item" | "potion" | "key" | "gold" | "chest" | "crate" | "discovery" | "enemy" | "stairs" | undefined;
 
 /** Returns the items-static atlas frame for ordinary world objects. */
 export function itemSpriteFrame(kind: ItemKind, resource?: "health" | "mana" | null) {
@@ -18,12 +17,7 @@ export function itemSpriteFrame(kind: ItemKind, resource?: "health" | "mana" | n
   return 8;
 }
 
-/** Returns the top-row Objects Overlay frame for a chest's persistent state. */
-export function chestSpriteFrame(opened: boolean | undefined) {
-  return opened ? OBJECTS_OVERLAY_CHEST_OPEN_FRAME : OBJECTS_OVERLAY_CHEST_CLOSED_FRAME;
-}
-export function puzzleObjectSpriteFrame(kind: "barrel" | "trigger" | "door", active: boolean) {
+export function puzzleObjectSpriteFrame(kind: "barrel" | "door", active: boolean) {
   if (kind === "barrel") return OBJECTS_OVERLAY_BARREL_FRAME;
-  if (kind === "trigger") return active ? OBJECTS_OVERLAY_TRIGGER_ACTIVE_FRAME : OBJECTS_OVERLAY_TRIGGER_INACTIVE_FRAME;
   return active ? OBJECTS_OVERLAY_DOOR_OPEN_FRAME : OBJECTS_OVERLAY_DOOR_CLOSED_FRAME;
 }

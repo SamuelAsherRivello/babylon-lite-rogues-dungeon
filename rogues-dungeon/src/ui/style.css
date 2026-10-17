@@ -102,8 +102,8 @@ body {
 .title-bar__icon { display:grid; place-items:center; flex:0 0 1.25rem; width:1.25rem; height:1.25rem; margin:0; padding:0; box-sizing:border-box; font-size:1em; line-height:1; }
 .title-bar__icon-image { display:block; width:100%; height:100%; object-fit:contain; image-rendering:pixelated; }
 .title-bar__icon--time { transform:translateY(-.03rem) scale(.88); }
-.title-bar__icon--gold { transform:translateY(.01rem) scale(.9); }
-.title-bar__icon--keys { transform:translateY(-.03rem) scale(.78); }
+.title-bar__icon--gold { transform:translateY(.01rem) scale(1.2); }
+.title-bar__icon--keys { transform:translateY(-.03rem) scale(.72); }
 .title-bar__icon--zoom { transform:translate(.05rem,-.1rem) scale(1.24); }
 .title-bar__icon--camera { transform:translateY(.01rem) scale(1.2); }
 .title-bar__icon--fullscreen { transform:translateY(0) scale(1.06); }
@@ -146,7 +146,7 @@ body {
 .log_scroll p { font-size:.43rem; }
 .info-panel__log-card > div,.info-panel--primary .game-card:last-child > div { height:100%; min-height:0; }
 .log_scroll,.inventory_scroll { position:relative; height:100%; min-height:0; box-sizing:border-box; overflow:visible; }
-.scroll-area__viewport { width:100%; height:100%; min-height:0; box-sizing:border-box; padding-right:6px; border:1px solid #f28bbd; overflow-x:hidden; overflow-y:scroll; scrollbar-width:none; }.scroll-area__viewport::-webkit-scrollbar { display:none; }
+.scroll-area__viewport { width:100%; height:100%; min-height:0; box-sizing:border-box; padding-right:6px; overflow-x:hidden; overflow-y:scroll; scrollbar-width:none; }.scroll-area__viewport::-webkit-scrollbar { display:none; }
 .inventory_scroll .scroll-area__viewport { display:grid; align-content:start; gap:.18rem; }
 .info-panel--primary .inventory_scroll,.info-panel__log-card .log_scroll { height:calc(100% - 4px); margin-top:0; }
 .scroll-area__track { position:absolute; top:0; right:-2px; bottom:0; width:4px; background:#211d24; cursor:pointer; }
@@ -167,7 +167,9 @@ body {
 .attribute_grid { display:grid; grid-template-columns:1fr 1fr; gap:.3rem; }.attribute_item { display:flex; justify-content:space-between; gap:.25rem; font-size:.63rem; line-height:1.45; }.attribute_tooltip_trigger { border:0; padding:0; background:transparent; color:inherit; font:inherit; text-align:left; cursor:help; }.delta_value { display:inline-flex; justify-content:flex-end; }.delta_value_number { color:#e8dec4; }.delta_value_green { color:#76c878; }.delta_value_red { color:#df6161; }.delta_value_pulse { animation:delta_value_pulse 300ms ease-out; } @keyframes delta_value_pulse { 0%,100% { transform:scale(1); } 50% { transform:scale(2); } }
 .world-view,.minimap-view { flex:1 1 0; min-width:0; min-height:0; position:relative; overflow:hidden; background:#100e17; cursor:crosshair; }
 .world-view__canvas,.minimap-view__canvas { width:100%; height:100%; display:block; image-rendering:pixelated; }
-.world-view__shader-layer { position:absolute; z-index:1; inset:0; display:block; pointer-events:none; }
+.world-view__resource-change-effect { position:absolute; z-index:1; inset:1rem; display:block; box-sizing:border-box; border:2px solid currentColor; pointer-events:none; transform:scale(1); opacity:.85; animation:world-view-resource-change 350ms ease-out forwards; }
+.world-view__resource-change-effect--health-loss { color:#ff625f; }.world-view__resource-change-effect--health-gain { color:#67e879; }.world-view__resource-change-effect--mana { color:#b88cff; }
+@keyframes world-view-resource-change { to { transform:scale(1.12); opacity:0; } }
 .world-view__floating-text { position:absolute; z-index:2; pointer-events:none; transform:translate(-50%,-100%); font:700 14px/1 ui-monospace,monospace; text-shadow:1px 1px 0 #100e17,-1px -1px 0 #100e17,1px -1px 0 #100e17,-1px 1px 0 #100e17; animation:world-view-floating-text 900ms ease-out forwards; --world-floating-travel:11px; white-space:nowrap; }
 .world-view__particle,.world_character { position:absolute; pointer-events:none; image-rendering:pixelated; }
 .world-view__ui-animation { position:fixed; z-index:10000; overflow:hidden; pointer-events:none; transition:left 500ms cubic-bezier(.22,.61,.36,1),top 500ms cubic-bezier(.22,.61,.36,1),width 500ms cubic-bezier(.22,.61,.36,1),height 500ms cubic-bezier(.22,.61,.36,1); animation:world-view-ui-animation-flight 750ms cubic-bezier(.22,.61,.36,1) forwards; }
@@ -455,3 +457,9 @@ body {
 .level-up-window button:hover,
 .level-up-window button:focus-visible { background: #4c426b; outline: 2px solid #f6de92; outline-offset: 2px; }
 .level-up-window button span { color: #d8cfb4; font-size: .85em; }
+@font-face { font-family:"Libron"; src:url("/babylon-lite-rogues-dungeon/assets/fonts/libron/Libron-Regular.woff2") format("woff2"); font-style:normal; font-weight:400; font-display:swap; }
+@font-face { font-family:"Libron"; src:url("/babylon-lite-rogues-dungeon/assets/fonts/libron/Libron-Bold.woff2") format("woff2"); font-style:normal; font-weight:700; font-display:swap; }
+@font-face { font-family:"Libron"; src:url("/babylon-lite-rogues-dungeon/assets/fonts/libron/Libron-Italic.woff2") format("woff2"); font-style:italic; font-weight:400; font-display:swap; }
+@font-face { font-family:"Libron"; src:url("/babylon-lite-rogues-dungeon/assets/fonts/libron/Libron-BoldItalic.woff2") format("woff2"); font-style:italic; font-weight:700; font-display:swap; }
+#browser_surface,#browser_surface * { font-family:"Libron",serif !important; }
+

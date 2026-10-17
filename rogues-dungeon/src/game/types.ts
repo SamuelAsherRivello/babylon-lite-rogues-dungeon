@@ -27,10 +27,12 @@ export type Entity = Enemy
   | (Position & { id: string; kind: "stairs"; direction?: "forward" | "back"; name?: string })
   | (Position & { id: string; kind: "discovery"; name?: string })
   | (Position & { id: string; kind: "chest"; opened?: boolean })
+  | (Position & { id: string; kind: "crate"; health: number; opened?: boolean; openFrame?: 1 | 5 })
   | (Position & { id: string; kind: "item"; item: Item });
 export type ObjectSetRegionRole = "optional-reward" | "exit";
 export interface FloorTriggerDoorBarrelSet {
   id: string; kind: "floor-trigger-door-barrel"; barrel: Position; trigger: Position; door: Position;
+  barrelStart?: Position; barrelReturnUsed?: boolean;
   regionRole: ObjectSetRegionRole;
 }
 export type ObjectSet = FloorTriggerDoorBarrelSet;
@@ -61,6 +63,7 @@ export interface StorageAccess { getItem(key: string): string | null; setItem(ke
 export interface StorageCollection extends StorageAccess { length: number; key(index: number): string | null }
 export type Action =
   | { type: "move"; direction: string; hazardElapsedMs?: number }
+  | { type: "return-barrel"; setId: string }
   | { type: "wait" }
   | { type: "toggle-sneak" }
   | { type: "choose-upgrade"; stat: AttributeName }

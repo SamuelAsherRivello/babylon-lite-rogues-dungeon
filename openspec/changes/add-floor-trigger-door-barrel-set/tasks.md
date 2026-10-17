@@ -9,12 +9,12 @@
 ## 2. Turn resolution
 
 - [x] 2.1 Add cardinal barrel bump resolution and shared closed-door blocking for player and enemy movement; verify focused Node tests cover a successful one-tile push, a blocked push with no time advance, player-trigger activation, barrel-held activation, and door closure after leaving the trigger.
-- [ ] 2.2 Preserve object-set coordinates and derived door traversal across save normalization, reload, and return-floor restoration; verify focused Node tests cover open and closed restore states.
+- [x] 2.2 Preserve object-set coordinates and derived door traversal across save normalization, reload, and return-floor restoration; verify focused Node tests cover open and closed restore states.
 
 ## 3. World presentation
 
 - [x] 3.1 Extend the shared world render model with ordered barrel, trigger, and door entries and their resolved states; verify model tests assert matching coordinates and state data for game and minimap views.
-- [x] 3.2 Add Babylon sprite assets and bounded layers for barrel, inactive or active trigger, and closed or open door; verify renderer-focused tests cover source-frame selection and state updates without stale sprites.
+- [x] 3.2 Add Babylon sprite assets and bounded layers for barrel, props-animated three-frame trigger transition, and closed or open door. Render the trigger as a floor panel above terrain and below all world objects and characters. Map the first door frame to the open state and the second to the closed state. Animate the barrel through the shared sub-grid movement presentation with the player push, and document the compatible mover list; verify focused tests cover source frames, state updates, trigger playback, layering, and barrel interpolation without stale sprites.
 - [ ] 3.3 Add one muted Edge Playwright scenario that pushes the barrel onto the trigger and confirms the visible game view and minimap change together; verify it runs with `?mute=1` after this implementation group.
 
 ## 4. Integration verification

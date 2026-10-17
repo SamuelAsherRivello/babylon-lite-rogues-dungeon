@@ -18,6 +18,9 @@ test("@smoke pushes a barrel onto its floor trigger in a muted Edge session", as
   }, GENERATOR_VERSION);
   await page.goto("/babylon-lite-rogues-dungeon/?mute=1");
   await page.getByRole("button", { name: /Saved Game 1/ }).click();
+  await expect(page.locator(".world-view")).toBeVisible();
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("rogues-dungeon.slot.1")!).player)).toMatchObject({ x: 47, y: 50 });
+  await page.waitForTimeout(1000);
   await page.keyboard.press("ArrowRight");
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("rogues-dungeon.slot.1")!).floor.objectSets[0].barrel)).toEqual({ x: 49, y: 50 });
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("rogues-dungeon.slot.1")!).player)).toMatchObject({ x: 48, y: 50 });

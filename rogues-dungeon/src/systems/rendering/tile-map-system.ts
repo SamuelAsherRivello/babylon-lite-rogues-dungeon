@@ -11,7 +11,15 @@ import { ensureSemanticCells, isWalkable, semanticCellsFromMap } from "../proced
 
 export const TILED_TILE_SIZE = 32;
 export const DUNGEON_TILESET_SOURCE = "../../assets/art/vendors/dungeons-and-pixels-v1.4/tiled-examples/tilesets/tileset-dungeon.tsx";
-const DUNGEON_TILESET_GROUND_GID = 14;
+// The upper-left room's 4-by-3 interior is the shared walkable-floor family.
+// These IDs are deliberately independent of a visual theme: every theme uses
+// the same 12-by-9 atlas layout.
+export const DUNGEON_FLOOR_TILE_GIDS = Object.freeze([14, 15, 16, 17, 26, 27, 28, 29, 38, 39, 40, 41]);
+
+function dungeonFloorTileGid(x: number, y: number) {
+  const hash = Math.imul(x, 374761393) ^ Math.imul(y, 668265263);
+  return DUNGEON_FLOOR_TILE_GIDS[((hash ^ (hash >>> 13)) >>> 0) % DUNGEON_FLOOR_TILE_GIDS.length];
+}
 
 const DIRECTIONS = Object.freeze([[0, -1], [1, -1], [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1]]);
 export const DUNGEON_WANG_TILE_BY_MASK: Readonly<Record<number, number>> = Object.freeze({ 7: 48, 28: 0, 31: 12, 112: 5, 124: 1, 127: 32, 193: 53, 199: 49, 223: 8, 241: 17, 247: 6, 253: 30, 255: 13 });
@@ -24,7 +32,7 @@ function nearestFrame(mask: number, table: Readonly<Record<number, number>>) { r
 function walkableAt(grid: number[][] | Grid | undefined, x: number, y: number) { return Array.isArray(grid) ? grid[y]?.[x] === 0 : isWalkable(grid, x, y); }
 export function walkableMask(grid: number[][] | Grid | undefined, x: number, y: number) { return DIRECTIONS.reduce((mask, [dx, dy], index) => mask | (walkableAt(grid, x + dx, y + dy) ? 1 << index : 0), 0); }
 export function isWalkableBoundary(mask: number) { return mask !== 255; }
-export function buildDungeonWangTerrain({ map, cells, tileSize = 32 }: { map?: number[][]; cells?: TerrainCell[][]; tileSize?: number }) { const grid = cells ? { cells } : map; const height = cells?.length ?? map?.length ?? 0; const width = cells?.[0]?.length ?? map?.[0]?.length ?? 0; const terrain = []; const diagnostics: { x: number; y: number; mask: number; worldX: number; worldY: number }[] = []; for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) { if (!walkableAt(grid, x, y)) continue; const mask = walkableMask(grid, x, y); const frame = DUNGEON_WANG_TILE_BY_MASK[mask] ?? nearestFrame(mask, DUNGEON_WANG_TILE_BY_MASK) ?? DUNGEON_WANG_INTERIOR_TILE; terrain.push({ x, y, mask, worldX: x * tileSize + tileSize / 2, worldY: y * tileSize + tileSize / 2, frame, floorFrame: frame, wallFrame: null, wall: false }); } return { terrain, diagnostics }; }
+export function buildDungeonWangTerrain({ map, cells, tileSize = 32 }: { map?: number[][]; cells?: TerrainCell[][]; tileSize?: number }) { const grid = cells ? { cells } : map; const height = cells?.length ?? map?.length ?? 0; const width = cells?.[0]?.length ?? map?.[0]?.length ?? 0; const terrain = []; const diagnostics: { x: number; y: number; mask: number; worldX: number; worldY: number }[] = []; for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) { if (!walkableAt(grid, x, y)) continue; const mask = walkableMask(grid, x, y); const frame = dungeonFloorTileGid(x, y) - 1; terrain.push({ x, y, mask, worldX: x * tileSize + tileSize / 2, worldY: y * tileSize + tileSize / 2, frame, floorFrame: frame, wallFrame: null, wall: false }); } return { terrain, diagnostics }; }
 export function buildDungeonWangWalls({ map, cells, tileSize = 32 }: { map?: number[][]; cells?: TerrainCell[][]; tileSize?: number }) { const grid = cells ? { cells } : map; const height = cells?.length ?? map?.length ?? 0; const width = cells?.[0]?.length ?? map?.[0]?.length ?? 0; const walls = []; const diagnostics: { x: number; y: number; mask: number; worldX: number; worldY: number }[] = []; for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) { if (walkableAt(grid, x, y)) continue; const mask = walkableMask(grid, x, y); if (!mask) continue; const frame = DUNGEON_WANG_WALL_BY_MASK[mask] ?? nearestFrame(mask, DUNGEON_WANG_WALL_BY_MASK); const entry = { x, y, mask, worldX: x * tileSize + tileSize / 2, worldY: y * tileSize + tileSize / 2, frame }; if (frame == null) diagnostics.push({ ...entry }); walls.push(entry); } return { walls, wallDiagnostics: diagnostics }; }
 
 function propertiesObject(properties: TiledProperty[] = []) { return Object.fromEntries(properties.map(({ name, value }) => [name, value])); }
@@ -39,11 +47,9 @@ export function serializeFloorToTiled({ campaign, generatorVersion = GENERATOR_V
   const width = Number(floor.width ?? floor.cells[0].length); const height = Number(floor.height ?? floor.cells.length);
   const wallModel = buildDungeonWangWalls({ cells: floor.cells, tileSize: TILED_TILE_SIZE });
   const wallByCell = new Map(wallModel.walls.map((cell) => [`${cell.x},${cell.y}`, cell.frame == null ? 0 : cell.frame + 1]));
-  // Grounds is the gameplay mask, not a Wang-art preview. Keep it deliberately
-  // boring: one verified walkable tile marks every floor cell and nothing else.
-  // Wall decisions belong exclusively to Walls, so editing a ground cell in
-  // Tiled cannot accidentally encode a wall shape.
-  const grounds = floor.cells.flatMap((row) => row.map((cell) => cell.walkable ? DUNGEON_TILESET_GROUND_GID : 0));
+  // Ground art varies by coordinate, while wall decisions remain exclusively
+  // in Walls. The stable selection keeps exports and in-game rendering aligned.
+  const grounds = floor.cells.flatMap((row, y) => row.map((cell, x) => cell.walkable ? dungeonFloorTileGid(x, y) : 0));
   const walls = floor.cells.flatMap((row, y) => row.map((cell, x) => !cell.walkable ? (wallByCell.get(`${x},${y}`) ?? 0) : 0));
   const toObject = (entity: Entity, index: number) => ({ id: index + 1, name: entity.id ?? `${entity.kind}-${index}`, type: entity.kind, x: entity.x * TILED_TILE_SIZE, y: entity.y * TILED_TILE_SIZE, width: TILED_TILE_SIZE, height: TILED_TILE_SIZE, properties: propertiesArray({ ...entity, x: undefined, y: undefined, id: undefined, kind: undefined }) });
   const pickups = (floor.entities ?? []).filter((entity) => ["item", "potion", "key", "gold", "chest", "discovery"].includes(entity.kind));

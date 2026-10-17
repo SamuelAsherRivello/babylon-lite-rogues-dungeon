@@ -10,16 +10,19 @@
 - Bump again to accept. Walk away to decline.
 - Enter a red-tinted version of the current level. Reuse its art and layout, but raise combat difficulty roughly tenfold through enemy statistics and encounter tuning.
 
-### Equipment and inventory
+### Weapons, combat, and inventory
 
 - Dragging equipment onto an occupied slot swaps the items.
 - Show a comparison when the player considers a swap. Compare offense, defense, durability, and perks.
 - Do not add weapon durability. This keeps the asset and economy systems simpler.
 - Add three variants for each equipment type with rock-paper-scissors-style tradeoffs.
+- Give weapons chance-to-hit, miss chance, and critical-hit chance as combat properties.
 - Two-handed swords deal the most damage, rarely miss, and automatically parry.
-- Swords deal medium damage and miss often. Define their compensating advantage.
+- Swords deal medium damage and miss often. Give them a distinct compensating advantage, such as a higher critical-hit chance.
 - Daggers deal little damage and rarely miss.
 - When the player exceeds carrying capacity, require two movement inputs to move one tile.
+- Make damage feedback distinct for attacks received from north, south, east, and west.
+- Add a ranged enemy that fires projectiles at the player.
 
 ### Progression
 
@@ -36,11 +39,6 @@
 - Bump again to rest. Walking away declines.
 - Resting costs 20 gold, restores health, and updates the checkpoint.
 - Bumping into an NPC offers an interaction. Bump again to accept; walking away declines.
-
-### Combat and enemies
-
-- Make damage feedback distinct for attacks received from north, south, east, and west.
-- Add a ranged enemy that fires projectiles at the player.
 
 ### Interface, animation, and mobile
 

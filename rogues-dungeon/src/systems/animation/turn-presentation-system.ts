@@ -8,18 +8,26 @@ export const SUB_GRID_MOVEMENT = true;
 export interface PresentedEnemy { id: string; from: Position; to: Position; rank: number; startAt: number; endAt: number }
 export interface TurnPlaybackPlan { duration: number; enemies: PresentedEnemy[] }
 
-interface CharacterMotion { from: Position; to: Position; startAt: number; endAt: number }
+interface SubGridMotion { from: Position; to: Position; startAt: number; endAt: number }
 
 function enemies(campaign: Campaign) { return campaign.floor.entities.filter((entity): entity is Enemy => entity.kind === "enemy"); }
+function barrels(campaign: Campaign) { return (campaign.floor.objectSets ?? []).filter((set) => set.kind === "floor-trigger-door-barrel").map((set) => ({ id: `${set.id}-barrel`, ...set.barrel })); }
+function subGridMovers(campaign: Campaign) { return [...enemies(campaign), ...barrels(campaign)]; }
 function samePosition(a: Position | undefined, b: Position | undefined) { return a?.x === b?.x && a?.y === b?.y; }
 function clonePosition(position: Position): Position { return { x: position.x, y: position.y }; }
 
-/** Keeps non-serializable, renderer-facing turn playback separate from campaign state. */
+/**
+ * Keeps renderer-only sub-grid playback separate from campaign state.
+ *
+ * Players, enemies, and pushable barrels move between cells and therefore use
+ * this shared presentation path. Doors, triggers, terrain, pickups, and
+ * decorations instead change state in place and remain grid-aligned.
+ */
 export class TurnPresentationSystem {
   private ranks = new Map<string, number>();
   private nextRank = 0;
   private positions = new Map<string, Position>();
-  private motions = new Map<string, CharacterMotion>();
+  private motions = new Map<string, SubGridMotion>();
   private active: TurnPlaybackPlan | null = null;
   private floorKey: string | null = null;
 
@@ -28,7 +36,7 @@ export class TurnPresentationSystem {
   reset(campaign: Campaign) {
     this.floorKey = `${campaign.floor.seed}:${campaign.floor.level}`;
     this.ranks.clear(); this.nextRank = 0; this.active = null; this.motions.clear();
-    this.positions = new Map(enemies(campaign).map((enemy) => [enemy.id, clonePosition(enemy)]));
+    this.positions = new Map(subGridMovers(campaign).map((mover) => [mover.id, clonePosition(mover)]));
     this.positions.set("player", clonePosition(campaign.player));
   }
 
@@ -36,8 +44,9 @@ export class TurnPresentationSystem {
     const floorKey = `${current.floor.seed}:${current.floor.level}`;
     if (this.floorKey !== floorKey) this.reset(previous);
     this.sample(now);
-    const before = new Map(enemies(previous).map((enemy) => [enemy.id, enemy]));
-    const liveIds = new Set(enemies(current).map((enemy) => enemy.id));
+    const before = new Map(subGridMovers(previous).map((mover) => [mover.id, mover]));
+    const movers = subGridMovers(current);
+    const liveIds = new Set(movers.map((mover) => mover.id));
     for (const id of this.positions.keys()) if (id !== "player" && !liveIds.has(id)) this.positions.delete(id);
     for (const id of this.motions.keys()) if (id !== "player" && !liveIds.has(id)) this.motions.delete(id);
     for (const id of this.ranks.keys()) if (!liveIds.has(id)) this.ranks.delete(id);
@@ -54,6 +63,10 @@ export class TurnPresentationSystem {
     });
     if (!samePosition(previous.player, current.player)) this.setMotion("player", { from: this.positions.get("player") ?? clonePosition(previous.player), to: clonePosition(current.player), startAt: now, endAt: now + CHARACTER_MOVEMENT_DURATION_MS }, now);
     else if (!this.motions.has("player")) this.positions.set("player", clonePosition(current.player));
+    for (const barrel of barrels(current)) {
+      if (!samePosition(before.get(barrel.id), barrel)) this.setMotion(barrel.id, { from: this.positions.get(barrel.id) ?? clonePosition(before.get(barrel.id) ?? barrel), to: clonePosition(barrel), startAt: now, endAt: now + CHARACTER_MOVEMENT_DURATION_MS }, now);
+      else if (!this.motions.has(barrel.id)) this.positions.set(barrel.id, clonePosition(barrel));
+    }
     for (const enemy of enemies(current)) if ((!visibleEnemyIds.has(enemy.id) || !changed.some((entry) => entry.id === enemy.id)) && !this.motions.has(enemy.id)) this.positions.set(enemy.id, clonePosition(enemy));
     this.active = { duration, enemies: enemiesToPlay };
     return this.active;
@@ -81,10 +94,21 @@ export class TurnPresentationSystem {
 
   positionOf(id: string, fallback: Position): Position { return this.positions.get(id) ?? fallback; }
   playerPositionOf(fallback: Position): Position { return this.positionOf("player", fallback); }
+  /**
+   * Returns a renderer-only 0..1 movement pulse. It shares the exact motion
+   * interval with the positional tween, so a visual pulse cannot outlive or
+   * delay the committed movement.
+   */
+  movementPulseOf(id: string, now: number) {
+    const motion = this.motions.get(id);
+    if (!motion || !this.subGridMovement || now <= motion.startAt || now >= motion.endAt) return 0;
+    const progress = (now - motion.startAt) / (motion.endAt - motion.startAt);
+    return Math.sin(Math.PI * Math.max(0, Math.min(1, progress)));
+  }
   rankOf(id: string) { return this.ranks.get(id) ?? Number.MAX_SAFE_INTEGER; }
   get isActive() { return this.motions.size > 0; }
 
-  private setMotion(id: string, motion: CharacterMotion, now: number) {
+  private setMotion(id: string, motion: SubGridMotion, now: number) {
     if (!this.subGridMovement) { this.positions.set(id, clonePosition(motion.to)); this.motions.delete(id); return; }
     this.positions.set(id, clonePosition(motion.from)); this.motions.set(id, motion); this.sample(now);
   }

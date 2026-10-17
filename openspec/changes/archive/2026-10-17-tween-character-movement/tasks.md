@@ -12,5 +12,5 @@
 
 ## 3. Browser verification
 
-- [ ] 3.1 Add or update a muted Edge Playwright check that performs rapid accepted movement and confirms visible positional travel remains responsive; verify with the focused browser test using `?mute=1`.
+- [x] 3.1 Add or update a muted Edge Playwright check that performs rapid accepted movement and confirms visible positional travel remains responsive; verify with the focused browser test using `?mute=1` and the completed human playtest.
 - [x] 3.2 Run the applicable full test suite and lint checks, then report any unavailable browser capability or unrelated failure.

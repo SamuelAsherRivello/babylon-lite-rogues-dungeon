@@ -14,7 +14,7 @@
 
 **Non-Goals:**
 
-- More puzzle-set families, set editors, procedural rewards behind doors, animations, sound effects, or changes to later-level content.
+- More puzzle-set families, set editors, procedural rewards behind doors, sound effects, or changes to later-level content.
 - A separate persistence format or a new rendering engine.
 
 ## Decisions
@@ -51,9 +51,15 @@ Use a shared set-aware walkability or occupancy helper for player movement and e
 
 ### Render resolved set members through the shared world model
 
-Extend `WorldRender.Render` with ordered puzzle-object entries that include kind, coordinates, set id, and active or open state. Both game and minimap pass the same floor state to this adapter. The Babylon renderer loads the existing vendor barrel and door art as frame atlases, and uses a distinct floor-trigger treatment for active and inactive states. It adds bounded sprite layers for set members alongside the existing object layers.
+Extend `WorldRender.Render` with ordered puzzle-object entries that include kind, coordinates, set id, and active or open state. Both game and minimap pass the same floor state to this adapter. The Babylon renderer loads the existing vendor barrel and door art as frame atlases and renders the trigger in its own floor-panel layer directly above terrain and below every wall, prop, pickup, barrel, door, and character. It uses the three-frame third row of the `props-animated` atlas: it holds the first frame while inactive, plays all three frames once when activated, and holds the final frame while active. It adds bounded sprite layers for set members alongside the existing object layers.
 
 Drawing the puzzle only in the game canvas was rejected because it would violate the shared world geometry contract and hide the state change from the minimap.
+
+### Treat pushable barrels as sub-grid movers, not static props
+
+The renderer-facing turn presentation system tracks exactly the world objects that change grid coordinates during an accepted turn: the player, enemies, and pushable barrels. A barrel is keyed by its object-set id plus `-barrel`, moves from its prior set coordinate to its next one over the same short transition as the player, and is sampled by both game and minimap renderers.
+
+Floor triggers and doors remain grid-aligned because their coordinates do not change; they communicate their state through dedicated active/open frames. Terrain, walls, pickups, chests, stairs, decorations, particles, and UI effects are likewise not sub-grid movers. Camera feedback remains a separate camera-transform animation; it may follow the presented player position, but it is neither a world object nor part of turn collision playback.
 
 ## Risks / Trade-offs
 

@@ -6,4 +6,8 @@ The game view uses Center, Deadzone, or Screen camera policies. Deadzone keeps t
 
 The current camera mode is reapplied after a viewport, layout, browser zoom/DPR, world-zoom, camera-mode, or floor change. Center and Deadzone reset around the player; Screen resolves the page containing the player. When the map is at least as large as the visible cell span, camera framing clamps to its tile bounds so it does not show renderer clear space beyond the level. At low zoom, a viewport can exceed the finite 100 by 100 map; that case retains the map's finite bounds rather than inventing an infinite backdrop.
 
+Turn presentation supplies shared sub-grid coordinates only for the player, enemies, and pushable barrels. Both views sample those positions while a turn is animating. The floor trigger and door remain at their grid coordinates and switch visual state; camera feedback uses its own view-transform animation rather than the sub-grid mover list.
+
+The floor trigger is a floor-panel layer: it renders above terrain and below walls, props, pickups, barrels, doors, enemies, and the player. Its sprite is anchored half a tile lower than the cell center, which keeps the panel on the floor beneath the object activating it.
+
 Zoom presets are 0.25, 0.5, 1, 2, and 4. At 1, a 32-unit tile is intended to occupy 32 CSS pixels; renderer backing density is handled separately. Babylon Lite is WebGPU-only. Unsupported WebGPU surfaces display the existing initialization message and do not fall back to another renderer. Auxiliary canvas APIs available in the installed package include `createSurface`, `resizeSurface`, and `disposeSurface`; renderers may bind directly to a surface.
