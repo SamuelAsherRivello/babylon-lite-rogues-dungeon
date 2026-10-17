@@ -47,3 +47,27 @@ test("strikes a player who remains on raised spikes, including on later cycles",
   assert.equal(first.state.player.resources.health.current, campaign.player.resources.health.current - 2);
   assert.equal(second.state.player.resources.health.current, first.state.player.resources.health.current - 2);
 });
+
+test("strikes enemies standing on a trap during dangerous frames", () => {
+  const campaign = createCampaign(17);
+  const trap = campaign.floor.decorations!.find((decoration) => decoration.kind === "trap")!;
+  const enemy = campaign.floor.entities.find((entity) => entity.kind === "enemy")!;
+  campaign.player.x = campaign.floor.start.x;
+  campaign.player.y = campaign.floor.start.y;
+  enemy.x = trap.x;
+  enemy.y = trap.y;
+  const result = applyAction(campaign, { type: "trap-strike", hazardElapsedMs: 150 });
+  const struckEnemy = result.state.floor.entities.find((entity) => entity.id === enemy.id);
+  const damage = trapStrikeDamage(enemy.resources.defense.current);
+  assert.equal(struckEnemy?.kind, "enemy");
+  if (struckEnemy?.kind === "enemy") assert.equal(struckEnemy.resources.health.current, enemy.resources.health.current - damage);
+  assert.deepEqual(result.events.find((event) => event.type === "combat.hit")?.facts, {
+    target: enemy.name,
+    targetId: enemy.id,
+    targetPosition: { x: trap.x, y: trap.y },
+    damage,
+    previousHealth: enemy.resources.health.current,
+    currentHealth: enemy.resources.health.current - damage,
+    source: "trap",
+  });
+});

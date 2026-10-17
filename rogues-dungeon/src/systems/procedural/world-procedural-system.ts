@@ -1,4 +1,4 @@
-import type { Action, ActionResult, Attributes, AttributeName, Campaign, ConsumableResource, Direction, Enemy, Entity, Equipment, EquipmentGroup, EventFacts, Floor, FloorTriggerDoorBarrelSet, GameEvent, Item, ObjectSetRegionRole, Position, QuickSlot, Resource, ResourceInput, ResourceName, Resources, Room, WorldDecoration } from "../../game/types.ts";
+import type { Action, ActionResult, Attributes, AttributeName, Campaign, ConsumableResource, Direction, Enemy, Entity, Equipment, EquipmentGroup, EventFacts, Floor, FloorTriggerDoorBarrelSet, GameEvent, Item, MassBearingPosition, ObjectSetRegionRole, Position, QuickSlot, Resource, ResourceInput, ResourceName, Resources, Room, WorldDecoration } from "../../game/types.ts";
 import { createLevelContext, ensureSemanticCells, isWalkable, runLevelPasses } from "./level-grid-system.ts";
 import { isWallDecorationCell, TRAP_FRAME_DURATION_MS, trapFrameAt, trapIsDangerous, trapStrikeDamage } from "./world-hazards-system.ts";
 import { worldFloorSeed } from "./world-seed-system.ts";
@@ -33,15 +33,28 @@ function validPosition(value: unknown): value is Position { return typeof value 
 export function normalizeObjectSets(floor: Floor) {
   const raw = Array.isArray(floor.objectSets) ? floor.objectSets : [];
   floor.objectSets = raw.filter((set): set is FloorTriggerDoorBarrelSet => set?.kind === "floor-trigger-door-barrel" && typeof set.id === "string" && validPosition(set.barrel) && validPosition(set.trigger) && validPosition(set.door) && objectSetRoles.includes(set.regionRole))
-    .map((set) => ({ ...set, barrel: { ...set.barrel }, barrelStart: validPosition(set.barrelStart) ? { ...set.barrelStart } : { ...set.barrel }, barrelReturnUsed: Boolean(set.barrelReturnUsed), trigger: { ...set.trigger }, door: { ...set.door } }));
+    .map((set) => ({ ...set, barrel: { ...set.barrel, hasMass: set.barrel.hasMass !== false }, barrelStart: validPosition(set.barrelStart) ? { ...set.barrelStart } : { ...set.barrel }, barrelReturnUsed: Boolean(set.barrelReturnUsed), trigger: { ...set.trigger }, door: { ...set.door } }));
   return floor;
 }
-export function isObjectSetDoorOpen(set: FloorTriggerDoorBarrelSet, player: Position) { return samePosition(set.trigger, player) || samePosition(set.trigger, set.barrel); }
+function hasMassAt(position: Position, object: MassBearingPosition, defaultHasMass = false) { return (object.hasMass ?? defaultHasMass) === true && samePosition(position, object); }
+export function isObjectSetDoorOpen(set: FloorTriggerDoorBarrelSet, player: MassBearingPosition, entities: Entity[] = []) {
+  return hasMassAt(set.trigger, player) || hasMassAt(set.trigger, set.barrel, true) || entities.some((entity) => hasMassAt(set.trigger, entity));
+}
+function emitFloorTriggerChanges(events: GameEvent[], previous: Campaign, current: Campaign) {
+  const previousSets = new Map(floorTriggerDoorSets(previous.floor).map((set) => [set.id, set]));
+  for (const set of floorTriggerDoorSets(current.floor)) {
+    const previousSet = previousSets.get(set.id);
+    if (!previousSet) continue;
+    const wasActive = isObjectSetDoorOpen(previousSet, previous.player, previous.floor.entities);
+    const active = isObjectSetDoorOpen(set, current.player, current.floor.entities);
+    if (active !== wasActive) emit(events, "floor-trigger.changed", { id: set.id, active }, current);
+  }
+}
 export function floorTriggerDoorSets(floor: Floor) { return (floor.objectSets ?? []).filter((set): set is FloorTriggerDoorBarrelSet => set.kind === "floor-trigger-door-barrel"); }
 function barrelSetAt(floor: Floor, x: number, y: number) { return floorTriggerDoorSets(floor).find((set) => set.barrel.x === x && set.barrel.y === y); }
 export function isBarrelAdjacentToWall(floor: Parameters<typeof isWalkable>[0], barrel: Position) { return [[0, -1], [1, 0], [0, 1], [-1, 0]].some(([dx, dy]) => !isWalkable(floor, barrel.x + dx, barrel.y + dy)); }
-export function isObjectSetBlocked(floor: Floor, player: Position, x: number, y: number) {
-  return floorTriggerDoorSets(floor).some((set) => samePosition(set.barrel, { x, y }) || (samePosition(set.door, { x, y }) && !isObjectSetDoorOpen(set, player)));
+export function isObjectSetBlocked(floor: Floor, player: MassBearingPosition, x: number, y: number) {
+  return floorTriggerDoorSets(floor).some((set) => samePosition(set.barrel, { x, y }) || (samePosition(set.door, { x, y }) && !isObjectSetDoorOpen(set, player, floor.entities)));
 }
 
 function stairsForLevel(level: number, start: Position, forward: Position): Extract<Entity, { kind: "stairs" }>[] {
@@ -70,7 +83,7 @@ export function headingFromMovement(dx: number, dy: number, fallback: Direction 
   return fallback;
 }
 export const resourceNames: readonly ResourceName[] = Object.freeze(["health", "stamina", "offense", "defense", "mana", "xp"]);
-export const EVENT_TYPES = Object.freeze(["action.committed", "action.rejected", "time.advanced", "player.moved", "player.sneak.changed", "combat.hit", "enemy.defeated", "resource.changed", "item.collected", "item.collection.rejected", "potion.consumed", "quick-slot.changed", "quick-slot.use.rejected", "chest.opened", "crate.bumped", "crate.opened", "equipment.changed", "ability.used", "ability.assignment.changed", "barrel.pushed", "xp.gained", "xp.level.changed", "progression.upgrade.offered", "progression.upgrade.chosen", "realm.entered", "player.died", "campaign.save.succeeded", "campaign.save.failed"]);
+export const EVENT_TYPES = Object.freeze(["action.committed", "action.rejected", "time.advanced", "player.moved", "player.sneak.changed", "combat.hit", "enemy.defeated", "resource.changed", "item.collected", "item.collection.rejected", "potion.consumed", "quick-slot.changed", "quick-slot.use.rejected", "chest.opened", "crate.bumped", "crate.opened", "equipment.changed", "ability.used", "ability.assignment.changed", "barrel.pushed", "floor-trigger.changed", "xp.gained", "xp.level.changed", "progression.upgrade.offered", "progression.upgrade.chosen", "realm.entered", "player.died", "campaign.save.succeeded", "campaign.save.failed"]);
 export const progressionStatNames: readonly AttributeName[] = Object.freeze(["vitality", "strength", "luck", "recovery", "stealth"]);
 export const attributeLabels = Object.freeze({ health: "Health", stamina: "Stamina", offense: "Offense", defense: "Defense", mana: "Mana", vitality: "Vitality", strength: "Strength", luck: "Luck", recovery: "Recovery", stealth: "Stealth" });
 export const statLabels = attributeLabels;
@@ -327,10 +340,12 @@ export function upgradeCampaignResources(campaign: Campaign) {
   ensureStarterConsumables(campaign);
   normalizeQuickSlots(campaign);
   normalizeStackableLocations(campaign);
+  campaign.player.hasMass = campaign.player.hasMass !== false;
   campaign.player.heading = campaign.player.heading ?? "e";
   campaign.player.resources = playerResourcesFromCampaign(campaign);
   const level = campaign.floor.level ?? campaign.floor.depth ?? 1;
   for (const entity of campaign.floor.entities ?? []) if (entity.kind === "enemy") {
+    entity.hasMass = entity.hasMass !== false;
     if (entity.name === "Cave Rat") entity.name = "Rat";
     entity.resources = enemyResources(entity, level);
     entity.hp = entity.resources.health.current;
@@ -376,7 +391,10 @@ export function generateFloor(level: number, seed = seedNow(), difficulty = leve
   const exitCandidates: Position[] = [];
   for (let y = 1; y < FLOOR_HEIGHT - 1; y++) for (let x = 1; x < FLOOR_WIDTH - 1; x++) if (map[y][x] === 0 && Math.hypot(x - start.x, y - start.y) >= 20) exitCandidates.push({ x, y });
   const distantExit = exitCandidates[Math.floor(random() * exitCandidates.length)] ?? { x: start.x + 3, y: start.y };
-  const forward = level1TestMode ? { x: start.x + 3, y: start.y } : regionRole === "exit" ? sealedGoal : distantExit;
+  // Keep the nearby test-mode stair one clear tile away from the sealed door.
+  // A stair beside a door makes its interaction hard to distinguish from opening
+  // the door and violates the shared object-placement spacing rule.
+  const forward = level1TestMode ? { x: start.x + 2, y: start.y } : regionRole === "exit" ? sealedGoal : distantExit;
   if (level === 1 && !level1TestMode && regionRole !== "exit") {
     const bypass = { x: start.x, y: start.y + 4 };
     connectRooms(map, start, bypass, corridorWidth);
@@ -452,7 +470,7 @@ export function generateFloor(level: number, seed = seedNow(), difficulty = leve
         const skeleton = difficulty > 1 && random() < 0.4;
         const health = skeleton ? 20 + (difficulty - 2) * 4 : 12 + (difficulty - 1) * 3;
         const damage = skeleton ? 6 + (difficulty - 2) * 2 : 3 + (difficulty - 1) * 2;
-        const enemy: Omit<Enemy, "resources"> = { id: `enemy-${i}`, kind: "enemy", x: enemyCell.x, y: enemyCell.y, hp: health, maxHp: health, damage, awareness: GAME_TUNING.enemyAwareness, actionCooldown: GAME_TUNING.enemyActionCooldown, nextActionAt: GAME_TUNING.enemyActionCooldown, name: skeleton ? "Skeleton" : "Rat", xp: GAME_TUNING.xpPerKillBase + difficulty, heading: "e" };
+        const enemy: Omit<Enemy, "resources"> = { id: `enemy-${i}`, kind: "enemy", x: enemyCell.x, y: enemyCell.y, hasMass: true, hp: health, maxHp: health, damage, awareness: GAME_TUNING.enemyAwareness, actionCooldown: GAME_TUNING.enemyActionCooldown, nextActionAt: GAME_TUNING.enemyActionCooldown, name: skeleton ? "Skeleton" : "Rat", xp: GAME_TUNING.xpPerKillBase + difficulty, heading: "e" };
         add({ ...enemy, resources: enemyResources(enemy, level) });
       }
       if (!level1TestMode && random() < 0.35) {
@@ -471,7 +489,7 @@ export function generateFloor(level: number, seed = seedNow(), difficulty = leve
       const testEnemy = (id: string, name: "Rat" | "Skeleton", offsets: readonly Position[]) => {
         const cell = nearStart(offsets); if (!cell) return;
         const skeleton = name === "Skeleton"; const health = skeleton ? 20 : 12; const damage = skeleton ? 6 : 3;
-        const enemy: Omit<Enemy, "resources"> = { id, kind: "enemy", x: cell.x, y: cell.y, hp: health, maxHp: health, damage, awareness: GAME_TUNING.enemyAwareness, actionCooldown: GAME_TUNING.enemyActionCooldown, nextActionAt: GAME_TUNING.enemyActionCooldown, name, xp: GAME_TUNING.xpPerKillBase + difficulty, heading: "e" };
+        const enemy: Omit<Enemy, "resources"> = { id, kind: "enemy", x: cell.x, y: cell.y, hasMass: true, hp: health, maxHp: health, damage, awareness: GAME_TUNING.enemyAwareness, actionCooldown: GAME_TUNING.enemyActionCooldown, nextActionAt: GAME_TUNING.enemyActionCooldown, name, xp: GAME_TUNING.xpPerKillBase + difficulty, heading: "e" };
         add({ ...enemy, resources: enemyResources(enemy, level) });
       };
       testEnemy("test-rat", "Rat", [{ x: -1, y: 0 }, { x: -1, y: -1 }]);
@@ -530,7 +548,7 @@ export function resourceState(campaign: Campaign) {
 
 export function createCampaign(seed = seedNow(), difficulty = 1, level = 1, options: { level1TestMode?: boolean } = {}): Campaign {
   const floor = generateFloor(level, seed, difficulty, options); const attributes = { health: GAME_TUNING.startingHealth, stamina: GAME_TUNING.startingStamina, offense: 0, defense: GAME_TUNING.innateDefense, mana: GAME_TUNING.startingMana, vitality: 0, strength: 0, luck: 0, recovery: 0, stealth: 0 };
-  const campaign: Campaign = { version: 3, world: "One", realm: `Underground ${floor.level}`, floor, floors: { [floor.level]: structuredClone(floor) }, progression: { attributes, level: 1, xp: 0, nextXp: GAME_TUNING.xpThreshold, totalKills: 0, difficulty, pendingUpgrades: [] }, player: { x: floor.start.x, y: floor.start.y, heading: "e", resources: createResourcesModel(), equipment: { weapons: [itemInstance(itemCatalog[3], "starter-stick"), null], armor: [null, null] }, inventory: [consumableInstance("health", "starter-health-potion"), consumableInstance("mana", "starter-mana-potion", 2)], inventoryCapacity: ITEM_CAPACITY, abilities: ["heal", "wand", null], quickSlots: [null, null], sneaking: false }, starterConsumablesSeeded: true, counters: { keys: 1, gold: 55 }, objective: "Find the exit", quest: { id: "my-first-quest", title: "My First Quest", items: [{ id: "walk-through-stairs", title: "Walk through the stairs", complete: false }, { id: "collect-health-potion", title: "Collect a Health Potion", complete: false }, { id: "collect-coin", title: "Collect a coin", complete: false }], activeItemId: "walk-through-stairs" }, log: [] };
+  const campaign: Campaign = { version: 3, world: "One", realm: `Underground ${floor.level}`, floor, floors: { [floor.level]: structuredClone(floor) }, progression: { attributes, level: 1, xp: 0, nextXp: GAME_TUNING.xpThreshold, totalKills: 0, difficulty, pendingUpgrades: [] }, player: { x: floor.start.x, y: floor.start.y, hasMass: true, heading: "e", resources: createResourcesModel(), equipment: { weapons: [itemInstance(itemCatalog[3], "starter-stick"), null], armor: [null, null] }, inventory: [consumableInstance("health", "starter-health-potion"), consumableInstance("mana", "starter-mana-potion", 2)], inventoryCapacity: ITEM_CAPACITY, abilities: ["heal", "wand", null], quickSlots: [null, null], sneaking: false }, starterConsumablesSeeded: true, counters: { keys: 1, gold: 55 }, objective: "Find the exit", quest: { id: "my-first-quest", title: "My First Quest", items: [{ id: "walk-through-stairs", title: "Walk through the stairs", complete: false }, { id: "collect-health-potion", title: "Collect a Health Potion", complete: false }, { id: "collect-coin", title: "Collect a coin", complete: false }], activeItemId: "walk-through-stairs" }, log: [] };
   campaign.player.resources = playerResourcesFromCampaign(campaign, { health: GAME_TUNING.startingHealth, stamina: GAME_TUNING.startingStamina, mana: GAME_TUNING.startingMana });
   return campaign;
 }
@@ -546,6 +564,22 @@ function applyTrapOnEntry(state: Campaign, events: GameEvent[], elapsedMs: numbe
   if (!trap || !trapIsDangerous(trapFrameAt(elapsedMs))) return;
   const damage = trapStrikeDamage(resourceState(state).defense.current);
   changeResource(state, events, "health", state.player.resources.health.current - damage, "trap");
+}
+function applyActiveTrapStrikes(state: Campaign, events: GameEvent[], elapsedMs: number) {
+  if (!trapIsDangerous(trapFrameAt(elapsedMs))) return;
+  applyTrapOnEntry(state, events, elapsedMs);
+  const defeatedEnemyIds = new Set<string>();
+  for (const enemy of state.floor.entities.filter((entity): entity is Enemy => entity.kind === "enemy")) {
+    if (!floorTrapAt(state.floor, enemy)) continue;
+    const health = enemy.resources.health;
+    const previousHealth = health.current;
+    const damage = trapStrikeDamage(enemy.resources.defense.current);
+    health.current = Math.max(0, health.current - damage);
+    enemy.hp = health.current;
+    emit(events, "combat.hit", { target: enemy.name, targetId: enemy.id, targetPosition: { x: enemy.x, y: enemy.y }, damage, previousHealth, currentHealth: health.current, source: "trap" }, state);
+    if (health.current === 0) defeatedEnemyIds.add(enemy.id);
+  }
+  if (defeatedEnemyIds.size > 0) state.floor.entities = state.floor.entities.filter((entity) => entity.kind !== "enemy" || !defeatedEnemyIds.has(entity.id));
 }
 function floorTrapAt(floor: Floor, position: Position) {
   return floor.decorations?.some((decoration) => decoration.kind === "trap" && decoration.x === position.x && decoration.y === position.y) ?? false;
@@ -651,7 +685,7 @@ function openCrate(state: Campaign, events: GameEvent[], crate: Extract<Entity, 
 export function applyAction(campaign: Campaign, action: Action): ActionResult {
   const state = upgradeCampaignResources(structuredClone(campaign)); const events: GameEvent[] = []; const reject = (reason: string, facts: EventFacts = {}, type = "action.rejected"): ActionResult => ({ state: campaign, events: [{ type, facts: { reason, ...facts }, gameTime: campaign.floor.time, sequence: 1 }], accepted: false, ticks: 0 });
   if (action.type === "trap-strike") {
-    applyTrapOnEntry(state, events, action.hazardElapsedMs);
+    applyActiveTrapStrikes(state, events, action.hazardElapsedMs);
     resetPlayerAfterDeath(state, events);
     return { state, events, accepted: true, ticks: 0 };
   }
@@ -826,6 +860,7 @@ export function createGameSession(initial: Campaign, { onCommit }: { onCommit?: 
       try {
         while (queue.length) {
           const current = queue.shift()!; const result = applyAction(state, current.action);
+          if (result.accepted) emitFloorTriggerChanges(result.events, state, result.state);
           result.transactionId = `tx-${++transactionSequence}`;
           result.events = result.events.map((event, index) => ({ ...event, transactionId: result.transactionId, eventId: `event-${++eventSequence}`, sequence: index + 1, outcome: result.accepted ? "committed" : "rejected" }));
           if (result.accepted) {

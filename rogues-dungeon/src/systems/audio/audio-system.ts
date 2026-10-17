@@ -47,6 +47,7 @@ const eventCues: Readonly<Partial<Record<string, keyof typeof AUDIO_ASSETS.sfx>>
   "realm.entered": "stairs",
   "ability.used": "ability",
   "barrel.pushed": "barrelSlide",
+  "floor-trigger.changed": "barrelSlide",
 });
 
 const SFX_VOLUME_MULTIPLIERS: Readonly<Partial<Record<keyof typeof AUDIO_ASSETS.sfx, number>>> = Object.freeze({

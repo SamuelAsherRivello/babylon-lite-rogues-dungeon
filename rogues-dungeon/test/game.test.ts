@@ -2,7 +2,7 @@ import type { ActionResult, Campaign, Enemy, Entity, Item, Direction } from '../
 import type { TileLayer } from '../src/systems/rendering/tile-map-system.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { applyAction, combatReadiness, createCampaign, createGameSession, effectiveAttributes, ensureNearbyStairs, entrancePosition, FLOOR_CENTER, FLOOR_HEIGHT, FLOOR_WIDTH, GAME_TUNING, generateFloor, headingFromMovement, isNonBlockingChestPlacementCell, isObjectSetBlocked, isObjectSetDoorOpen, levelUpOptions, previewEquipment, resourceState, STAIRS_MAX_DISTANCE_FROM_START, upgradeCampaignResources } from '../src/systems/procedural/world-procedural-system.ts';
+import { applyAction, combatReadiness, createCampaign, createGameSession, createResourcesModel, effectiveAttributes, ensureNearbyStairs, entrancePosition, FLOOR_CENTER, FLOOR_HEIGHT, FLOOR_WIDTH, GAME_TUNING, generateFloor, headingFromMovement, isNonBlockingChestPlacementCell, isObjectSetBlocked, isObjectSetDoorOpen, levelUpOptions, previewEquipment, resourceState, STAIRS_MAX_DISTANCE_FROM_START, upgradeCampaignResources } from '../src/systems/procedural/world-procedural-system.ts';
 import { worldFloorSeed } from '../src/systems/procedural/world-seed-system.ts';
 import { projectLogEvents } from '../src/game/log-policy.ts';
 import { projectFloatingFeedback, removeFloatingFeedback } from '../src/game/floating-feedback.ts';
@@ -127,7 +127,7 @@ test('places level-one test-mode stairs and starter entities beside the start on
     assert.ok(Math.hypot(puzzle.barrel.x - floor.start.x, puzzle.barrel.y - floor.start.y) <= 3);
     const stairs = floor.entities.filter((entity) => entity.kind === 'stairs');
     assert.equal(stairs.length, 1);
-    assert.deepEqual(stairs[0], { id: 'stairs-forward', kind: 'stairs', direction: 'forward', name: 'Stairs up', x: floor.start.x + 3, y: floor.start.y });
+    assert.deepEqual(stairs[0], { id: 'stairs-forward', kind: 'stairs', direction: 'forward', name: 'Stairs up', x: floor.start.x + 2, y: floor.start.y });
     assert.ok(Math.hypot(stairs[0].x - floor.start.x, stairs[0].y - floor.start.y) <= STAIRS_MAX_DISTANCE_FROM_START);
     assert.ok(floor.entities.some((entity) => entity.id === 'health-potion' && entity.kind === 'potion' && entity.resource === 'health'));
     assert.ok(floor.entities.some((entity) => entity.id === 'mana-potion' && entity.kind === 'potion' && entity.resource === 'mana'));
@@ -152,7 +152,19 @@ test('normalizes saved floors to directional stairs at the start', () => {
   floor.entities.push({ id: 'extra-stairs', kind: 'stairs', x: floor.start.x + 2, y: floor.start.y });
   const normalized = ensureNearbyStairs(floor);
   const stairs = normalized.entities.filter((entity) => entity.kind === 'stairs');
-  assert.deepEqual(stairs, [{ id: 'stairs-forward', kind: 'stairs', direction: 'forward', name: 'Stairs up', x: floor.start.x + 3, y: floor.start.y }]);
+  assert.deepEqual(stairs, [{ id: 'stairs-forward', kind: 'stairs', direction: 'forward', name: 'Stairs up', x: floor.start.x + 2, y: floor.start.y }]);
+});
+
+test('keeps stairs out of cardinal door-adjacent cells', () => {
+  for (const seed of [17, 77, 914]) {
+    for (const floor of [generateFloor(1, seed, 1), generateFloor(1, seed, 1, { level1TestMode: true })]) {
+      for (const stair of floor.entities.filter((entity) => entity.kind === 'stairs')) {
+        for (const set of floor.objectSets ?? []) {
+          assert.notEqual(Math.abs(stair.x - set.door.x) + Math.abs(stair.y - set.door.y), 1, `${seed}: stair cannot be cardinally adjacent to a door`);
+        }
+      }
+    }
+  }
 });
 
 test('places a return stair near the start and leaves the forward stair distant after level one', () => {
@@ -175,7 +187,7 @@ test('chooses an unoccupied entrance grid spot when the preferred stair exit is 
 
 test('linked stairs return to the previously visited floor', () => {
   let state = createCampaign(17, 1, 1, { level1TestMode: true });
-  for (let step = 0; step < 3; step++) state = applyAction(state, { type: 'move', direction: 'e' }).state;
+  for (let step = 0; step < 2; step++) state = applyAction(state, { type: 'move', direction: 'e' }).state;
   assert.equal(state.floor.level, 1);
   assert.equal(state.floor.entities.some((entity) => entity.kind === 'stairs' && entity.x === state.player.x && entity.y === state.player.y), true);
   state = applyAction(state, { type: 'enter-stairs' }).state;
@@ -990,6 +1002,32 @@ test('a barrel push holds and releases its linked door while closed doors block 
   enemyCampaign.player.x = 55; enemyCampaign.player.y = 50; enemy.x = 53; enemy.y = 50; enemy.nextActionAt = 1;
   const enemyBlocked = applyAction(enemyCampaign, { type: 'wait' });
   assert.deepEqual(present(enemyBlocked.state.floor.entities.find((entity): entity is Enemy => entity.kind === 'enemy')).x, 53);
+});
+
+test('commits a floor-trigger change when its active state changes', () => {
+  const campaign = createCampaign(77); campaign.floor.entities = [];
+  campaign.floor.objectSets = [{ id: 'fixture', kind: 'floor-trigger-door-barrel', barrel: { x: 48, y: 50 }, trigger: { x: 49, y: 50 }, door: { x: 54, y: 50 }, regionRole: 'optional-reward' }];
+  campaign.player.x = 47; campaign.player.y = 50;
+  const session = createGameSession(campaign);
+  const activated = transaction(session.dispatch({ type: 'move', direction: 'e' }));
+  assert.equal(activated.events.some((event) => event.type === 'floor-trigger.changed' && event.facts.active === true), true);
+  transaction(session.dispatch({ type: 'move', direction: 'w' }));
+  transaction(session.dispatch({ type: 'move', direction: 'e' }));
+  transaction(session.dispatch({ type: 'move', direction: 'e' }));
+  const deactivated = transaction(session.dispatch({ type: 'move', direction: 's' }));
+  assert.equal(deactivated.events.some((event) => event.type === 'floor-trigger.changed' && event.facts.active === false), true);
+});
+
+test('any object with hasMass activates a floor trigger', () => {
+  const campaign = createCampaign(44); campaign.floor.entities = [];
+  const set = { id: 'mass-fixture', kind: 'floor-trigger-door-barrel' as const, barrel: { x: 48, y: 50, hasMass: true }, trigger: { x: 49, y: 50 }, door: { x: 54, y: 50 }, regionRole: 'optional-reward' as const };
+  campaign.floor.objectSets = [set];
+  campaign.player.x = 47; campaign.player.y = 50;
+  assert.equal(isObjectSetDoorOpen(set, campaign.player), false);
+  campaign.floor.entities.push({ id: 'massless-item', kind: 'gold', amount: 1, x: 49, y: 50 });
+  assert.equal(isObjectSetDoorOpen(set, campaign.player, campaign.floor.entities), false);
+  campaign.floor.entities = [{ id: 'massive-enemy', kind: 'enemy', name: 'Rat', hasMass: true, x: 49, y: 50, hp: 1, maxHp: 1, damage: 1, xp: 1, resources: createResourcesModel(), awareness: 1, actionCooldown: 1, nextActionAt: 1 }];
+  assert.equal(isObjectSetDoorOpen(set, campaign.player, campaign.floor.entities), true);
 });
 
 test('object sets survive save-shaped campaign normalization and render identically in both world views', () => {

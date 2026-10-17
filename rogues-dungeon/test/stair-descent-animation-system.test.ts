@@ -36,3 +36,10 @@ test("the stair clip hides the player without drawing a foreground floor and cle
   assert.doesNotMatch(source, /stairOcclusionLayer|stairOcclusions|stairLip/);
   assert.match(source, /sceneRef\.current\?\.clearStairClip\(\);[\s\S]*onStairDepartureComplete\?\.\(\);/);
 });
+
+test("each completed stair bob plays one footstep and pending sounds stop at iris closure", () => {
+  const source = readFileSync(new URL("../src/systems/rendering/babylon-render-system.tsx", import.meta.url), "utf8");
+  assert.match(source, /Array\.from\(\{ length: STAIR_DESCENT_STEP_COUNT \}/);
+  assert.match(source, /index \* STAIR_DESCENT_STEP_INTERVAL_MS \+ STAIR_DESCENT_STEP_DURATION_MS/);
+  assert.match(source, /footstepTimers\.forEach\(window\.clearTimeout\);[\s\S]*setIrisRequested\(true\)/);
+});

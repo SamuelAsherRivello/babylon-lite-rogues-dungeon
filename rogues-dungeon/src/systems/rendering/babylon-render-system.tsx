@@ -270,16 +270,20 @@ export function BabylonWorld({ campaign, theme = 1, zoom = 1, minimap = false, c
     const maskStartAt = stairDepartureStartedAt + CHARACTER_MOVEMENT_DURATION_MS;
     const clipTimer = window.setTimeout(() => sceneRef.current?.beginStairClip(stairOrigin), Math.max(0, maskStartAt - performance.now()));
     let animationFrame = 0;
+    const footstepTimers = Array.from({ length: STAIR_DESCENT_STEP_COUNT }, (_, index) => window.setTimeout(
+      () => onStairDescentStep?.(),
+      Math.max(0, maskStartAt + index * STAIR_DESCENT_STEP_INTERVAL_MS + STAIR_DESCENT_STEP_DURATION_MS - performance.now()),
+    ));
     const completeWhenMasked = () => {
       const elapsed = performance.now() - stairDepartureStartedAt - CHARACTER_MOVEMENT_DURATION_MS;
       if (stairDescentIsMasked(elapsed)) {
+        footstepTimers.forEach(window.clearTimeout);
         stairDepartureAwaitingIrisRef.current = true;
         setIrisRequested(true);
       }
       else animationFrame = requestAnimationFrame(completeWhenMasked);
     };
     animationFrame = requestAnimationFrame(completeWhenMasked);
-    const footstepTimers = Array.from({ length: STAIR_DESCENT_STEP_COUNT }, (_, index) => window.setTimeout(() => onStairDescentStep?.(), Math.max(0, stairDepartureStartedAt + CHARACTER_MOVEMENT_DURATION_MS + index * STAIR_DESCENT_STEP_INTERVAL_MS + STAIR_DESCENT_STEP_DURATION_MS - performance.now())));
     return () => { window.clearTimeout(clipTimer); cancelAnimationFrame(animationFrame); footstepTimers.forEach(window.clearTimeout); if (!stairDepartureAwaitingIrisRef.current) sceneRef.current?.clearStairClip(); };
   }, [minimap, onStairDepartureComplete, onStairDescentStep, stairDepartureStartedAt]);
   useEffect(() => { sceneRef.current?.setTheme(theme); }, [theme]);
@@ -458,8 +462,7 @@ export function BabylonWorld({ campaign, theme = 1, zoom = 1, minimap = false, c
         pivotMarkerLayer.order = OVERLAY_RENDER_ORDER + 1;
         const actorLayers = { rat: Array.from({ length: 40 }, () => ({ shadow: createSprite2DLayer(enemyAtlas, { pivot: [0.5, 0.5] }), main: createSprite2DLayer(enemyAtlas, { pivot: [0.5, 0.5] }) })), skeleton: Array.from({ length: 40 }, () => ({ shadow: createSprite2DLayer(enemyAtlas, { pivot: [0.5, 0.5] }), main: createSprite2DLayer(enemyAtlas, { pivot: [0.5, 1] }) })) };
         const itemLayers = Array.from({ length: 40 }, () => ({ shadow: createSprite2DLayer(pickupShadowAtlas, { pivot: [0.5, 0.5] }), main: createSprite2DLayer(itemAtlas, { pivot: [0.5, 0.5] }) }));
-        const chestShadowLayer = createSprite2DLayer(pickupShadowAtlas, { pivot: [0.5, 0.5] });
-        const chestLayer = createSprite2DLayer(chestAtlas, { pivot: [0.5, 1] });
+        const chestLayers = Array.from({ length: 40 }, () => ({ shadow: createSprite2DLayer(pickupShadowAtlas, { pivot: [0.5, 0.5] }), main: createSprite2DLayer(chestAtlas, { pivot: [0.5, 1] }) }));
         const closedCrateLayers = Array.from({ length: 40 }, () => createSprite2DLayer(objectsOverlayAtlas, { pivot: [0.5, 1] }));
         const openCrateLayers = Array.from({ length: 40 }, () => createSprite2DLayer(propsStaticAtlas, { pivot: [0.5, 1] }));
         const doorLayers = Array.from({ length: 4 }, () => createSprite2DLayer(doorAtlas, { pivot: [0.5, 1] }));
@@ -495,8 +498,7 @@ export function BabylonWorld({ campaign, theme = 1, zoom = 1, minimap = false, c
           { handle: addSprite2D(layers.main, { positionPx: [-10000, -10000], sizePx: [32, 32], frame: i % 9 }), offsetPx: [0, 0] },
           { handle: addSprite2D(layers.shadow, { positionPx: [-10000, -10000], sizePx: [32, 32], frame: 0 }), offsetPx: [0, 0] },
         ));
-        const chestShadow = addSprite2D(chestShadowLayer, { positionPx: [-10000, -10000], sizePx: [32, 32], frame: 0 });
-        const chest = addSprite2D(chestLayer, { positionPx: [-10000, -10000], sizePx: [32, 48], frame: 0 });
+        const chests = chestLayers.map((layers) => ({ shadow: addSprite2D(layers.shadow, { positionPx: [-10000, -10000], sizePx: [32, 32], frame: 0 }), main: addSprite2D(layers.main, { positionPx: [-10000, -10000], sizePx: [32, 48], frame: 0 }) }));
         const closedCrates = closedCrateLayers.map((layer) => addSprite2D(layer, { positionPx: [-10000, -10000], sizePx: [32, 32], frame: OBJECTS_OVERLAY_CRATE_CLOSED_FRAME }));
         const openCrates = openCrateLayers.map((layer) => addSprite2D(layer, { positionPx: [-10000, -10000], sizePx: [32, 32], frame: 1 }));
         const doors = doorLayers.map((layer) => addSprite2D(layer, { positionPx: [-10000,-10000], sizePx: [32,32], frame: 0 }));
@@ -517,7 +519,7 @@ export function BabylonWorld({ campaign, theme = 1, zoom = 1, minimap = false, c
         const campfires = campfireLayers.map((layer) => addSprite2D(layer, { positionPx: [-10000,-10000], sizePx: [30,30], frame: 0 }));
         const stairs = stairLayers.map((layer) => addSprite2D(layer, { positionPx: [-10000,-10000], sizePx: [32,32], frame: DUNGEON_STAIR_UP_FRAME }));
         const particles = particleLayers.map((layer) => addSprite2D(layer, { positionPx: [-10000,-10000], sizePx: [32,32], frame: 0 }));
-        const viewLayers = [terrainLayer, ...triggerLayers, ...wallLayers, debugLayer, ...itemLayers.flatMap((layers) => [layers.shadow, layers.main]), chestShadowLayer, chestLayer, ...closedCrateLayers, ...openCrateLayers, ...doorLayers, ...barrelLayers.flatMap((layers) => [layers.shadow, layers.main]), ...goldCoinLayers.flatMap((layers) => [layers.shadow, layers.main]), ...chestCoinLayers, ...torchLayers, ...trapLayers, ...campfireLayers, ...stairLayers, ...particleLayers, ...actorLayers.rat.flatMap((layers) => [layers.shadow, layers.main]), ...actorLayers.skeleton.flatMap((layers) => [layers.shadow, layers.main]), ...(playerLayers ? [playerLayers.shadow, playerLayers.main] : []), pivotMarkerLayer];
+        const viewLayers = [terrainLayer, ...triggerLayers, ...wallLayers, debugLayer, ...itemLayers.flatMap((layers) => [layers.shadow, layers.main]), ...chestLayers.flatMap((layers) => [layers.shadow, layers.main]), ...closedCrateLayers, ...openCrateLayers, ...doorLayers, ...barrelLayers.flatMap((layers) => [layers.shadow, layers.main]), ...goldCoinLayers.flatMap((layers) => [layers.shadow, layers.main]), ...chestCoinLayers, ...torchLayers, ...trapLayers, ...campfireLayers, ...stairLayers, ...particleLayers, ...actorLayers.rat.flatMap((layers) => [layers.shadow, layers.main]), ...actorLayers.skeleton.flatMap((layers) => [layers.shadow, layers.main]), ...(playerLayers ? [playerLayers.shadow, playerLayers.main] : []), pivotMarkerLayer];
         // Terrain and overlays use fixed passes. Every participating world layer
         // receives a shared order below, while its own sprites retain stable Y sort.
         viewLayers.filter((layer) => layer !== terrainLayer && layer !== debugLayer && layer !== pivotMarkerLayer).forEach((layer) => enableSprite2DYSort(layer));
@@ -600,10 +602,7 @@ export function BabylonWorld({ campaign, theme = 1, zoom = 1, minimap = false, c
           const chestObjects = world.objects.filter((entity) => entity.kind === "chest");
           const closedCrateObjects = world.objects.filter((entity) => entity.kind === "crate" && !entity.opened);
           const openCrateObjects = world.objects.filter((entity) => entity.kind === "crate" && entity.opened);
-          const chestObject = chestObjects[0];
-          updateSprite2D(chestShadow, { positionPx: chestObject ? [chestObject.worldX, chestObject.worldY] : [-10000, -10000] });
-          updateSprite2D(chest, { positionPx: chestObject ? [chestObject.worldX, chestObject.worldY + CHEST_MAIN_ART_ANCHOR_OFFSET_PX] : [-10000, -10000], sizePx: [32, chestObject?.opened ? 48 : 32], frame: chestObject?.opened ? 1 : 0 });
-          if (chestObject) addLayerPairDepth(chestObject.id, groundContactY(chestObject), WORLD_TIE_BREAK.pickup, chestShadowLayer, chestLayer);
+          chests.forEach((sprite, i) => { const chestObject = chestObjects[i]; updateSprite2D(sprite.shadow, { positionPx: chestObject ? [chestObject.worldX, chestObject.worldY] : [-10000, -10000] }); updateSprite2D(sprite.main, { positionPx: chestObject ? [chestObject.worldX, chestObject.worldY + CHEST_MAIN_ART_ANCHOR_OFFSET_PX] : [-10000, -10000], sizePx: [32, chestObject?.opened ? 48 : 32], frame: chestObject?.opened ? 1 : 0 }); if (chestObject) addLayerPairDepth(chestObject.id, groundContactY(chestObject), WORLD_TIE_BREAK.pickup, chestLayers[i].shadow, chestLayers[i].main); });
           closedCrates.forEach((sprite, i) => { const crate = closedCrateObjects[i]; updateSprite2D(sprite, { frame: OBJECTS_OVERLAY_CRATE_CLOSED_FRAME, positionPx: crate ? [crate.worldX, crate.worldY + 16] : [-10000, -10000] }); if (crate) addLayerDepth(crate.id, groundContactY(crate), WORLD_TIE_BREAK.prop, closedCrateLayers[i]); });
           openCrates.forEach((sprite, i) => { const crate = openCrateObjects[i]; updateSprite2D(sprite, { frame: crate?.openFrame ?? 1, positionPx: crate ? [crate.worldX, crate.worldY + 16] : [-10000, -10000] }); if (crate) addLayerDepth(crate.id, groundContactY(crate), WORLD_TIE_BREAK.prop, openCrateLayers[i]); });
           const activeItemThrows = latestRef.current.itemThrows.filter((throwItem) => !itemThrowExpired(throwItem, performance.now()));

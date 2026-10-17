@@ -104,6 +104,8 @@ test('mounts the dungeon and minimap in Babylon Lite from the same world compone
   assert.match(source, /terrainHandles\.slice\(world\.grounds\.length\)/);
   assert.match(source, /wallHandles\.slice\(world\.walls\.length\)/);
   assert.match(source, /debugHandles\.slice\(world\.diagnostics\.length \+ world\.wallDiagnostics\.length\)/);
+  assert.match(source, /const chestLayers = Array\.from\(\{ length: 40 \}/);
+  assert.match(source, /chests\.forEach\(\(sprite, i\) => \{ const chestObject = chestObjects\[i\]/);
   assert.match(source, /getInitializationMessage\(Boolean\(navigator\.gpu\), error\)/);
   assert.doesNotMatch(source, /shouldRenderWorld/, 'the main renderer mounts immediately behind the loading iris');
   assert.match(source, /irisPhase === "closed" && rendererLoaded/, 'the iris reveals only after the mounted renderer is ready');

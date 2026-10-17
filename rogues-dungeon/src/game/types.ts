@@ -1,5 +1,6 @@
 /** Serializable domain contracts. This module has no UI or renderer dependencies. */
 export interface Position { x: number; y: number }
+export interface MassBearingPosition extends Position { hasMass?: boolean }
 export interface Room extends Position { w: number; h: number }
 export type Direction = "n" | "s" | "w" | "e";
 /** The last cardinal direction in which a character successfully moved. */
@@ -17,7 +18,7 @@ export interface QuickSlot { item: Item; quantity: number }
 export type Equipment = Record<EquipmentGroup, (Item | null)[]>;
 export type AbilityId = "heal" | "wand";
 export interface TerrainCell { walkable: boolean; role: string; protected?: boolean }
-export interface Enemy extends Position {
+export interface Enemy extends MassBearingPosition {
   id: string; kind: "enemy"; name: string; hp: number; maxHp: number; damage: number; xp: number;
   resources: Resources; awareness: number; actionCooldown: number; nextActionAt: number; heading?: CharacterHeading;
   /** Melee attacks require cardinal adjacency. Ranged attacks may target diagonals within their range. */
@@ -34,7 +35,7 @@ export type Entity = Enemy
   | (Position & { id: string; kind: "item"; item: Item });
 export type ObjectSetRegionRole = "optional-reward" | "exit";
 export interface FloorTriggerDoorBarrelSet {
-  id: string; kind: "floor-trigger-door-barrel"; barrel: Position; trigger: Position; door: Position;
+  id: string; kind: "floor-trigger-door-barrel"; barrel: MassBearingPosition; trigger: Position; door: Position;
   barrelStart?: Position; barrelReturnUsed?: boolean;
   regionRole: ObjectSetRegionRole;
 }
@@ -59,7 +60,7 @@ export interface Campaign {
   /** Previously visited floors, keyed by level, so a return stair restores its dungeon. */
   floors?: Record<string, Floor>;
   progression: { attributes: Attributes; level: number; xp: number; nextXp: number; totalKills: number; difficulty: number; pendingUpgrades: { level: number; options: AttributeName[] }[] };
-  player: Position & { resources: Resources; equipment: Equipment; inventory: Item[]; inventoryCapacity: number; abilities: (AbilityId | null)[]; quickSlots?: [QuickSlot | null, QuickSlot | null]; sneaking: boolean; heading?: CharacterHeading };
+  player: MassBearingPosition & { resources: Resources; equipment: Equipment; inventory: Item[]; inventoryCapacity: number; abilities: (AbilityId | null)[]; quickSlots?: [QuickSlot | null, QuickSlot | null]; sneaking: boolean; heading?: CharacterHeading };
   starterConsumablesSeeded?: boolean;
   counters: { keys: number; gold: number }; objective: string; quest?: Quest; log: LogEntry[]; savedAt?: number;
 }

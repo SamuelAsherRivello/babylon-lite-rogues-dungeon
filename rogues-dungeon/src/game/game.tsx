@@ -236,7 +236,6 @@ export function Game() {
   const [summaryNow, setSummaryNow] = useState(() => Date.now());
   const [slot, setSlot] = useState<string | null>(null); const [campaign, setCampaign] = useState<Campaign | null>(null); const [worldAlive, setWorldAlive] = useState(false); const [stairDepartureStartedAt, setStairDepartureStartedAt] = useState<number | null>(null); const [settings, setSettings] = useState(false); const [menuExiting, setMenuExiting] = useState(false); const [saveError, setSaveError] = useState(""); const [preview, setPreview] = useState<Attributes | null>(null); const [dragPresentation, setDragPresentation] = useState<DragPresentation | null>(null); const [gains, setGains] = useState<Gains>({}); const [floatingFeedback, setFloatingFeedback] = useState<Feedback[]>([]); const [resourceChangeEffects, setResourceChangeEffects] = useState<ResourceChangeEffect[]>([]); const [particleEffects, setParticleEffects] = useState<ParticleEffect[]>([]); const [itemThrows, setItemThrows] = useState<ItemThrow[]>([]); const [abilityCooldowns, setAbilityCooldowns] = useState<Partial<Record<AbilityId, number>>>({}); const [cameraAnimationToken, setCameraAnimationToken] = useState(0); const [fps, setFps] = useState<number | null>(null);
   const [primaryInfoOpen, setPrimaryInfoOpen] = useState(true); const [secondaryInfoOpen, setSecondaryInfoOpen] = useState(true); const [uiAnimations, setUiAnimations] = useState<GameViewToUiAnimation[]>([]); const [pendingUiCredits, setPendingUiCredits] = useState<{ id: string; previous: Campaign }[]>([]);
-  const togglePanels = () => { if (primaryInfoOpen && secondaryInfoOpen) setSecondaryInfoOpen(false); else if (primaryInfoOpen) setPrimaryInfoOpen(false); else if (secondaryInfoOpen) setPrimaryInfoOpen(true); else setSecondaryInfoOpen(true); };
   const [selectedGridSpot, setSelectedGridSpot] = useState<SelectedCell | null>(null); const [mobilePanel, setMobilePanel] = useState("controls"); const [mapTest, setMapTest] = useState(false);
   const [dungeonTheme, setDungeonTheme] = useState<DungeonTheme>(1);
   const gainTimers = useRef(new Map<ResourceName, ReturnType<typeof setTimeout>>()); const abilityTimers = useRef(new Set<ReturnType<typeof setTimeout>>()); const abilityCooldownsRef = useRef<Partial<Record<AbilityId, number>>>({}); const sessionGenerationRef = useRef(0);
@@ -249,6 +248,7 @@ export function Game() {
   const [urlOptions] = useState(() => parseGameUrlOptions(window.location.search));
   const randomSeed = urlOptions.seed;
   const [audio] = useState(() => createAudioManager({ search: window.location.search }));
+  const togglePanels = () => { if (primaryInfoOpen && secondaryInfoOpen) setSecondaryInfoOpen(false); else if (primaryInfoOpen) setPrimaryInfoOpen(false); else if (secondaryInfoOpen) setPrimaryInfoOpen(true); else setSecondaryInfoOpen(true); };
   useEffect(() => {
     const next = runUrlForCampaign(window.location.href, preferences.urlArgs, campaign, slot);
     if (next !== window.location.href) window.history.replaceState(null, "", next);
@@ -480,6 +480,8 @@ export function Game() {
         const timer = setTimeout(() => setItemThrows([]), ITEM_THROW_DURATION_MS);
         abilityTimers.current.add(timer);
       }
+      const playerTookDamage = result.events.some((event) => event.type === "resource.changed" && event.facts.resource === "health" && event.facts.current! < event.facts.previous!);
+      if (playerTookDamage) turnPresentation.beginDamageReaction("player", performance.now());
       if (result.events.some((event) => event.type === "resource.changed" && event.facts.resource === "health" && event.facts.cause === "enemy-attack" && event.facts.current! < event.facts.previous!)) setCameraAnimationToken((token) => token + 1);
       for (const event of result.events) if (event.type === "item.collected" && typeof event.facts.itemId === "string") collectedItemIdsRef.current.add(event.facts.itemId);
       const moved = result.events.find((event) => event.type === "player.moved" && typeof event.facts.from === "object" && event.facts.from !== null);
